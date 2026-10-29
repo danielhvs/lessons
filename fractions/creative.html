@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Noite da Pizza das Frações</title>
+<title>Fraction Pizza Night</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
 <style>
@@ -79,17 +79,17 @@ button.go { background: var(--red); color: #fff; }
 </svg>
 <main>
 <div class="top">
-  <h1>Noite da <span>Pizza</span> das Frações</h1>
-  <a href="20261017T193220--fractions__teach_math.html">← aula passo a passo (em inglês)</a>
+  <h1>Fraction <span>Pizza</span> Night</h1>
+  <a href="index.html">← step-by-step lesson</a>
 </div>
 
 <!-- 1. What a fraction is -->
 <section>
-  <h2><span class="n">1</span>Corte, pegue, dê nome</h2>
-  <p class="lead">Arraste para cortar a pizza. Clique nas fatias para colocá-las no seu prato.</p>
+  <h2><span class="n">1</span>Cut it, grab it, name it</h2>
+  <p class="lead">Slide to cut the pizza. Click slices to put them on your plate.</p>
   <div class="row">
     <div><svg id="heroPizza" viewBox="0 0 520 420"></svg>
-      <div class="ctl"><label>cortar em <input type="range" id="cuts" min="1" max="12" value="8"> <b id="cutsN">8</b> fatias</label></div>
+      <div class="ctl"><label>cut into <input type="range" id="cuts" min="1" max="12" value="8"> <b id="cutsN">8</b> slices</label></div>
     </div>
     <div>
       <div class="big" id="heroFrac"></div>
@@ -101,35 +101,35 @@ button.go { background: var(--red); color: #fff; }
 
 <!-- 2. Game -->
 <section>
-  <h2><span class="n">2</span>A pizzaria</h2>
-  <p class="lead">Os clientes pedem frações, mas a pizza já vem cortada. Clique nas fatias até o prato bater com o pedido e sirva. Dica: a pizza pode estar cortada em mais fatias do que o pedido.</p>
+  <h2><span class="n">2</span>The pizza shop</h2>
+  <p class="lead">Customers order fractions, but the pizza is already cut. Click slices onto the plate until it matches the order, then serve. Hint: the pizza can be cut finer than the order.</p>
   <div class="row">
     <div>
       <div class="bubble" id="order"></div>
       <svg id="customer" viewBox="0 0 520 380"></svg>
     </div>
     <div>
-      <div class="tips">gorjeta: R$<span id="tips">0</span> · rodada <span id="round">1</span>/<span id="rounds"></span></div>
+      <div class="tips">tips: $<span id="tips">0</span> · round <span id="round">1</span>/<span id="rounds"></span></div>
       <div class="big" id="plateFrac"></div>
       <p class="msg" id="msg"></p>
-      <div class="ctl"><button class="go" id="serve">Servir</button><button id="clear">Limpar prato</button></div>
+      <div class="ctl"><button class="go" id="serve">Serve</button><button id="clear">Clear plate</button></div>
     </div>
   </div>
 </section>
 
 <!-- 3. Frog -->
 <section>
-  <h2><span class="n">3</span>O sapo Fred pula na reta numérica</h2>
-  <p class="lead">Frações também são números: ficam entre os números inteiros. Fred pula uma fração de cada vez. Conte os pulos até a bandeira e você acabou de fazer uma divisão.</p>
+  <h2><span class="n">3</span>Fred the frog hops a number line</h2>
+  <p class="lead">Fractions are numbers too: they sit between the whole numbers. Fred hops a fraction each time. Count hops to the flag and you have just divided.</p>
   <svg id="frogLine" viewBox="0 0 1000 240"></svg>
   <div class="ctl">
-    <button class="go" id="frogPlay">▶ Pular</button>
-    <button id="frogReset">↺ Recomeçar</button>
-    <label>tamanho do pulo <select id="hop">
+    <button class="go" id="frogPlay">▶ Play</button>
+    <button id="frogReset">↺ Reset</button>
+    <label>hop size <select id="hop">
       <option value="1/2">1/2</option><option value="1/3">1/3</option><option value="1/4" selected>1/4</option>
       <option value="2/3">2/3</option><option value="3/4">3/4</option></select></label>
-    <label>bandeira no <select id="flag"><option>1</option><option selected>2</option><option>3</option></select></label>
-    <label>velocidade <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1"></label>
+    <label>flag at <select id="flag"><option>1</option><option selected>2</option><option>3</option></select></label>
+    <label>speed <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1"></label>
   </div>
   <p class="big" id="frogSay" style="font-size:2.2rem;min-height:1.4em"></p>
   <p class="note" id="frogNote"></p>
@@ -137,7 +137,7 @@ button.go { background: var(--red); color: #fff; }
 
 <!-- 4. Cheat sheet -->
 <section>
-  <h2><span class="n">4</span>Tudo num cartão só</h2>
+  <h2><span class="n">4</span>The whole thing on one card</h2>
   <div class="cheat" id="cheat"></div>
 </section>
 </main>
@@ -195,10 +195,10 @@ function hero() {
 }
 function heroText() {
   const k = heroTaken.size, n = heroN, g = gcd(k, n);
-  $("heroFrac").innerHTML = `você tem ${FR(k, n)} da pizza` + (g > 1 && k ? ` <span style="font-size:.7em">= ${FR(k / g, n / g)}</span>` : "");
-  $("heroSay").textContent = k === 0 ? "Clique numa fatia para pegá-la." : k === n ? `Todas as ${n} fatias: ${n}/${n} = 1 pizza inteira.`
-    : g > 1 ? `Mesma quantidade que ${k / g}/${n / g}: se a pizza tivesse ${n / g} fatias, você teria ${k / g}.`
-    : `Cada fatia é 1/${n} da pizza. Você tem ${k} delas.`;
+  $("heroFrac").innerHTML = `you have ${FR(k, n)} of the pizza` + (g > 1 && k ? ` <span style="font-size:.7em">= ${FR(k / g, n / g)}</span>` : "");
+  $("heroSay").textContent = k === 0 ? "Click a slice to grab it." : k === n ? `All ${n} slices: ${n}/${n} = 1 whole pizza.`
+    : g > 1 ? `Same amount as ${k / g}/${n / g}: if the pizza had ${n / g} slices, you would hold ${k / g}.`
+    : `Each slice is 1/${n} of the pizza. You hold ${k} of them.`;
   const L = $("heroLegend"); L.replaceChildren();
   const arrow = (x1, y1, x2, y2, c) => S("path", {d: `M${x1},${y1} Q${(x1 + x2) / 2 + 30},${(y1 + y2) / 2 - 20} ${x2},${y2}`, fill: "none", stroke: c, "stroke-width": 3, "marker-end": "url(#ah)", filter: "url(#sketch)"}, L);
   const defs = S("defs", {}, L), m = S("marker", {id: "ah", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto"}, defs);
@@ -206,10 +206,10 @@ function heroText() {
   T(L, 90, 55, k, {"font-size": 70, fill: "var(--red)", "font-family": "Caveat"});
   S("line", {x1: 45, x2: 135, y1: 75, y2: 75, stroke: "var(--ink)", "stroke-width": 4}, L);
   T(L, 90, 140, n, {"font-size": 70, fill: "var(--pen)", "font-family": "Caveat"});
-  arrow(260, 40, 140, 40, "var(--red)"); T(L, 230, 30, "numerador: fatias", {"text-anchor": "start", "font-size": 22, fill: "var(--red)"});
-  T(L, 230, 54, "no seu prato", {"text-anchor": "start", "font-size": 22, fill: "var(--red)"});
-  arrow(260, 125, 140, 120, "var(--pen)"); T(L, 230, 140, "denominador: em quantas", {"text-anchor": "start", "font-size": 22, fill: "var(--pen)"});
-  T(L, 230, 164, "fatias a pizza foi cortada", {"text-anchor": "start", "font-size": 22, fill: "var(--pen)"});
+  arrow(260, 40, 140, 40, "var(--red)"); T(L, 230, 30, "numerator: slices", {"text-anchor": "start", "font-size": 22, fill: "var(--red)"});
+  T(L, 230, 54, "on your plate", {"text-anchor": "start", "font-size": 22, fill: "var(--red)"});
+  arrow(260, 125, 140, 120, "var(--pen)"); T(L, 230, 140, "denominator: slices", {"text-anchor": "start", "font-size": 22, fill: "var(--pen)"});
+  T(L, 230, 164, "the pizza is cut into", {"text-anchor": "start", "font-size": 22, fill: "var(--pen)"});
 }
 $("cuts").oninput = e => { heroN = +e.target.value; $("cutsN").textContent = heroN; heroTaken.clear(); hero(); };
 
@@ -220,11 +220,11 @@ const ROUNDS = [
   {order: [[1, 2]], cut: 4, who: "Caio"},
   {order: [[2, 3]], cut: 6, who: "Duda"},
   {order: [[3, 4]], cut: 8, who: "Enzo"},
-  {order: [[1, 2], [1, 4]], cut: 4, who: "Fê e Gabi"},
-  {order: [[1, 2], [1, 3]], cut: 6, who: "Hugo e Iara"},
-  {order: [[1, 3], [1, 4]], cut: 12, who: "Juca e Kiko"},
+  {order: [[1, 2], [1, 4]], cut: 4, who: "Fê & Gabi"},
+  {order: [[1, 2], [1, 3]], cut: 6, who: "Hugo & Iara"},
+  {order: [[1, 3], [1, 4]], cut: 12, who: "Juca & Kiko"},
   {order: [[2, 3]], cut: 12, who: "Lia"},
-  {order: [[1, 6], [1, 2]], cut: 6, who: "Mel e Nina"},
+  {order: [[1, 6], [1, 2]], cut: 6, who: "Mel & Nina"},
 ];
 let round = 0, tips = 0, plate = new Set(), mood = "wait";
 $("rounds").textContent = ROUNDS.length;
@@ -233,7 +233,7 @@ const need = r => r.order.reduce((s, [n, d]) => s + n * r.cut / d, 0);
 function game() {
   const r = ROUNDS[round], svg = $("customer"); svg.replaceChildren();
   $("round").textContent = round + 1;
-  $("order").innerHTML = `${r.who}: "${r.order.map(([n, d]) => FR(n, d, "", "")).join(r.order.length > 1 ? " + " : "")} de pizza, por favor!"`;
+  $("order").innerHTML = `${r.who}: "${r.order.map(([n, d]) => FR(n, d, "", "")).join(r.order.length > 1 ? " + " : "")} of a pizza, please!"`;
   // customer face(s)
   r.order.forEach((_, k) => {
     const x = 70 + k * 110, g = S("g", {filter: "url(#sketch)"}, svg);
@@ -248,12 +248,12 @@ function game() {
     pull(s, plate.has(i), 30); plateText();
   });
   slices.forEach((s, i) => plate.has(i) && pull(s, true, 30));
-  T(svg, 340, 375, `esta pizza está cortada em ${r.cut}`, {"font-size": 20, fill: "var(--muted)"});
+  T(svg, 340, 375, `this pizza is cut into ${r.cut}`, {"font-size": 20, fill: "var(--muted)"});
   plateText();
 }
 function plateText() {
   const r = ROUNDS[round], k = plate.size;
-  $("plateFrac").innerHTML = `no prato: ${FR(k, r.cut)}`;
+  $("plateFrac").innerHTML = `on the plate: ${FR(k, r.cut)}`;
 }
 $("serve").onclick = () => {
   const r = ROUNDS[round], k = plate.size, want = need(r), msg = $("msg");
@@ -262,17 +262,17 @@ $("serve").onclick = () => {
   if (k === want) {
     tips += 5 + round; $("tips").textContent = tips; mood = "happy";
     msg.className = "msg ok";
-    msg.innerHTML = `Delícia! ${parts}${r.order.length > 1 ? `, juntos ${FR(want, r.cut, "", "")}` : ""}.`;
+    msg.innerHTML = `Yum! ${parts}${r.order.length > 1 ? `, together ${FR(want, r.cut, "", "")}` : ""}.`;
     const next = round + 1;
     setTimeout(() => {
       plate.clear(); mood = "wait";
       if (next < ROUNDS.length) { round = next; msg.textContent = ""; }
-      else { round = 0; msg.innerHTML = `Todos os ${ROUNDS.length} clientes alimentados, R$${tips} de gorjeta. Mestre pizzaiolo! Recomeçando...`; tips = 0; $("tips").textContent = 0; }
+      else { round = 0; msg.innerHTML = `All ${ROUNDS.length} customers fed, $${tips} in tips. Pizza master! Starting over...`; tips = 0; $("tips").textContent = 0; }
       game();
     }, 2600);
   } else {
     mood = "sad"; msg.className = "msg bad";
-    msg.innerHTML = `Isso é ${FR(k, r.cut, "", "")}, ${k > want ? "demais" : "de menos"}. ${orderTxt} de uma pizza de ${r.cut} fatias são quantas fatias? Cada fatia é ${FR(1, r.cut, "", "")}.`;
+    msg.innerHTML = `That's ${FR(k, r.cut, "", "")}, too ${k > want ? "much" : "little"}. ${orderTxt} of a ${r.cut}-slice pizza is how many slices? Each slice is ${FR(1, r.cut, "", "")}.`;
   }
   game();
   const face = $("customer").firstChild; face.classList.add("wiggle");
@@ -309,7 +309,7 @@ function frogScene() {
 const placeFrog = (v, lift) => frog.setAttribute("transform", `translate(${xOf(v)}, ${178 - lift})`);
 function frogSay() {
   const n = Math.round(pos * fB);
-  $("frogSay").innerHTML = hops ? `${hops} pulo${hops > 1 ? "s" : ""} de ${FR(fA, fB)} → Fred está em ${mixed(n, fB)}` : `Fred espera no 0. Tamanho do pulo ${FR(fA, fB)}.`;
+  $("frogSay").innerHTML = hops ? `${hops} hop${hops > 1 ? "s" : ""} of ${FR(fA, fB)} → Fred is at ${mixed(n, fB)}` : `Fred waits at 0. Hop size ${FR(fA, fB)}.`;
 }
 function hop() {
   if (!playing) return;
@@ -329,23 +329,23 @@ function hop() {
   raf = requestAnimationFrame(anim);
 }
 function done() {
-  playing = false; $("frogPlay").textContent = "▶ Pular";
+  playing = false; $("frogPlay").textContent = "▶ Play";
   const qn = flag * fB, qd = fA, g = gcd(qn, qd);
   const answer = qd / g === 1 ? `${qn / g}` : `${mixed(qn, qd)}`;
-  $("frogSay").innerHTML = `${flag} ÷ ${FR(fA, fB)} = ${answer} pulos`;
+  $("frogSay").innerHTML = `${flag} ÷ ${FR(fA, fB)} = ${answer} hops`;
   $("frogNote").innerHTML = partial
-    ? `O último pulo só precisou de parte de um pulo inteiro, então a resposta não é um número inteiro. Atalho: ${flag} × ${FR(fB, fA)} = ${FR(qn, qd)}.`
-    : `Atalho: ${flag} ÷ ${FR(fA, fB)} = ${flag} × ${FR(fB, fA)} = ${qn / g}. Dividir por uma fração = multiplicar por ela invertida.`;
+    ? `The last hop only needed part of a full hop, so the answer is not a whole number. Shortcut: ${flag} × ${FR(fB, fA)} = ${FR(qn, qd)}.`
+    : `Shortcut: ${flag} ÷ ${FR(fA, fB)} = ${flag} × ${FR(fB, fA)} = ${qn / g}. Dividing by a fraction = multiplying by it flipped.`;
 }
 function frogReset() {
-  cancelAnimationFrame(raf); playing = false; $("frogPlay").textContent = "▶ Pular";
+  cancelAnimationFrame(raf); playing = false; $("frogPlay").textContent = "▶ Play";
   [fA, fB] = $("hop").value.split("/").map(Number); flag = +$("flag").value;
-  pos = 0; hops = 0; $("frogNote").textContent = "Aperte Pular. Olhe o texto: depois do 1, as frações viram números mistos como 1 3/4.";
+  pos = 0; hops = 0; $("frogNote").textContent = "Press play. Watch the label: past 1, the fractions become mixed numbers like 1 3/4.";
   frogScene(); frogSay();
 }
 $("frogPlay").onclick = () => {
   if (pos >= flag - 1e-9) frogReset();
-  playing = !playing; $("frogPlay").textContent = playing ? "❚❚ Pausar" : "▶ Pular";
+  playing = !playing; $("frogPlay").textContent = playing ? "❚❚ Pause" : "▶ Play";
   if (playing) hop(); else cancelAnimationFrame(raf);
 };
 $("frogReset").onclick = frogReset;
@@ -358,12 +358,12 @@ const miniBar = (n, k, color, w = 200) => {
   return s + "</svg>";
 };
 $("cheat").innerHTML = [
-  ["O que significa", `<span class="eq">${FR(3, 4)}</span>`, miniBar(4, 3, "var(--red)"), "em cima = pedaços pegos, embaixo = pedaços iguais do inteiro"],
-  ["Mesma quantidade", `<span class="eq">${FR(1, 2)} = ${FR(2, 4)} = ${FR(4, 8)}</span>`, miniBar(2, 1, "var(--gold)") + miniBar(8, 4, "var(--gold)"), "× ou ÷ em cima e embaixo pelo mesmo número"],
-  ["Somar e subtrair", `<span class="eq">${FR(1, 2)} + ${FR(1, 3)} = ${FR(3, 6)} + ${FR(2, 6)} = ${FR(5, 6)}</span>`, miniBar(6, 3, "var(--pen)") + miniBar(6, 5, "var(--pen)"), "primeiro iguale os de baixo, depois some os de cima"],
-  ["Multiplicar", `<span class="eq">${FR(2, 3)} × ${FR(3, 4)} = ${FR(6, 12)} = ${FR(1, 2)}</span>`, "", "direto: cima × cima, baixo × baixo. \"×\" quer dizer \"de\""],
-  ["Dividir", `<span class="eq">3 ÷ ${FR(1, 2)} = 3 × ${FR(2, 1)} = 6</span>`, miniBar(6, 6, "var(--green)", 240), "quantos cabem? inverta a segunda e multiplique"],
-  ["Maior que 1", `<span class="eq">${FR(7, 4)} = 1${FR(3, 4)}</span>`, miniBar(4, 4, "var(--red)", 120) + miniBar(4, 3, "var(--red)", 120), "7 ÷ 4 = 1, resto 3"],
+  ["What it means", `<span class="eq">${FR(3, 4)}</span>`, miniBar(4, 3, "var(--red)"), "top = pieces taken, bottom = equal pieces in the whole"],
+  ["Same amount", `<span class="eq">${FR(1, 2)} = ${FR(2, 4)} = ${FR(4, 8)}</span>`, miniBar(2, 1, "var(--gold)") + miniBar(8, 4, "var(--gold)"), "× or ÷ top and bottom by the same number"],
+  ["Add & subtract", `<span class="eq">${FR(1, 2)} + ${FR(1, 3)} = ${FR(3, 6)} + ${FR(2, 6)} = ${FR(5, 6)}</span>`, miniBar(6, 3, "var(--pen)") + miniBar(6, 5, "var(--pen)"), "make the bottoms match first, then add the tops"],
+  ["Multiply", `<span class="eq">${FR(2, 3)} × ${FR(3, 4)} = ${FR(6, 12)} = ${FR(1, 2)}</span>`, "", "straight across: top × top, bottom × bottom. \"×\" means \"of\""],
+  ["Divide", `<span class="eq">3 ÷ ${FR(1, 2)} = 3 × ${FR(2, 1)} = 6</span>`, miniBar(6, 6, "var(--green)", 240), "how many fit? flip the second, then multiply"],
+  ["Bigger than 1", `<span class="eq">${FR(7, 4)} = 1${FR(3, 4)}</span>`, miniBar(4, 4, "var(--red)", 120) + miniBar(4, 3, "var(--red)", 120), "7 ÷ 4 = 1 remainder 3"],
 ].map(([h, eq, pic, p]) => `<div class="card"><h3>${h}</h3>${eq}<div>${pic}</div><p>${p}</p></div>`).join("");
 
 hero(); game(); frogReset();
