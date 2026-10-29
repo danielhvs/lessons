@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The déjà vu desk</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --paper: #fffbea; --paper-line: #e9dfb5; --stamp: #c2382f;
+  --ours: #2f6fde; --theirs: #b35c00;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --paper: #2a2718; --paper-line: #4a4428; --stamp: #ff7a70;
+    --ours: #6ea0ff; --theirs: #f0a35a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  font: clamp(14px, 1vmin + 7px, 17px)/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: clamp(8px, 1.6vh, 16px) clamp(16px, 3vw, 40px) 0; }
+header h1 { margin: 0; font-size: 1.35rem; }
+header p { margin: 2px 0 0; color: var(--muted); }
+header .other { float: right; color: var(--accent); font-size: .9rem; }
+main { flex: 1; min-height: 0; display: grid; gap: clamp(10px, 1.6vw, 24px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1.1fr);
+  padding: clamp(8px, 1.6vh, 16px) clamp(16px, 3vw, 40px) clamp(10px, 1.8vh, 18px); }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: clamp(10px, 1.6vh, 16px);
+  min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.col h2 { margin: 0; font-size: 1rem; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.col h2 small { color: var(--muted); font-weight: 400; font-size: .8rem; }
+.map { color: var(--muted); font-size: .82rem; margin: 0; }
+.map code, p code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; }
+button { font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .4; cursor: default; }
+/* conveyor */
+.queue { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
+.chip { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--code-bg);
+  font-size: .85rem; animation: slide .35s ease both; }
+.chip .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.chip.now { outline: 2px solid var(--accent); }
+.chip.done { opacity: .45; }
+@keyframes slide { from { opacity: 0; transform: translateX(-16px); } }
+.score { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.score div { background: var(--code-bg); border-radius: 10px; padding: 6px 10px; text-align: center; }
+.score b { display: block; font-size: 1.5rem; }
+.score span { font-size: .78rem; color: var(--muted); }
+.toggle { display: flex; gap: 8px; align-items: center; font-size: .85rem; }
+/* desk */
+.desk { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; position: relative; }
+.card { width: 100%; max-width: 560px; background: var(--paper); border: 1px solid var(--paper-line); border-radius: 12px;
+  padding: 12px 14px; font: clamp(12.5px, .9vmin + 6px, 15px)/1.5 ui-monospace, "JetBrains Mono", Menlo, monospace;
+  box-shadow: 0 6px 18px #0002; animation: drop .4s cubic-bezier(.2,.9,.3,1.2) both; position: relative; }
+@keyframes drop { from { opacity: 0; transform: translateY(-30px) rotate(-3deg); } }
+.card .mk { color: var(--muted); }
+.card .o { color: var(--ours); } .card .t { color: var(--theirs); }
+.card .res { color: var(--add); font-weight: 600; }
+.card .fp { font-family: system-ui, sans-serif; font-size: .78rem; color: var(--muted); margin-top: 6px; }
+.stamp { position: absolute; right: 12px; top: 10px; border: 3px solid var(--stamp); color: var(--stamp); border-radius: 8px;
+  padding: 2px 8px; font: 700 .85rem system-ui, sans-serif; letter-spacing: .06em; transform: rotate(-8deg);
+  animation: stamp .35s ease-out both; }
+@keyframes stamp { from { opacity: 0; transform: rotate(-8deg) scale(2.2); } }
+.choices { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.say { text-align: center; max-width: 52ch; margin: 0; min-height: 2.9em; }
+.empty { color: var(--muted); text-align: center; }
+/* notebook */
+.book { flex: 1; min-height: 0; background: var(--paper); border-radius: 10px; border: 1px solid var(--paper-line); padding: 8px 10px;
+  background-image: repeating-linear-gradient(transparent 0 27px, var(--paper-line) 27px 28px); display: flex; flex-direction: column; gap: 6px; }
+.entry { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px;
+  font: .8rem ui-monospace, monospace; animation: write .6s ease both; }
+@keyframes write { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.entry.flash { background: var(--accent-soft); }
+.entry .dot { width: 10px; height: 10px; border-radius: 50%; }
+.entry .h { color: var(--muted); }
+.entry button { padding: 2px 8px; font-size: .75rem; }
+.legend { font-size: .78rem; color: var(--muted); margin: 0; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <a class="other" href="index.html">← the step-by-step lesson</a>
+  <h1>The déjà vu desk</h1>
+  <p>You are git. The same branch gets rebased again and again. Solve each conflict once and let the notebook do the rest.</p>
+</header>
+<main>
+  <section class="col">
+    <h2>Rebase queue <small>the commits being replayed</small></h2>
+    <div class="queue" id="queue"></div>
+    <div class="toggle"><input type="checkbox" id="auto"><label for="auto"><code>rerere.autoUpdate</code>: also <code>git add</code> replays</label></div>
+    <button class="primary" id="go">git rebase main</button>
+    <div class="score">
+      <div><b id="hand">0</b><span>solved by hand</span></div>
+      <div><b id="free">0</b><span>replayed for free</span></div>
+    </div>
+  </section>
+  <section class="col">
+    <h2>Your desk <small>the working tree</small></h2>
+    <div class="desk" id="desk"><p class="empty">Press <b>git rebase main</b> to start.</p></div>
+  </section>
+  <section class="col">
+    <h2>The notebook <small><code>.git/rr-cache/</code></small></h2>
+    <p class="map">One line per conflict: its fingerprint (the real rerere SHA-1 of the two sides) and the fix you wrote. The eraser is <code>git rerere forget</code>.</p>
+    <div class="book" id="book"></div>
+    <p class="legend">Same conflict = same fingerprint = fix replayed. Labels and the base section are not part of it.</p>
+  </section>
+</main>
+<script>
+// Minimal SHA-1 over bytes, so fingerprints match git's rr-cache folder names exactly.
+function sha1(bytes) {
+  const ml = bytes.length, words = [], H = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+  const msg = new Uint8Array(((ml + 9 + 63) >> 6) << 6); msg.set(bytes); msg[ml] = 0x80;
+  const dv = new DataView(msg.buffer); dv.setUint32(msg.length - 4, ml * 8);
+  const rol = (x, n) => (x << n) | (x >>> (32 - n)), w = new Array(80);
+  for (let off = 0; off < msg.length; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    let [a, b, c, d, e] = H;
+    for (let i = 0; i < 80; i++) {
+      const f = i < 20 ? (b & c) | (~b & d) : i < 40 ? b ^ c ^ d : i < 60 ? (b & c) | (b & d) | (c & d) : b ^ c ^ d;
+      const k = i < 20 ? 0x5a827999 : i < 40 ? 0x6ed9eba1 : i < 60 ? 0x8f1bbcdc : 0xca62c1d6;
+      const t = (rol(a, 5) + f + e + k + w[i]) | 0; e = d; d = c; c = rol(b, 30); b = a; a = t;
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0; H[4] = (H[4] + e) | 0;
+  }
+  return H.map(h => (h >>> 0).toString(16).padStart(8, "0")).join("");
+}
+// rerere: sort the two sides, hash "side\0side\0" - this is why a rebase (sides swapped) still matches.
+const enc = new TextEncoder();
+function fingerprint(a, b) {
+  const [one, two] = [a + "\n", b + "\n"].sort();
+  const x = enc.encode(one), y = enc.encode(two), buf = new Uint8Array(x.length + y.length + 2);
+  buf.set(x); buf.set(y, x.length + 1); return sha1(buf);
+}
+
+const CONFLICTS = [
+  {name: "app.txt", color: "#2f6fde", ours: 'greeting = "good morning"', theirs: 'greeting = "hi there"', both: 'greeting = "good morning, hi there"'},
+  {name: "server.conf", color: "#b35c00", ours: "port = 8080", theirs: "port = 9090", both: "port = 9090  # 8080 is taken"},
+  {name: "style.css", color: "#1f8a4c", ours: "color: navy;", theirs: "color: teal;", both: "color: teal; /* new brand */"},
+];
+CONFLICTS.forEach(c => c.hash = fingerprint(c.ours, c.theirs));
+
+const book = new Map();  // hash -> resolution text
+let queue = [], pos = 0, round = 0, hand = 0, free = 0, flips = false;
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+function drawQueue() {
+  const q = $("queue"); q.replaceChildren();
+  queue.forEach((c, k) => {
+    const chip = el("div", "chip" + (k === pos ? " now" : k < pos ? " done" : ""));
+    const d = el("span", "dot"); d.style.background = c.color;
+    chip.append(d, el("span", null, `commit ${k + 1}: edits ${c.name}`));
+    q.append(chip);
+  });
+}
+function drawBook(flash) {
+  const b = $("book"); b.replaceChildren();
+  if (!book.size) { b.append(el("p", "legend", "Empty. rerere writes here the first time you resolve a conflict.")); return; }
+  CONFLICTS.filter(c => book.has(c.hash)).forEach(c => {
+    const row = el("div", "entry" + (c.hash === flash ? " flash" : ""));
+    const d = el("span", "dot"); d.style.background = c.color;
+    const txt = el("span"); txt.append(el("span", "h", c.hash.slice(0, 8) + "... "), book.get(c.hash));
+    const er = el("button", null, "erase");
+    er.title = "git rerere forget " + c.name;
+    er.onclick = () => { book.delete(c.hash); drawBook(); say(`Erased. Next time ${c.name} conflicts, you solve it by hand again.`); };
+    row.append(d, txt, er); b.append(row);
+  });
+}
+function say(t) { const s = document.querySelector("#desk .say"); if (s) s.textContent = t; }
+function score() { $("hand").textContent = hand; $("free").textContent = free; }
+
+function card(c, swapped) {
+  const k = el("div", "card");
+  const [top, bot, tc, bc, tl, bl] = swapped ? [c.theirs, c.ours, "t", "o", "HEAD (main)", "feature"] : [c.ours, c.theirs, "o", "t", "HEAD", "feature"];
+  k.append(el("div", "mk", `${c.name}`));
+  k.append(el("div", "mk", "<<<<<<< " + tl), el("div", tc, top), el("div", "mk", "======="), el("div", bc, bot), el("div", "mk", ">>>>>>> " + bl));
+  k.append(el("div", "fp", `fingerprint ${c.hash.slice(0, 12)}...${swapped ? " (sides swapped by the rebase, same hash: the sides are sorted first)" : ""}`));
+  return k;
+}
+
+function next() {
+  const desk = $("desk"); desk.replaceChildren();
+  if (pos >= queue.length) {
+    desk.append(el("p", "say", `Rebase ${round} done. ${book.size === CONFLICTS.length ? "Every conflict is in the notebook now: the next rebase costs you nothing." : "Run it again and watch what the notebook does."}`));
+    $("go").disabled = false; $("go").textContent = "git rebase main (again)"; drawQueue(); return;
+  }
+  drawQueue();
+  const c = queue[pos], k = card(c, flips);
+  desk.append(k);
+  const sayEl = el("p", "say"); desk.append(sayEl);
+  const choices = el("div", "choices"); desk.append(choices);
+  if (book.has(c.hash)) {
+    setTimeout(() => {
+      k.replaceChildren(el("div", "mk", c.name), el("div", "res", book.get(c.hash)),
+        el("div", "fp", `fingerprint ${c.hash.slice(0, 12)}... found in the notebook`));
+      k.append(el("div", "stamp", "REPLAYED"));
+      drawBook(c.hash);
+      free++; score();
+      if ($("auto").checked) {
+        sayEl.textContent = "Resolved 'using previous resolution' and staged (autoUpdate). Nothing for you to do.";
+        setTimeout(() => { pos++; next(); }, 1400);
+      } else {
+        sayEl.textContent = "Resolved using previous resolution. Still unmerged (UU): look at it, then stage it.";
+        const ok = el("button", "primary", "git add " + c.name);
+        ok.onclick = () => { pos++; next(); };
+        choices.append(ok);
+      }
+    }, 700);
+  } else {
+    sayEl.textContent = "New conflict. rerere recorded the preimage. Pick the fix:";
+    [["keep ours", c.ours], ["keep theirs", c.theirs], ["combine", c.both]].forEach(([label, text]) => {
+      const b = el("button", null, label);
+      b.onclick = () => {
+        book.set(c.hash, text); hand++; score(); drawBook(c.hash);
+        choices.replaceChildren();
+        k.replaceChildren(el("div", "mk", c.name), el("div", "res", text), el("div", "fp", "Recorded resolution: written into the notebook."));
+        sayEl.textContent = "Recorded. Next time this exact conflict shows up, git writes this for you.";
+        setTimeout(() => { pos++; next(); }, 1300);
+      };
+      choices.append(b);
+    });
+  }
+}
+
+$("go").onclick = () => {
+  round++; pos = 0; flips = round % 2 === 0;
+  queue = round === 1 ? [CONFLICTS[0], CONFLICTS[1]] : [CONFLICTS[0], CONFLICTS[1], CONFLICTS[2]];
+  $("go").disabled = true;
+  next();
+};
+drawQueue(); drawBook(); score();
+</script>
+</body>
+</html>
