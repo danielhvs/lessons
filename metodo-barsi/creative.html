@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bola de neve Barsi</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --sky: #dbe9f7; --hill: #ffffff; --hill-edge: #c9d6e3; --snow: #ffffff; --snow-edge: #9fb3c8;
+  --ghost: #b9b5aa; --flag: #c2382f; --gold: #c99a06;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --sky: #1b2433; --hill: #2a3342; --hill-edge: #3d4a5e; --snow: #eef3f8; --snow-edge: #8aa0b8;
+    --ghost: #5d5a52; --flag: #ff7a70; --gold: #f2c14e;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  font: clamp(14px, 1vmin + 7px, 17px)/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: clamp(8px, 1.6vh, 16px) clamp(16px, 3vw, 40px) 0; }
+header h1 { margin: 0; font-size: 1.35rem; }
+header p { margin: 2px 0 0; color: var(--muted); }
+header .other { float: right; color: var(--accent); font-size: .9rem; }
+main { flex: 1; min-height: 0; display: grid; gap: clamp(10px, 1.6vw, 24px); grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
+  padding: clamp(8px, 1.6vh, 16px) clamp(16px, 3vw, 40px) clamp(10px, 1.8vh, 18px); }
+.scene { background: var(--sky); border-radius: 14px; border: 1px solid var(--line); min-height: 0; position: relative; overflow: hidden; }
+.scene svg { width: 100%; height: 100%; display: block; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: clamp(10px, 1.6vh, 16px);
+  display: flex; flex-direction: column; gap: clamp(6px, 1.2vh, 12px); min-height: 0; overflow: hidden; }
+label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: .9rem; }
+label b { font-variant-numeric: tabular-nums; }
+label input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.check { display: flex; gap: 8px; align-items: center; font-size: .9rem; }
+.btns { display: flex; gap: 8px; }
+button { font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--ink); flex: 1; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stats div { background: var(--bg); border-radius: 10px; padding: 6px 8px; }
+.stats b { display: block; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stats span { font-size: .75rem; color: var(--muted); }
+.stats .big { grid-column: 1 / -1; }
+.stats .big b { font-size: 1.5rem; color: var(--accent); }
+.msg { font-size: .88rem; min-height: 2.6em; margin: 0; }
+.fine { font-size: .75rem; color: var(--muted); margin: 0; }
+svg text { font-family: system-ui, sans-serif; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <a class="other" href="index.html">← a aula passo a passo</a>
+  <h1>A bola de neve do Barsi</h1>
+  <p>Cada mês você empurra a bola (aporte). Cada dividendo reinvestido gruda mais neve. Aperte play e veja quando ela começa a rolar sozinha.</p>
+</header>
+<main>
+  <section class="scene">
+    <svg id="svg" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid meet" role="img" aria-label="bola de neve descendo a colina">
+      <path d="M0,150 C250,170 450,300 620,400 S900,520 1000,530 L1000,560 L0,560 Z" fill="var(--hill)" stroke="var(--hill-edge)" stroke-width="3"/>
+      <g id="ticks"></g>
+      <g id="flag" opacity="0">
+        <line id="flagpole" x1="0" y1="0" x2="0" y2="-70" stroke="var(--ink)" stroke-width="3"/>
+        <path d="M0,-70 L46,-58 L0,-46 Z" fill="var(--flag)"/>
+        <text id="flagtext" x="6" y="-78" font-size="17" fill="var(--flag)" font-weight="700">virada</text>
+      </g>
+      <g id="ghost"><circle r="10" fill="none" stroke="var(--ghost)" stroke-width="3" stroke-dasharray="6 5"/></g>
+      <g id="ball">
+        <circle id="ballc" r="10" fill="var(--snow)" stroke="var(--snow-edge)" stroke-width="3"/>
+        <path id="spin" d="M-6,0 L6,0 M0,-6 L0,6" stroke="var(--snow-edge)" stroke-width="2"/>
+      </g>
+      <g font-size="15" fill="var(--muted)">
+        <text x="24" y="40">bola cheia = sua carteira (ações)</text>
+        <text x="24" y="62">bola tracejada = mesma carteira sem reinvestir</text>
+        <text x="24" y="84">bandeira = mês em que os dividendos pagam o aporte</text>
+      </g>
+      <text id="yearlabel" x="976" y="48" text-anchor="end" font-size="34" font-weight="700" fill="var(--ink)">ano 0</text>
+    </svg>
+  </section>
+  <section class="side">
+    <label>Aporte mensal <b id="aporteV"></b><input type="range" id="aporte" min="100" max="5000" step="100" value="1000"></label>
+    <label>Dividend yield na compra <b id="dyV"></b><input type="range" id="dy" min="2" max="12" step="0.5" value="6"></label>
+    <label>Anos <b id="anosV"></b><input type="range" id="anos" min="5" max="40" step="1" value="30"></label>
+    <div class="check"><input type="checkbox" id="reinv" checked><label for="reinv" style="display:inline">reinvestir os dividendos</label></div>
+    <div class="btns"><button class="primary" id="play">▶ rolar</button><button id="reset">↺ topo</button></div>
+    <div class="stats">
+      <div class="big"><b id="renda">R$ 0</b><span>renda mensal de dividendos</span></div>
+      <div><b id="acoes">0</b><span>ações (preço fixo R$ 10)</span></div>
+      <div><b id="bolso">R$ 0</b><span>saiu do seu bolso</span></div>
+      <div><b id="semre">R$ 0</b><span>renda sem reinvestir</span></div>
+      <div><b id="virada">-</b><span>virada (dividendo ≥ aporte)</span></div>
+    </div>
+    <p class="msg" id="msg">Aperte ▶ rolar.</p>
+    <p class="fine">Preço e dividendo constantes, sem inflação nem impostos: só a mecânica do reinvestimento. Aula, não recomendação.</p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const PRECO = 10;
+const brl = v => "R$ " + Math.round(v).toLocaleString("pt-BR");
+const path = document.querySelector("#svg path");
+const LEN = path.getTotalLength();
+
+// Same model as the lesson: monthly dividend = shares * price * DY / 12, bought at a fixed price.
+function simulate(aporte, dy, anos, reinveste) {
+  let a = 0, g = 0, virada = null;
+  const months = [{a: 0, g: 0, renda: 0, rendaG: 0}];
+  for (let m = 1; m <= anos * 12; m++) {
+    const div = a * PRECO * dy / 12;
+    if (virada === null && div >= aporte) virada = m;
+    a += aporte / PRECO + (reinveste ? div / PRECO : 0);
+    g += aporte / PRECO;
+    months.push({a, g, renda: a * PRECO * dy / 12, rendaG: g * PRECO * dy / 12});
+  }
+  return {months, virada};
+}
+
+let sim, m = 0, timer = null;
+function params() {
+  return {aporte: +$("aporte").value, dy: +$("dy").value / 100, anos: +$("anos").value, reinveste: $("reinv").checked};
+}
+function rebuild() {
+  const p = params();
+  $("aporteV").textContent = brl(p.aporte);
+  $("dyV").textContent = p.dy.toLocaleString("pt-BR", {style: "percent", minimumFractionDigits: 1});
+  $("anosV").textContent = p.anos;
+  sim = simulate(p.aporte, p.dy, p.anos, p.reinveste);
+  const ticks = $("ticks"); ticks.replaceChildren();
+  for (let y = 5; y <= p.anos; y += 5) {
+    const pt = path.getPointAtLength(LEN * y / p.anos);
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    t.setAttribute("x", pt.x); t.setAttribute("y", pt.y + 26); t.setAttribute("text-anchor", "middle");
+    t.setAttribute("font-size", "13"); t.setAttribute("fill", "var(--muted)"); t.textContent = y + "a";
+    ticks.append(t);
+  }
+  m = Math.min(m, sim.months.length - 1);
+  draw();
+}
+function radius(shares, maxShares) { return 10 + 80 * Math.sqrt(shares / Math.max(maxShares, 1)); }
+function place(g, frac, r, rot) {
+  const pt = path.getPointAtLength(LEN * frac);
+  g.setAttribute("transform", `translate(${pt.x},${pt.y - r})`);
+  return pt;
+}
+function draw() {
+  const p = params(), total = sim.months.length - 1, s = sim.months[m];
+  const maxShares = sim.months[total].a, frac = m / total;
+  const r = radius(s.a, maxShares), rg = radius(s.g, maxShares);
+  $("ballc").setAttribute("r", r); $("spin").setAttribute("transform", `rotate(${m * 9}) scale(${r / 10})`);
+  $("spin").setAttribute("stroke-width", 20 / r);
+  place($("ball"), frac, r);
+  $("ghost").firstElementChild.setAttribute("r", rg);
+  place($("ghost"), frac, rg);
+  $("yearlabel").textContent = "ano " + (m / 12).toFixed(m % 12 ? 1 : 0).replace(".", ",");
+  $("renda").textContent = brl(s.renda);
+  $("acoes").textContent = Math.round(s.a).toLocaleString("pt-BR");
+  $("bolso").textContent = brl(p.aporte * m);
+  $("semre").textContent = brl(s.rendaG);
+  const v = sim.virada;
+  $("virada").textContent = v ? `ano ${(v / 12).toFixed(1).replace(".", ",")}` : "não chega";
+  const fl = $("flag");
+  if (v && m >= v) {
+    const pt = path.getPointAtLength(LEN * v / total);
+    fl.setAttribute("transform", `translate(${pt.x + 4},${pt.y})`); fl.setAttribute("opacity", 1);
+  } else fl.setAttribute("opacity", 0);
+  let msg;
+  if (m === 0) msg = "Aperte ▶ rolar.";
+  else if (!p.reinveste) msg = "Sem reinvestir, a bola só cresce pelo empurrão: linha reta. Ligue o reinvestimento e compare.";
+  else if (v && m >= v) msg = `A partir do ano ${(v / 12).toFixed(1).replace(".", ",")} os dividendos já pagam o aporte: a bola rola sozinha.`;
+  else msg = "Cada dividendo reinvestido compra mais ações, que pagam mais dividendos.";
+  $("msg").textContent = msg;
+}
+function stop() { clearInterval(timer); timer = null; $("play").textContent = "▶ rolar"; }
+$("play").onclick = () => {
+  if (timer) return stop();
+  if (m >= sim.months.length - 1) m = 0;
+  $("play").textContent = "❚❚ pausar";
+  timer = setInterval(() => { m = Math.min(m + 2, sim.months.length - 1); draw(); if (m >= sim.months.length - 1) stop(); }, 40);
+};
+$("reset").onclick = () => { stop(); m = 0; draw(); };
+["aporte", "dy", "anos", "reinv"].forEach(id => $(id).addEventListener("input", rebuild));
+rebuild();
+</script>
+</body>
+</html>
