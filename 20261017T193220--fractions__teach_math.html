@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fractions, Step by Step</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --a: #2f6fde; --b: #e8873a; --ab: #8a4fd6; --empty: #f1efe8; --cut: #b9b6ab;
+  --code-bg: #f1efe8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --a: #5b8fff; --b: #f29a50; --ab: #a77bf0; --empty: #2a2c33; --cut: #4a4c55;
+    --code-bg: #24262d;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { padding: 24px clamp(16px, 3vw, 48px) 96px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+header h1 { font-size: 1.5rem; margin: 0 0 4px; }
+header p { margin: 0; color: var(--muted); }
+header a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.dots { display: flex; gap: 6px; margin: 20px 0; flex-wrap: wrap; }
+.dot { width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
+  background: var(--line); cursor: pointer; transition: background .3s; }
+.dot.done { background: var(--accent-soft); }
+.dot.on { background: var(--accent); }
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 24px; min-height: calc(100vh - 220px); }
+.step { animation: enter .45s ease both; }
+@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
+.step h2 { margin: 2px 0 8px; font-size: 1.3rem; }
+.say { margin: 0 0 18px; max-width: 80ch; }
+.split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 24px; align-items: start; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.pic svg { width: 100%; height: auto; display: block; overflow: visible; }
+.ctl { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 16px; }
+.ctl label { color: var(--muted); font-size: .9rem; display: flex; align-items: center; gap: 8px; }
+.ctl input[type=range] { width: 180px; accent-color: var(--accent); }
+.stepper { display: inline-flex; align-items: center; gap: 6px; }
+.stepper b { min-width: 2ch; text-align: center; font-size: 1.1rem; color: var(--ink); }
+button { font: inherit; font-size: .95rem; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.sel { border-color: var(--accent); background: var(--accent-soft); }
+button:disabled { opacity: .4; cursor: default; }
+.math { background: var(--code-bg); border-radius: 10px; padding: 12px 0; font-size: 1.05rem; }
+.ml { padding: 8px 18px; border-left: 3px solid transparent; transition: background .4s, border-color .4s;
+  min-height: 2.2em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ml.hl { background: var(--accent-soft); border-left-color: var(--accent); }
+.ml.big { font-size: 2rem; justify-content: center; }
+.fr { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle;
+  line-height: 1.15; margin: 0 2px; font-variant-numeric: tabular-nums; }
+.fr > span:first-child { border-bottom: 2px solid currentColor; padding: 0 4px; }
+.fr > span:last-child { padding: 0 4px; }
+.fr .top { color: var(--a); font-weight: 700; }
+.ta { color: var(--a); font-weight: 700; } .tb { color: var(--b); font-weight: 700; } .tab { color: var(--ab); font-weight: 700; }
+svg .pc { fill: var(--empty); transition: fill .4s; }
+svg .on-a { fill: var(--a); } svg .on-b { fill: var(--b); } svg .on-ab { fill: var(--ab); }
+svg .lite-a { fill: var(--a); fill-opacity: .25; } svg .lite-b { fill: var(--b); fill-opacity: .3; }
+svg .cut { stroke: var(--cut); stroke-width: 2; transition: opacity .6s, stroke-width .6s, stroke .6s; }
+svg .cut.thick { stroke: var(--ink); stroke-width: 3; }
+svg .cut.gone { opacity: 0; }
+svg .cut.new { animation: cutin .5s ease both; }
+@keyframes cutin { from { opacity: 0; transform: scaleY(0); } }
+svg .outline { fill: none; stroke: var(--ink); stroke-width: 2.5; }
+svg text { fill: var(--ink); font: 18px system-ui, sans-serif; }
+svg text.small { font-size: 14px; fill: var(--muted); }
+svg text.lbl { font-size: 22px; font-weight: 600; }
+svg .mover { transition: transform .9s cubic-bezier(.5,0,.2,1); }
+svg .dash { stroke: var(--ink); stroke-width: 2; stroke-dasharray: 6 6; }
+svg .pop { animation: pop .4s ease both; }
+@keyframes pop { from { opacity: 0; } }
+svg .gap { fill: none; stroke: var(--ab); stroke-width: 4; }
+nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel);
+  border-top: 1px solid var(--line); padding: 12px 16px;
+  display: flex; gap: 10px; justify-content: center; align-items: center; }
+nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Fractions, step by step</h1><p>Every picture is live: click, slide, press the buttons.</p></div>
+    <a href="20261017T193352--fractions-creative__teach_math.html">Pizza version (the fun one) →</a>
+  </header>
+  <div class="dots" id="dots"></div>
+  <section class="stage" id="stage" aria-live="polite"></section>
+</main>
+<nav>
+  <button id="prev">← Prev</button>
+  <button id="next" class="primary">Next →</button>
+  <span class="count" id="count"></span>
+</nav>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const S = (tag, a = {}, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in a) e.setAttribute(k, a[k]);
+  if (parent) parent.append(e);
+  return e;
+};
+const T = (parent, x, y, text, cls = "", anchor = "middle") => {
+  const t = S("text", {x, y, class: cls, "text-anchor": anchor}, parent);
+  t.textContent = text;
+  return t;
+};
+const H = (tag, cls, html) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+};
+const F = (n, d, cls = "") => `<span class="fr ${cls}"><span>${n}</span><span>${d}</span></span>`;
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const lcm = (a, b) => a * b / gcd(a, b);
+const svg = h => S("svg", {viewBox: `0 0 900 ${h}`});
+
+let pending = [];
+const later = (fn, ms) => pending.push(setTimeout(fn, ms));
+
+// One bar = one whole, cut into n equal pieces; pieces from..from+k shaded.
+function bar(p, {x = 20, y, w = 860, h = 70, n, k = 0, from = 0, fill = "a", cutCls = ""}) {
+  const g = S("g", {}, p), pw = w / n, rects = [], cuts = [];
+  for (let i = 0; i < n; i++)
+    rects.push(S("rect", {x: x + i * pw, y, width: pw, height: h,
+      class: "pc" + (i >= from && i < from + k ? " on-" + fill : "")}, g));
+  for (let i = 1; i < n; i++)
+    cuts.push(S("line", {x1: x + i * pw, x2: x + i * pw, y1: y, y2: y + h, class: "cut " + cutCls,
+      style: `transform-origin:${x + i * pw}px ${y + h / 2}px`}, g));
+  S("rect", {x, y, width: w, height: h, class: "outline"}, g);
+  return {g, rects, cuts, pw};
+}
+
+function btn(label, fn, cls = "") {
+  const b = H("button", cls); b.textContent = label; b.onclick = fn; return b;
+}
+let SYNCS = [];
+const syncAll = () => SYNCS.forEach(f => f());
+function stepper(label, get, set, min, max) {
+  const wrap = H("label"), box = H("span", "stepper"), val = H("b");
+  const sync = () => { val.textContent = get(); };
+  SYNCS.push(sync);
+  box.append(btn("−", () => { if (get() > min) { set(get() - 1); syncAll(); } }), val,
+             btn("+", () => { if (get() < (typeof max === "function" ? max() : max)) { set(get() + 1); syncAll(); } }));
+  wrap.append(label, box); sync();
+  return wrap;
+}
+function choices(list, label, onPick) {
+  const wrap = H("label"); wrap.append(label);
+  const bs = list.map((c, k) => {
+    const b = H("button", k ? "" : "sel", c.html);
+    b.onclick = () => { bs.forEach(x => x.classList.remove("sel")); b.classList.add("sel"); onPick(c.v); };
+    wrap.append(b); return b;
+  });
+  return wrap;
+}
+
+const STEPS = [
+{
+  title: "A fraction is pieces of one whole",
+  say: "Cut one whole into equal pieces. The bottom number says how many pieces. The top number says how many you take. Click a piece or use the buttons.",
+  build(c) {
+    let n = 3, d = 4;
+    const draw = hl => {
+      const s = svg(160), b = bar(s, {y: 20, h: 100, n: d, k: n});
+      b.rects.forEach((r, i) => {
+        r.style.cursor = "pointer";
+        r.onclick = () => { n = n === i + 1 ? i : i + 1; draw([0, 1]); syncAll(); };
+        if (d <= 12) T(s, 20 + b.pw * (i + .5), 150, `1/${d}`, "small");
+      });
+      c.pic.replaceChildren(s);
+      c.math([
+        F(`<span class="ta">${n}</span>`, d),
+        `top <span class="ta">${n}</span> = pieces you take (blue)`,
+        `bottom <b>${d}</b> = equal pieces in one whole`,
+        `each piece is ${F(1, d)} of the whole`,
+        n === d ? `${F(n, d)} = 1 whole` : n === 0 ? `${F(0, d)} = nothing taken` : `${d - n} piece${d - n > 1 ? "s" : ""} left`,
+      ], hl, [0]);
+    };
+    c.ctl.append(
+      stepper("bottom (cut into)", () => d, v => { d = v; n = Math.min(n, d); draw([0, 2, 3]); }, 1, 12),
+      stepper("top (take)", () => n, v => { n = v; draw([0, 1]); }, 0, () => d));
+    draw([0]);
+  },
+},
+{
+  title: "Same amount, different names",
+  say: "Cut every piece into smaller pieces. You get more pieces, each one smaller, and the blue amount does not move. 1/2, 2/4 and 3/6 are the same amount.",
+  build(c) {
+    let n = 1, d = 2, k = 2;
+    const draw = () => {
+      const s = svg(250);
+      bar(s, {y: 20, n: d, k: n});
+      bar(s, {y: 140, n: d * k, k: n * k, cutCls: "new"});
+      const ex = 20 + 860 * n / d;
+      S("line", {x1: ex, x2: ex, y1: 5, y2: 225, class: "dash"}, s);
+      T(s, 20, 120, `${n}/${d}`, "lbl", "start");
+      T(s, 20, 240, `${n * k}/${d * k}`, "lbl", "start");
+      c.pic.replaceChildren(s);
+      c.math([
+        `${F(n, d)} = ${F(`${n} × ${k}`, `${d} × ${k}`)} = ${F(n * k, d * k)}`,
+        `cut every piece into ${k}: ${k}× more pieces, each ${k}× smaller`,
+        `blue amount: unchanged (same dashed line)`,
+        `rule: multiply top and bottom by the same number`,
+      ], [0, 3]);
+    };
+    const r = H("input"); Object.assign(r, {type: "range", min: 1, max: 6, value: k});
+    r.oninput = () => { k = +r.value; draw(); };
+    const lab = H("label", null, "cut each piece into"); lab.append(r);
+    c.ctl.append(choices([{html: "1/2", v: [1, 2]}, {html: "2/3", v: [2, 3]}, {html: "3/4", v: [3, 4]}],
+      "start from", v => { [n, d] = v; draw(); }), lab);
+    draw();
+  },
+},
+{
+  title: "Simplify: glue pieces back together",
+  say: "Simplifying is step 2 backwards. Find the biggest number that divides top and bottom, glue that many pieces into one, and the fraction gets smaller numbers.",
+  build(c) {
+    let n = 6, d = 8, glued = false;
+    const draw = () => {
+      const g = gcd(n, d), s = svg(150), b = bar(s, {y: 20, h: 100, n: d, k: n});
+      c.pic.replaceChildren(s);
+      if (glued) later(() => b.cuts.forEach((cut, i) => cut.classList.add((i + 1) % g ? "gone" : "thick")), 60);
+      c.math([
+        F(n, d),
+        `biggest number dividing ${n} and ${d}: <b>${g}</b>`,
+        glued ? `glue every ${g} pieces into one` : "",
+        glued ? `${F(`${n} ÷ ${g}`, `${d} ÷ ${g}`)} = ${F(n / g, d / g)}` : "",
+      ], glued ? [1, 2, 3] : [0]);
+    };
+    c.ctl.append(
+      choices([{html: "6/8", v: [6, 8]}, {html: "4/12", v: [4, 12]}, {html: "10/15", v: [10, 15]}, {html: "8/12", v: [8, 12]}],
+        "fraction", v => { [n, d] = v; glued = false; draw(); }),
+      btn("Glue pieces", () => { glued = true; draw(); }, "primary"),
+      btn("Undo", () => { glued = false; draw(); }));
+    draw();
+  },
+},
+{
+  title: "Which is bigger?",
+  say: "Hard to tell when the pieces are different sizes. Guess first, then reveal: we cut both bars into the same size pieces and count.",
+  build(c) {
+    let pair = [[2, 3], [3, 5]], shown = false, guess = "";
+    const draw = () => {
+      const [[a, b], [p, q]] = pair, L = lcm(b, q), A = a * L / b, P = p * L / q, s = svg(260);
+      bar(s, {y: 20, n: shown ? L : b, k: shown ? A : a, fill: "a", cutCls: shown ? "new" : ""});
+      bar(s, {y: 150, n: shown ? L : q, k: shown ? P : p, fill: "b", cutCls: shown ? "new" : ""});
+      T(s, 20, 118, shown ? `${a}/${b} = ${A}/${L}` : `${a}/${b}`, "lbl", "start");
+      T(s, 20, 248, shown ? `${p}/${q} = ${P}/${L}` : `${p}/${q}`, "lbl", "start");
+      if (shown && A !== P) {
+        const x1 = 20 + 860 * Math.min(A, P) / L, x2 = 20 + 860 * Math.max(A, P) / L;
+        S("rect", {x: x1, y: 14, width: x2 - x1, height: 212, class: "gap pop", rx: 4}, s);
+      }
+      c.pic.replaceChildren(s);
+      const win = A > P ? F(a, b) : F(p, q);
+      c.math([
+        `<span class="ta">${F(a, b)}</span> vs <span class="tb">${F(p, q)}</span> ?`,
+        shown ? `same size pieces: cut both into ${L} (${b} × ${q / gcd(b, q)})` : "Guess with the buttons, then reveal",
+        shown ? `<span class="ta">${F(a, b)} = ${F(A, L)}</span>` : "",
+        shown ? `<span class="tb">${F(p, q)} = ${F(P, L)}</span>` : "",
+        shown ? `${A} ${A > P ? ">" : A < P ? "<" : "="} ${P} → ${A === P ? "same amount" : win + " is bigger, by " + F(1, L) + " (purple box)"}` : "",
+        guess ? `your guess: ${guess}` : "",
+      ], shown ? [1, 4] : [0]);
+    };
+    const pick = g => { guess = g; shown = true; draw(); };
+    c.ctl.append(
+      choices([{html: "2/3 vs 3/5", v: [[2, 3], [3, 5]]}, {html: "3/4 vs 5/7", v: [[3, 4], [5, 7]]}, {html: "4/9 vs 1/2", v: [[4, 9], [1, 2]]}],
+        "pair", v => { pair = v; shown = false; guess = ""; draw(); }),
+      btn("Blue is bigger", () => pick("blue")),
+      btn("Orange is bigger", () => pick("orange")),
+      btn("Reveal", () => pick(""), "primary"));
+    draw();
+  },
+},
+{
+  title: "Adding with the same size pieces",
+  say: "When the pieces are the same size, adding is counting. Add the tops; the bottom stays, because the piece size did not change.",
+  build(c) {
+    let [a, p, d] = [1, 2, 5], done = false;
+    const draw = () => {
+      const s = svg(250);
+      const top = bar(s, {y: 20, n: d, k: a, fill: "a"});
+      bar(s, {y: 150, n: d, k: 0});
+      const mv = S("g", {class: "mover"}, s);
+      for (let i = 0; i < p; i++)
+        S("rect", {x: 20 + i * top.pw, y: 150, width: top.pw, height: 70, class: "pc on-b"}, mv);
+      for (let i = 1; i < p; i++)
+        S("line", {x1: 20 + i * top.pw, x2: 20 + i * top.pw, y1: 150, y2: 220, class: "cut"}, mv);
+      S("rect", {x: 20, y: 150, width: top.pw * p, height: 70, class: "outline"}, mv);
+      if (done) later(() => mv.style.transform = `translate(${a * top.pw}px, -130px)`, 60);
+      c.pic.replaceChildren(s);
+      c.math([
+        `<span class="ta">${F(a, d)}</span> + <span class="tb">${F(p, d)}</span>`,
+        done ? `= ${F(`<span class="ta">${a}</span> + <span class="tb">${p}</span>`, d)}` : "",
+        done ? `= ${F(a + p, d)}` : "",
+        done ? `add the tops, keep the bottom: the piece size did not change` : "",
+      ], done ? [1, 2, 3] : [0]);
+    };
+    c.ctl.append(
+      choices([{html: "1/5 + 2/5", v: [1, 2, 5]}, {html: "3/8 + 2/8", v: [3, 2, 8]}, {html: "1/4 + 1/4", v: [1, 1, 4]}],
+        "sum", v => { [a, p, d] = v; done = false; draw(); }),
+      btn("Add", () => { done = true; draw(); }, "primary"),
+      btn("Reset", () => { done = false; draw(); }));
+    draw();
+  },
+},
+{
+  title: "Adding with different size pieces",
+  say: "Halves and thirds cannot be counted together, the same way you cannot add 1 meter + 1 foot and call it 2. Cut both into the same size first, then count.",
+  build(c) {
+    let [a, b, p, q] = [1, 2, 1, 3], phase = 0;
+    const MOVES = ["Try adding", "Cut into same size", "Add", "Start over"];
+    const go = H("button", "primary");
+    const draw = () => {
+      const L = lcm(b, q), A = a * L / b, P = p * L / q, cut = phase >= 2, s = svg(250);
+      const nb = cut ? L : b, nq = cut ? L : q, kb = cut ? A : a, kq = cut ? P : p;
+      const top = bar(s, {y: 20, n: nb, k: kb, fill: "a", cutCls: cut ? "new" : ""});
+      bar(s, {y: 150, n: nq, k: phase === 1 || phase === 3 ? 0 : kq, cutCls: cut ? "new" : ""});
+      if (phase === 1 || phase === 3) {
+        const pw = 860 / nq, mv = S("g", {class: "mover"}, s);
+        for (let i = 0; i < kq; i++)
+          S("rect", {x: 20 + i * pw, y: 150, width: pw, height: 70, class: "pc on-b"}, mv);
+        for (let i = 1; i < kq; i++)
+          S("line", {x1: 20 + i * pw, x2: 20 + i * pw, y1: 150, y2: 220, class: "cut"}, mv);
+        S("rect", {x: 20, y: 150, width: pw * kq, height: 70, class: "outline"}, mv);
+        later(() => mv.style.transform = `translate(${860 * a / b}px, -130px)`, 60);
+      }
+      T(s, 20, 118, cut ? `${A}/${L}` : `${a}/${b}`, "lbl", "start");
+      if (phase !== 1 && phase !== 3) T(s, 20, 248, cut ? `${P}/${L}` : `${p}/${q}`, "lbl", "start");
+      c.pic.replaceChildren(s);
+      const g = gcd(A + P, L);
+      c.math([
+        `<span class="ta">${F(a, b)}</span> + <span class="tb">${F(p, q)}</span> = ?`,
+        phase >= 1 ? `pieces are different sizes: "${a} + ${p} = ${a + p}" of what?` : "",
+        phase >= 2 ? `cut both into ${L} pieces: <span class="ta">${F(a, b)} = ${F(A, L)}</span>, <span class="tb">${F(p, q)} = ${F(P, L)}</span>` : "",
+        phase >= 3 ? `<span class="ta">${F(A, L)}</span> + <span class="tb">${F(P, L)}</span> = ${F(A + P, L)}${g > 1 ? " = " + F((A + P) / g, L / g) : ""}` : "",
+      ], [phase]);
+      go.textContent = MOVES[phase] + " →";
+    };
+    go.onclick = () => { phase = (phase + 1) % 4; draw(); };
+    c.ctl.append(
+      choices([{html: "1/2 + 1/3", v: [1, 2, 1, 3]}, {html: "1/4 + 2/3", v: [1, 4, 2, 3]}, {html: "2/5 + 1/4", v: [2, 5, 1, 4]}],
+        "sum", v => { [a, b, p, q] = v; phase = 0; draw(); }), go);
+    draw();
+  },
+},
+{
+  title: "Multiplying: a fraction of a fraction",
+  say: "2/3 × 3/4 means \"2/3 of 3/4\". Shade 3/4 of a square, then take 2/3 of that. The purple cells are the answer: multiply tops, multiply bottoms.",
+  build(c) {
+    let a = 2, b = 3, p = 3, q = 4, phase = 0;
+    const draw = () => {
+      const s = svg(420), X = 40, Y = 20, Z = 380, cw = Z / q, ch = Z / b;
+      for (let r = 0; r < b; r++) for (let col = 0; col < q; col++) {
+        const inQ = col < p, inB = r >= b - a;
+        const cls = phase >= 1 && inQ && inB ? "on-ab" : inQ ? (phase >= 1 ? "lite-a" : "on-a") : "";
+        S("rect", {x: X + col * cw, y: Y + r * ch, width: cw, height: ch, class: "pc " + cls}, s);
+      }
+      for (let col = 1; col < q; col++) S("line", {x1: X + col * cw, x2: X + col * cw, y1: Y, y2: Y + Z, class: "cut"}, s);
+      if (phase >= 1) for (let r = 1; r < b; r++)
+        S("line", {x1: X, x2: X + Z, y1: Y + r * ch, y2: Y + r * ch, class: "cut new", style: `transform-origin:${X + Z / 2}px ${Y + r * ch}px`}, s);
+      S("rect", {x: X, y: Y, width: Z, height: Z, class: "outline"}, s);
+      T(s, 470, 80, `blue columns: ${p}/${q} of the square`, "lbl", "start");
+      if (phase >= 1) {
+        T(s, 470, 130, `take ${a}/${b} of it (bottom ${a} row${a > 1 ? "s" : ""})`, "lbl", "start");
+        T(s, 470, 200, `purple: ${a * p} cells`, "lbl", "start");
+        T(s, 470, 240, `all cells: ${b * q}`, "lbl", "start");
+      }
+      c.pic.replaceChildren(s);
+      const g = gcd(a * p, b * q);
+      c.math([
+        `${F(a, b)} of <span class="ta">${F(p, q)}</span>`,
+        `= ${F(a, b)} × ${F(p, q)}`,
+        phase >= 1 ? `= ${F(`${a} × ${p}`, `${b} × ${q}`)} = ${F(`<span class="tab">${a * p}</span>`, b * q)}${g > 1 ? " = " + F(a * p / g, b * q / g) : ""}` : "",
+        phase >= 1 ? "tops × tops: purple cells. bottoms × bottoms: all cells" : "",
+      ], phase ? [2, 3] : [0]);
+    };
+    c.ctl.append(
+      stepper("a", () => a, v => { a = v; draw(); }, 1, () => b),
+      stepper("/ b", () => b, v => { b = v; a = Math.min(a, b); draw(); }, 1, 6),
+      stepper("× c", () => p, v => { p = v; draw(); }, 1, () => q),
+      stepper("/ d", () => q, v => { q = v; p = Math.min(p, q); draw(); }, 1, 6),
+      btn("Take the fraction of it", () => { phase = 1; draw(); }, "primary"),
+      btn("Reset", () => { phase = 0; draw(); }));
+    draw();
+  },
+},
+{
+  title: "Dividing: how many fit?",
+  say: "3 ÷ 1/2 asks \"how many halves fit in 3?\" Count them: 6. That is why dividing by a fraction is the same as multiplying by it flipped: 3 × 2/1 = 6.",
+  build(c) {
+    let a = 1, b = 2;
+    const draw = () => {
+      const s = svg(230), W = 860 / 3, q = 3 * b / a;
+      for (let w = 0; w < 3; w++) {
+        S("rect", {x: 20 + w * W, y: 20, width: W, height: 90, class: "pc"}, s);
+        S("rect", {x: 20 + w * W, y: 20, width: W, height: 90, class: "outline"}, s);
+        T(s, 20 + w * W + W / 2, 140, `whole ${w + 1}`, "small");
+      }
+      const segW = W * a / b;
+      for (let i = 0; i < q; i++) later(() => {
+        S("rect", {x: 20 + i * segW + 3, y: 160, width: segW - 6, height: 44, rx: 8,
+          class: "pc pop " + (i % 2 ? "on-b" : "on-a")}, s);
+        T(s, 20 + i * segW + segW / 2, 189, i + 1, "pop").style.fill = "#fff";
+        S("rect", {x: 20 + i * segW, y: 20, width: segW, height: 90, class: "pc pop " + (i % 2 ? "lite-b" : "lite-a")},
+          s).style.pointerEvents = "none";
+      }, 300 + i * 350);
+      c.pic.replaceChildren(s);
+      c.math([
+        `3 ÷ ${F(a, b)} = how many ${F(a, b)} fit in 3?`,
+        `count the bars: <b>${q}</b>`,
+        `shortcut: 3 × ${F(b, a)} = ${F(3 * b, a)} = ${q}`,
+        `divide by a fraction = multiply by it flipped`,
+      ], [0]);
+      later(() => $("stage").querySelectorAll(".ml").forEach((m, k) => m.classList.toggle("hl", k > 0)), 300 + q * 350);
+    };
+    c.ctl.append(choices([{html: "1/2", v: [1, 2]}, {html: "1/3", v: [1, 3]}, {html: "1/4", v: [1, 4]}, {html: "3/4", v: [3, 4]}, {html: "3/2", v: [3, 2]}],
+      "3 ÷", v => { pending.forEach(clearTimeout); pending = []; [a, b] = v; draw(); }));
+    draw();
+  },
+},
+{
+  title: "More than one whole",
+  say: "When the top is bigger than the bottom, the pieces fill more than one whole. 7/4 is one full bar plus 3/4: written 1 3/4.",
+  build(c) {
+    let n = 7, d = 4;
+    const draw = () => {
+      const bars = Math.max(1, Math.ceil(n / d)), gap = 24, W = (860 - gap * (bars - 1)) / bars, s = svg(160);
+      for (let k = 0; k < bars; k++)
+        bar(s, {x: 20 + k * (W + gap), w: W, y: 20, h: 90, n: d, k: Math.max(0, Math.min(d, n - k * d))});
+      const w = Math.floor(n / d), r = n % d;
+      for (let k = 0; k < bars; k++)
+        T(s, 20 + k * (W + gap) + W / 2, 145, k < w ? "1 whole" : `${r}/${d}`, "lbl");
+      c.pic.replaceChildren(s);
+      c.math([
+        F(n, d),
+        `${n} ÷ ${d} = ${w}, remainder ${r}`,
+        r ? `${w} full bar${w !== 1 ? "s" : ""} + ${F(r, d)}` : `${w} full bar${w !== 1 ? "s" : ""}, nothing left over`,
+        `<span style="font-size:1.6rem">${w ? w : ""} ${r ? F(r, d) : ""}</span>`,
+      ], [1, 3]);
+    };
+    c.ctl.append(
+      stepper("top", () => n, v => { n = v; draw(); }, 1, () => 4 * d),
+      stepper("bottom", () => d, v => { d = v; n = Math.min(n, 4 * d); draw(); }, 2, 8));
+    draw();
+  },
+},
+];
+
+let i = 0;
+function show(k) {
+  pending.forEach(clearTimeout); pending = []; SYNCS = [];
+  i = Math.max(0, Math.min(STEPS.length - 1, k));
+  const s = STEPS[i], box = H("div", "step");
+  box.append(H("div", "num", `STEP ${i + 1} OF ${STEPS.length}`), H("h2", null, s.title), H("p", "say", s.say));
+  const split = H("div", "split"), left = H("div"), pic = H("div", "pic"), ctl = H("div", "ctl"), math = H("div", "math");
+  left.append(pic, ctl); split.append(left, math); box.append(split);
+  s.build({pic, ctl, math: (lines, hl = [], big = []) => {
+    math.replaceChildren(...lines.map((l, k) => l === "" ? null : H("div", "ml" + (hl.includes(k) ? " hl" : "") + (big.includes(k) ? " big" : ""), l)).filter(Boolean));
+  }});
+  $("stage").replaceChildren(box);
+  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
+  $("count").textContent = `${i + 1} / ${STEPS.length}`;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === STEPS.length - 1;
+}
+STEPS.forEach((s, k) => { const d = H("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d); });
+$("prev").onclick = () => show(i - 1);
+$("next").onclick = () => show(i + 1);
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") show(i + 1);
+  else if (e.key === "ArrowLeft") show(i - 1);
+});
+show(0);
+</script>
+</body>
+</html>

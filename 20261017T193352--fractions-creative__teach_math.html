@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fraction Pizza Night</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbf6ea; --grid: #d9e3f0; --ink: #2b2a33; --muted: #6f6a60; --card: #fffdf7;
+  --pen: #2f5fd0; --red: #d6453a; --green: #2f9a5b; --gold: #e9a23b;
+  --crust: #d9a05b; --cheese: #f7d46b; --sauce: #d6453a; --pep: #a8322b; --plate: #e9e6df;
+  --frog: #4fae5a; --hand: "Patrick Hand", "Comic Sans MS", cursive; --title: "Caveat", cursive;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1f2b26; --grid: #2a3a33; --ink: #f2efe6; --muted: #b5b9ad; --card: #263530;
+    --pen: #9cc3ff; --red: #ff8a7a; --green: #7fdc9a; --gold: #ffcf6e; --plate: #3a4a44;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); font: 20px/1.5 var(--hand);
+  background: var(--bg);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px; }
+main { padding: 24px clamp(16px, 3vw, 48px) 64px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.top a { color: var(--pen); font-size: 1.1rem; }
+h1 { font: 700 clamp(2.6rem, 6vw, 4.6rem)/1 var(--title); margin: 8px 0 0; transform: rotate(-1.5deg); }
+h1 span { color: var(--red); }
+h2 { font: 700 2.6rem/1 var(--title); margin: 0 0 6px; }
+h2 .n { display: inline-block; width: 1.3em; height: 1.3em; border-radius: 50%; background: var(--gold);
+  color: #2b2a33; text-align: center; line-height: 1.3em; font-size: .8em; margin-right: 8px; transform: rotate(-6deg); }
+.lead { color: var(--muted); margin: 0 0 14px; max-width: 70ch; }
+section { background: var(--card); border: 2.5px solid var(--ink); border-radius: 18px 22px 16px 24px / 22px 16px 24px 18px;
+  padding: clamp(16px, 2.5vw, 32px); margin: 28px 0; box-shadow: 6px 7px 0 var(--ink); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(16px, 3vw, 48px); align-items: center; }
+@media (max-width: 860px) { .row { grid-template-columns: 1fr; } }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { font-family: var(--hand); fill: var(--ink); }
+.ctl { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 12px; }
+.ctl label { display: flex; align-items: center; gap: 8px; }
+input[type=range] { accent-color: var(--red); width: 200px; }
+button, select { font: inherit; font-size: 1.05rem; padding: 6px 16px; cursor: pointer; color: var(--ink);
+  background: var(--card); border: 2px solid var(--ink); border-radius: 12px 14px 10px 15px; box-shadow: 3px 3px 0 var(--ink);
+  transition: transform .1s, box-shadow .1s; }
+button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+button.go { background: var(--red); color: #fff; }
+.big { font: 700 clamp(2.4rem, 4.5vw, 3.6rem)/1.1 var(--title); }
+.frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; line-height: 1; margin: 0 .12em; }
+.frac > span:first-child { border-bottom: 3px solid currentColor; padding: 0 .15em .05em; }
+.frac > span:last-child { padding: .05em .15em 0; }
+.num { color: var(--red); } .den { color: var(--pen); }
+.note { color: var(--muted); font-size: 1.05rem; }
+.bubble { position: relative; background: #fff; color: #2b2a33; border: 2.5px solid #2b2a33; border-radius: 22px;
+  padding: 10px 18px; display: inline-block; font-size: 1.4rem; margin-bottom: 8px; }
+.bubble::after { content: ""; position: absolute; left: 34px; bottom: -16px; border: 9px solid transparent;
+  border-top-color: #2b2a33; }
+.tips { font: 700 2rem var(--title); color: var(--green); }
+.msg { min-height: 3.2em; font-size: 1.2rem; }
+.msg.ok { color: var(--green); } .msg.bad { color: var(--red); }
+.slice { cursor: pointer; transition: transform .45s cubic-bezier(.3,1.6,.5,1); }
+.slice:hover { filter: brightness(1.06); }
+.wiggle { animation: wiggle .5s ease; }
+@keyframes wiggle { 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+.cheat { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px; }
+.card { border: 2px dashed var(--ink); border-radius: 14px; padding: 14px 16px; }
+.card h3 { font: 700 1.9rem/1 var(--title); margin: 0 0 6px; color: var(--red); }
+.card p { margin: 6px 0 0; font-size: 1.15rem; }
+.card .eq { font-size: 1.6rem; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <filter id="sketch"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="3"/>
+    <feDisplacementMap in="SourceGraphic" scale="3"/></filter>
+</svg>
+<main>
+<div class="top">
+  <h1>Fraction <span>Pizza</span> Night</h1>
+  <a href="20261017T193220--fractions__teach_math.html">← step-by-step lesson</a>
+</div>
+
+<!-- 1. What a fraction is -->
+<section>
+  <h2><span class="n">1</span>Cut it, grab it, name it</h2>
+  <p class="lead">Slide to cut the pizza. Click slices to put them on your plate.</p>
+  <div class="row">
+    <div><svg id="heroPizza" viewBox="0 0 520 420"></svg>
+      <div class="ctl"><label>cut into <input type="range" id="cuts" min="1" max="12" value="8"> <b id="cutsN">8</b> slices</label></div>
+    </div>
+    <div>
+      <div class="big" id="heroFrac"></div>
+      <svg viewBox="0 0 420 210" id="heroLegend"></svg>
+      <p class="note" id="heroSay"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 2. Game -->
+<section>
+  <h2><span class="n">2</span>The pizza shop</h2>
+  <p class="lead">Customers order fractions, but the pizza is already cut. Click slices onto the plate until it matches the order, then serve. Hint: the pizza can be cut finer than the order.</p>
+  <div class="row">
+    <div>
+      <div class="bubble" id="order"></div>
+      <svg id="customer" viewBox="0 0 520 380"></svg>
+    </div>
+    <div>
+      <div class="tips">tips: $<span id="tips">0</span> · round <span id="round">1</span>/<span id="rounds"></span></div>
+      <div class="big" id="plateFrac"></div>
+      <p class="msg" id="msg"></p>
+      <div class="ctl"><button class="go" id="serve">Serve</button><button id="clear">Clear plate</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Frog -->
+<section>
+  <h2><span class="n">3</span>Fred the frog hops a number line</h2>
+  <p class="lead">Fractions are numbers too: they sit between the whole numbers. Fred hops a fraction each time. Count hops to the flag and you have just divided.</p>
+  <svg id="frogLine" viewBox="0 0 1000 240"></svg>
+  <div class="ctl">
+    <button class="go" id="frogPlay">▶ Play</button>
+    <button id="frogReset">↺ Reset</button>
+    <label>hop size <select id="hop">
+      <option value="1/2">1/2</option><option value="1/3">1/3</option><option value="1/4" selected>1/4</option>
+      <option value="2/3">2/3</option><option value="3/4">3/4</option></select></label>
+    <label>flag at <select id="flag"><option>1</option><option selected>2</option><option>3</option></select></label>
+    <label>speed <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1"></label>
+  </div>
+  <p class="big" id="frogSay" style="font-size:2.2rem;min-height:1.4em"></p>
+  <p class="note" id="frogNote"></p>
+</section>
+
+<!-- 4. Cheat sheet -->
+<section>
+  <h2><span class="n">4</span>The whole thing on one card</h2>
+  <div class="cheat" id="cheat"></div>
+</section>
+</main>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const S = (tag, a = {}, p) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (p) p.append(e); return e; };
+const T = (p, x, y, s, a = {}) => { const t = S("text", {x, y, "text-anchor": "middle", ...a}, p); t.textContent = s; return t; };
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const FR = (n, d, cn = "num", cd = "den") => `<span class="frac"><span class="${cn}">${n}</span><span class="${cd}">${d}</span></span>`;
+
+// pepperoni at fixed polar spots so each pizza looks the same no matter how it is cut
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const PEPS = Array.from({length: 16}, () => ({r: .2 + rnd() * .62, a: rnd() * Math.PI * 2}));
+const HERBS = Array.from({length: 26}, () => ({r: .1 + rnd() * .75, a: rnd() * Math.PI * 2}));
+
+function wedge(cx, cy, R, a0, a1) {
+  if (a1 - a0 >= Math.PI * 2 - 1e-6) return `M${cx - R},${cy} a${R},${R} 0 1,0 ${2 * R},0 a${R},${R} 0 1,0 ${-2 * R},0`;
+  const p = a => `${cx + R * Math.cos(a)},${cy + R * Math.sin(a)}`;
+  return `M${cx},${cy} L${p(a0)} A${R},${R} 0 ${a1 - a0 > Math.PI ? 1 : 0},1 ${p(a1)} Z`;
+}
+// draws a pizza cut into n slices; returns slice groups
+function pizza(p, cx, cy, R, n, onClick) {
+  const g = S("g", {filter: "url(#sketch)"}, p), slices = [];
+  const off = -Math.PI / 2;
+  for (let i = 0; i < n; i++) {
+    const a0 = off + i * 2 * Math.PI / n, a1 = off + (i + 1) * 2 * Math.PI / n, mid = (a0 + a1) / 2;
+    const s = S("g", {class: "slice"}, g);
+    s.dataset.dx = Math.cos(mid); s.dataset.dy = Math.sin(mid);
+    S("path", {d: wedge(cx, cy, R, a0, a1), fill: "var(--crust)", stroke: "#2b2a33", "stroke-width": 2.5}, s);
+    S("path", {d: wedge(cx, cy, R * .86, a0, a1), fill: "var(--cheese)"}, s);
+    const inside = a => { let x = ((a - a0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI); return x < a1 - a0; };
+    HERBS.forEach(h => inside(h.a) && S("circle", {cx: cx + R * h.r * Math.cos(h.a), cy: cy + R * h.r * Math.sin(h.a), r: 2.2, fill: "#3f8a3a"}, s));
+    PEPS.forEach(q => inside(q.a) && S("circle", {cx: cx + R * q.r * Math.cos(q.a), cy: cy + R * q.r * Math.sin(q.a), r: R * .075, fill: "var(--pep)", stroke: "#7a2620", "stroke-width": 1.5}, s));
+    if (n > 1) S("path", {d: wedge(cx, cy, R, a0, a1), fill: "none", stroke: "#2b2a33", "stroke-width": 2.5}, s);
+    s.onclick = () => onClick(i, s);
+    slices.push(s);
+  }
+  return slices;
+}
+const pull = (s, on, dist = 34) => s.style.transform = on ? `translate(${s.dataset.dx * dist}px, ${s.dataset.dy * dist}px)` : "";
+
+// ---------- 1. hero ----------
+let heroN = 8; const heroTaken = new Set();
+function hero() {
+  const svg = $("heroPizza"); svg.replaceChildren();
+  S("ellipse", {cx: 260, cy: 215, rx: 210, ry: 200, fill: "var(--plate)", stroke: "var(--ink)", "stroke-width": 2}, svg);
+  const slices = pizza(svg, 260, 210, 165, heroN, (i, s) => {
+    heroTaken.has(i) ? heroTaken.delete(i) : heroTaken.add(i);
+    pull(s, heroTaken.has(i), 40); heroText();
+  });
+  slices.forEach((s, i) => heroTaken.has(i) && pull(s, true, 40));
+  heroText();
+}
+function heroText() {
+  const k = heroTaken.size, n = heroN, g = gcd(k, n);
+  $("heroFrac").innerHTML = `you have ${FR(k, n)} of the pizza` + (g > 1 && k ? ` <span style="font-size:.7em">= ${FR(k / g, n / g)}</span>` : "");
+  $("heroSay").textContent = k === 0 ? "Click a slice to grab it." : k === n ? `All ${n} slices: ${n}/${n} = 1 whole pizza.`
+    : g > 1 ? `Same amount as ${k / g}/${n / g}: if the pizza had ${n / g} slices, you would hold ${k / g}.`
+    : `Each slice is 1/${n} of the pizza. You hold ${k} of them.`;
+  const L = $("heroLegend"); L.replaceChildren();
+  const arrow = (x1, y1, x2, y2, c) => S("path", {d: `M${x1},${y1} Q${(x1 + x2) / 2 + 30},${(y1 + y2) / 2 - 20} ${x2},${y2}`, fill: "none", stroke: c, "stroke-width": 3, "marker-end": "url(#ah)", filter: "url(#sketch)"}, L);
+  const defs = S("defs", {}, L), m = S("marker", {id: "ah", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto"}, defs);
+  S("path", {d: "M0,0 L10,5 L0,10 z", fill: "var(--ink)"}, m);
+  T(L, 90, 55, k, {"font-size": 70, fill: "var(--red)", "font-family": "Caveat"});
+  S("line", {x1: 45, x2: 135, y1: 75, y2: 75, stroke: "var(--ink)", "stroke-width": 4}, L);
+  T(L, 90, 140, n, {"font-size": 70, fill: "var(--pen)", "font-family": "Caveat"});
+  arrow(260, 40, 140, 40, "var(--red)"); T(L, 230, 30, "numerator: slices", {"text-anchor": "start", "font-size": 22, fill: "var(--red)"});
+  T(L, 230, 54, "on your plate", {"text-anchor": "start", "font-size": 22, fill: "var(--red)"});
+  arrow(260, 125, 140, 120, "var(--pen)"); T(L, 230, 140, "denominator: slices", {"text-anchor": "start", "font-size": 22, fill: "var(--pen)"});
+  T(L, 230, 164, "the pizza is cut into", {"text-anchor": "start", "font-size": 22, fill: "var(--pen)"});
+}
+$("cuts").oninput = e => { heroN = +e.target.value; $("cutsN").textContent = heroN; heroTaken.clear(); hero(); };
+
+// ---------- 2. game ----------
+const ROUNDS = [
+  {order: [[1, 2]], cut: 2, who: "Ana"},
+  {order: [[3, 4]], cut: 4, who: "Bia"},
+  {order: [[1, 2]], cut: 4, who: "Caio"},
+  {order: [[2, 3]], cut: 6, who: "Duda"},
+  {order: [[3, 4]], cut: 8, who: "Enzo"},
+  {order: [[1, 2], [1, 4]], cut: 4, who: "Fê & Gabi"},
+  {order: [[1, 2], [1, 3]], cut: 6, who: "Hugo & Iara"},
+  {order: [[1, 3], [1, 4]], cut: 12, who: "Juca & Kiko"},
+  {order: [[2, 3]], cut: 12, who: "Lia"},
+  {order: [[1, 6], [1, 2]], cut: 6, who: "Mel & Nina"},
+];
+let round = 0, tips = 0, plate = new Set(), mood = "wait";
+$("rounds").textContent = ROUNDS.length;
+const need = r => r.order.reduce((s, [n, d]) => s + n * r.cut / d, 0);
+
+function game() {
+  const r = ROUNDS[round], svg = $("customer"); svg.replaceChildren();
+  $("round").textContent = round + 1;
+  $("order").innerHTML = `${r.who}: "${r.order.map(([n, d]) => FR(n, d, "", "")).join(r.order.length > 1 ? " + " : "")} of a pizza, please!"`;
+  // customer face(s)
+  r.order.forEach((_, k) => {
+    const x = 70 + k * 110, g = S("g", {filter: "url(#sketch)"}, svg);
+    S("circle", {cx: x, cy: 70, r: 44, fill: k ? "#f0c9a0" : "#e8b98f", stroke: "#2b2a33", "stroke-width": 3}, g);
+    S("circle", {cx: x - 15, cy: 60, r: 5, fill: "#2b2a33"}, g); S("circle", {cx: x + 15, cy: 60, r: 5, fill: "#2b2a33"}, g);
+    const mouth = mood === "happy" ? `M${x - 18},82 Q${x},104 ${x + 18},82` : mood === "sad" ? `M${x - 16},94 Q${x},78 ${x + 16},94` : `M${x - 14},88 L${x + 14},88`;
+    S("path", {d: mouth, fill: "none", stroke: "#2b2a33", "stroke-width": 3.5, "stroke-linecap": "round"}, g);
+  });
+  S("ellipse", {cx: 340, cy: 240, rx: 165, ry: 150, fill: "var(--plate)", stroke: "var(--ink)", "stroke-width": 2}, svg);
+  const slices = pizza(svg, 340, 235, 125, r.cut, (i, s) => {
+    plate.has(i) ? plate.delete(i) : plate.add(i);
+    pull(s, plate.has(i), 30); plateText();
+  });
+  slices.forEach((s, i) => plate.has(i) && pull(s, true, 30));
+  T(svg, 340, 375, `this pizza is cut into ${r.cut}`, {"font-size": 20, fill: "var(--muted)"});
+  plateText();
+}
+function plateText() {
+  const r = ROUNDS[round], k = plate.size;
+  $("plateFrac").innerHTML = `on the plate: ${FR(k, r.cut)}`;
+}
+$("serve").onclick = () => {
+  const r = ROUNDS[round], k = plate.size, want = need(r), msg = $("msg");
+  const orderTxt = r.order.map(([n, d]) => FR(n, d, "", "")).join(" + ");
+  const parts = r.order.map(([n, d]) => `${FR(n, d, "", "")} = ${FR(n * r.cut / d, r.cut, "", "")}`).join(", ");
+  if (k === want) {
+    tips += 5 + round; $("tips").textContent = tips; mood = "happy";
+    msg.className = "msg ok";
+    msg.innerHTML = `Yum! ${parts}${r.order.length > 1 ? `, together ${FR(want, r.cut, "", "")}` : ""}.`;
+    const next = round + 1;
+    setTimeout(() => {
+      plate.clear(); mood = "wait";
+      if (next < ROUNDS.length) { round = next; msg.textContent = ""; }
+      else { round = 0; msg.innerHTML = `All ${ROUNDS.length} customers fed, $${tips} in tips. Pizza master! Starting over...`; tips = 0; $("tips").textContent = 0; }
+      game();
+    }, 2600);
+  } else {
+    mood = "sad"; msg.className = "msg bad";
+    msg.innerHTML = `That's ${FR(k, r.cut, "", "")}, too ${k > want ? "much" : "little"}. ${orderTxt} of a ${r.cut}-slice pizza is how many slices? Each slice is ${FR(1, r.cut, "", "")}.`;
+  }
+  game();
+  const face = $("customer").firstChild; face.classList.add("wiggle");
+};
+$("clear").onclick = () => { plate.clear(); mood = "wait"; $("msg").textContent = ""; game(); };
+
+// ---------- 3. frog ----------
+const X0 = 50, X1 = 960, MAXV = 3;
+let fA = 1, fB = 4, flag = 2, pos = 0, hops = 0, playing = false, raf = 0, partial = false;
+const xOf = v => X0 + (X1 - X0) * v / MAXV;
+const mixed = (n, d) => { const g = gcd(n, d); n /= g; d /= g; const w = Math.floor(n / d), r = n % d;
+  return d === 1 ? `${n}` : w ? `${FR(n, d)} = ${w}${FR(r, d)}` : FR(n, d); };
+let frog;
+function frogScene() {
+  const svg = $("frogLine"); svg.replaceChildren();
+  const g = S("g", {filter: "url(#sketch)"}, svg);
+  S("line", {x1: X0 - 20, x2: X1 + 20, y1: 180, y2: 180, stroke: "var(--ink)", "stroke-width": 4}, g);
+  for (let k = 0; k <= MAXV * fB; k++) {
+    const x = xOf(k / fB), whole = k % fB === 0;
+    S("line", {x1: x, x2: x, y1: whole ? 162 : 170, y2: whole ? 198 : 190, stroke: "var(--ink)", "stroke-width": whole ? 4 : 2}, g);
+    T(svg, x, 226, whole ? k / fB : `${k}/${fB}`, {"font-size": whole ? 30 : 17, fill: whole ? "var(--ink)" : "var(--muted)"});
+  }
+  // flag
+  const fx = xOf(flag);
+  S("line", {x1: fx, x2: fx, y1: 180, y2: 95, stroke: "var(--ink)", "stroke-width": 3}, svg);
+  S("path", {d: `M${fx},95 l40,12 l-40,12 z`, fill: "var(--red)", stroke: "var(--ink)", "stroke-width": 2}, svg);
+  S("g", {id: "trail"}, svg);
+  frog = S("g", {}, svg);
+  S("ellipse", {cx: 0, cy: -16, rx: 24, ry: 17, fill: "var(--frog)", stroke: "#2b2a33", "stroke-width": 2.5}, frog);
+  for (const ex of [-10, 10]) { S("circle", {cx: ex, cy: -32, r: 8, fill: "#fff", stroke: "#2b2a33", "stroke-width": 2}, frog); S("circle", {cx: ex, cy: -32, r: 3.5, fill: "#2b2a33"}, frog); }
+  S("path", {d: "M-9,-12 Q0,-4 9,-12", fill: "none", stroke: "#2b2a33", "stroke-width": 2.5}, frog);
+  placeFrog(pos, 0);
+}
+const placeFrog = (v, lift) => frog.setAttribute("transform", `translate(${xOf(v)}, ${178 - lift})`);
+function frogSay() {
+  const n = Math.round(pos * fB);
+  $("frogSay").innerHTML = hops ? `${hops} hop${hops > 1 ? "s" : ""} of ${FR(fA, fB)} → Fred is at ${mixed(n, fB)}` : `Fred waits at 0. Hop size ${FR(fA, fB)}.`;
+}
+function hop() {
+  if (!playing) return;
+  const left = flag - pos, full = fA / fB, step = left < full - 1e-9 ? left : full;
+  partial = step < full - 1e-9;
+  const from = pos, to = pos + step, dur = 700 / +$("speed").value, t0 = performance.now();
+  const anim = now => {
+    const t = Math.min(1, (now - t0) / dur), v = from + (to - from) * t;
+    placeFrog(v, Math.sin(Math.PI * t) * (60 + 40 * step));
+    if (t < 1) { raf = requestAnimationFrame(anim); return; }
+    pos = to; hops++;
+    S("path", {d: `M${xOf(from)},176 Q${(xOf(from) + xOf(to)) / 2},${110 - 40 * step} ${xOf(to)},176`, fill: "none", stroke: hops % 2 ? "var(--pen)" : "var(--red)", "stroke-width": 2.5, "stroke-dasharray": "6 6"}, $("trail"));
+    frogSay();
+    if (pos >= flag - 1e-9) return done();
+    setTimeout(hop, 250 / +$("speed").value);
+  };
+  raf = requestAnimationFrame(anim);
+}
+function done() {
+  playing = false; $("frogPlay").textContent = "▶ Play";
+  const qn = flag * fB, qd = fA, g = gcd(qn, qd);
+  const answer = qd / g === 1 ? `${qn / g}` : `${mixed(qn, qd)}`;
+  $("frogSay").innerHTML = `${flag} ÷ ${FR(fA, fB)} = ${answer} hops`;
+  $("frogNote").innerHTML = partial
+    ? `The last hop only needed part of a full hop, so the answer is not a whole number. Shortcut: ${flag} × ${FR(fB, fA)} = ${FR(qn, qd)}.`
+    : `Shortcut: ${flag} ÷ ${FR(fA, fB)} = ${flag} × ${FR(fB, fA)} = ${qn / g}. Dividing by a fraction = multiplying by it flipped.`;
+}
+function frogReset() {
+  cancelAnimationFrame(raf); playing = false; $("frogPlay").textContent = "▶ Play";
+  [fA, fB] = $("hop").value.split("/").map(Number); flag = +$("flag").value;
+  pos = 0; hops = 0; $("frogNote").textContent = "Press play. Watch the label: past 1, the fractions become mixed numbers like 1 3/4.";
+  frogScene(); frogSay();
+}
+$("frogPlay").onclick = () => {
+  if (pos >= flag - 1e-9) frogReset();
+  playing = !playing; $("frogPlay").textContent = playing ? "❚❚ Pause" : "▶ Play";
+  if (playing) hop(); else cancelAnimationFrame(raf);
+};
+$("frogReset").onclick = frogReset;
+$("hop").onchange = frogReset; $("flag").onchange = frogReset;
+
+// ---------- 4. cheat sheet ----------
+const miniBar = (n, k, color, w = 200) => {
+  let s = `<svg viewBox="0 0 ${w + 4} 34" style="max-width:${w + 4}px">`;
+  for (let i = 0; i < n; i++) s += `<rect x="${2 + i * w / n}" y="2" width="${w / n}" height="30" fill="${i < k ? color : "transparent"}" stroke="var(--ink)" stroke-width="2"/>`;
+  return s + "</svg>";
+};
+$("cheat").innerHTML = [
+  ["What it means", `<span class="eq">${FR(3, 4)}</span>`, miniBar(4, 3, "var(--red)"), "top = pieces taken, bottom = equal pieces in the whole"],
+  ["Same amount", `<span class="eq">${FR(1, 2)} = ${FR(2, 4)} = ${FR(4, 8)}</span>`, miniBar(2, 1, "var(--gold)") + miniBar(8, 4, "var(--gold)"), "× or ÷ top and bottom by the same number"],
+  ["Add & subtract", `<span class="eq">${FR(1, 2)} + ${FR(1, 3)} = ${FR(3, 6)} + ${FR(2, 6)} = ${FR(5, 6)}</span>`, miniBar(6, 3, "var(--pen)") + miniBar(6, 5, "var(--pen)"), "make the bottoms match first, then add the tops"],
+  ["Multiply", `<span class="eq">${FR(2, 3)} × ${FR(3, 4)} = ${FR(6, 12)} = ${FR(1, 2)}</span>`, "", "straight across: top × top, bottom × bottom. \"×\" means \"of\""],
+  ["Divide", `<span class="eq">3 ÷ ${FR(1, 2)} = 3 × ${FR(2, 1)} = 6</span>`, miniBar(6, 6, "var(--green)", 240), "how many fit? flip the second, then multiply"],
+  ["Bigger than 1", `<span class="eq">${FR(7, 4)} = 1${FR(3, 4)}</span>`, miniBar(4, 4, "var(--red)", 120) + miniBar(4, 3, "var(--red)", 120), "7 ÷ 4 = 1 remainder 3"],
+].map(([h, eq, pic, p]) => `<div class="card"><h3>${h}</h3>${eq}<div>${pic}</div><p>${p}</p></div>`).join("");
+
+hero(); game(); frogReset();
+</script>
+</body>
+</html>
