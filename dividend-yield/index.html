@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dividend yield</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --cell: #e7e4da; --gold: #d99a1e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --cell: #2c2f37; --gold: #f2b84b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  font: clamp(15px, 1.1vmin + 7px, 18px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 1600px;
+  margin: 0 auto; padding: clamp(10px, 2vh, 20px) clamp(16px, 3vw, 48px); }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+header h1 { font-size: 1.4rem; margin: 0; }
+header p { margin: 0; color: var(--muted); }
+header a { color: var(--accent); margin-left: auto; }
+.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
+.dot { width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
+  background: var(--line); cursor: pointer; transition: background .3s; }
+.dot.done { background: var(--accent-soft); }
+.dot.on { background: var(--accent); }
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: clamp(14px, 2.4vh, 24px); flex: 1; min-height: 0; overflow: hidden; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 24px; align-items: start; }
+.step { animation: enter .45s ease both; transform-origin: top left; }
+@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
+.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
+.say { margin: 0 0 clamp(10px, 1.8vh, 18px); max-width: 90ch; }
+.say code, .note code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 90ch; }
+.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
+#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 14px/1.45 system-ui, sans-serif; pointer-events: none; }
+pre { margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 0;
+  font: clamp(12.5px, .9vmin + 6px, 15px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace; }
+.ln { display: block; padding: 0 16px 0 calc(16px + 2em); text-indent: -2em; white-space: pre-wrap; overflow-wrap: anywhere;
+  border-left: 3px solid transparent; transition: background .4s, border-color .4s; }
+.ln.hl { background: var(--accent-soft); border-left-color: var(--accent); }
+.ln.res { font-weight: 700; }
+
+/* the 10x10 grid: 100 squares = the price, gold squares = the yearly payout */
+.grids { display: flex; gap: 24px; flex-wrap: wrap; }
+.grid figcaption { font-weight: 600; margin-bottom: 4px; }
+.grid .unit { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+.grid svg { width: clamp(150px, 33vh, 270px); height: auto; display: block; }
+.grid rect { fill: var(--cell); transition: fill .35s; }
+.grid rect.on { fill: var(--gold); }
+.grid .pct { font-size: 1.6rem; font-weight: 700; color: var(--gold); }
+.sliders { display: grid; gap: 8px; margin-top: 14px; }
+.sl { display: grid; grid-template-columns: 11em 1fr 7em; align-items: center; gap: 10px; }
+.sl input { width: 100%; accent-color: var(--accent); }
+.sl output { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+.ask { margin-top: 14px; padding: 10px 14px; border: 1px dashed var(--accent); border-radius: 10px; }
+.ask button, nav button { font: inherit; font-size: .95rem; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.ask button { margin-top: 6px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.ask button:disabled { opacity: .5; cursor: default; }
+.big { margin-top: 14px; font-size: 1.8rem; font-weight: 700; }
+.big small { display: block; font-size: .85rem; font-weight: 400; color: var(--muted); }
+nav { position: relative; flex: none; background: var(--panel); border-top: 1px solid var(--line);
+  padding: clamp(8px, 1.4vh, 12px) 16px; display: flex; gap: 10px; justify-content: center; align-items: center; }
+nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button:disabled { opacity: .4; cursor: default; }
+nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Dividend yield (DY)</h1><p>quanto um ativo te paga por ano, em % do preço</p><a href="creative.html">versão jogo →</a></header>
+  <div class="dots" id="dots"></div>
+  <section class="stage" id="stage" aria-live="polite"></section>
+</main>
+<nav>
+  <button id="prev">← Anterior</button>
+  <button id="next" class="primary">Próximo →</button>
+  <span class="count" id="count"></span>
+</nav>
+<div id="tip" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+const svgEl = (tag, attrs) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+const prose = (cls, s) => {
+  const p = el("p", cls);
+  String(s).split(/(`[^`]+`|\[\[[^\]]+\]\])/).forEach(part => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) p.append(el("code", null, part.slice(1, -1)));
+    else if (part.startsWith("[[") && part.endsWith("]]")) {
+      const [word, tip] = part.slice(2, -2).split("|");
+      const t = el("span", "tip", word); t.dataset.tip = tip || ""; p.append(t);
+    } else p.append(part);
+  });
+  return p;
+};
+
+const brl = v => "R$ " + v.toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const brl0 = v => "R$ " + Math.round(v).toLocaleString("pt-BR");
+const pct = v => (v * 100).toLocaleString("pt-BR", {minimumFractionDigits: 1, maximumFractionDigits: 1}) + "%";
+
+function makeGrid(title) {
+  const fig = el("figure", "grid"); fig.style.margin = 0;
+  const cap = el("figcaption", null, title), svg = svgEl("svg", {viewBox: "0 0 260 260"});
+  const cells = [];
+  for (let k = 0; k < 100; k++) {
+    const r = svgEl("rect", {x: (k % 10) * 26 + 1, y: Math.floor(k / 10) * 26 + 1, width: 22, height: 22, rx: 4});
+    r.style.transitionDelay = (k % 25) * 12 + "ms";
+    cells.push(r); svg.append(r);
+  }
+  const p = el("div", "pct"), unit = el("div", "unit");
+  fig.append(cap, svg, p, unit);
+  return {node: fig, set(ratio, unitText) {
+    const n = Math.round(Math.min(1, ratio) * 100);
+    cells.forEach((c, k) => c.classList.toggle("on", k < n));
+    p.textContent = pct(ratio) + " ao ano";
+    unit.textContent = unitText;
+  }};
+}
+
+// A step: sliders (vars) drive grids, formula lines and an optional big number.
+// `ask` pauses on a question; its button animates vars to new values.
+function calcStep(cfg) {
+  return box => {
+    const s = {};
+    for (const k in cfg.vars) s[k] = cfg.vars[k].v;
+    const wrap = el("div", "split"), left = el("div"), right = el("div");
+    if (cfg.before) left.append(prose("say", cfg.before));
+    const gridsBox = el("div", "grids");
+    const grids = cfg.grids.map(g => { const G = makeGrid(g.title); gridsBox.append(G.node); return {g, G}; });
+    left.append(gridsBox);
+    const pre = el("pre"), lines = cfg.lines.map(l => { const sp = el("span", "ln" + (l.res ? " res" : "")); pre.append(sp); return {l, sp}; });
+    right.append(pre);
+    const sl = el("div", "sliders"), outs = {}, inputs = {};
+    for (const k in cfg.vars) {
+      const v = cfg.vars[k];
+      if (v.fixed) continue;
+      const row = el("label", "sl"), inp = el("input"), out = el("output");
+      Object.assign(inp, {type: "range", min: v.min, max: v.max, step: v.step, value: v.v});
+      inp.oninput = () => { s[k] = +inp.value; update(k); };
+      row.append(el("span", null, v.label), inp, out);
+      sl.append(row); outs[k] = out; inputs[k] = inp;
+    }
+    right.append(sl);
+    let big;
+    if (cfg.big) { big = el("div", "big"); right.append(big); }
+    if (cfg.ask) {
+      const ask = el("div", "ask"), btn = el("button", null, cfg.ask.btn), ans = prose("", "");
+      ask.append(prose("", cfg.ask.q), btn, ans);
+      btn.onclick = () => {
+        btn.disabled = true;
+        const from = {...s}, t0 = performance.now();
+        const tick = now => {
+          const f = Math.min(1, (now - t0) / 1200), e = f * (2 - f);
+          for (const k in cfg.ask.set) { s[k] = from[k] + (cfg.ask.set[k] - from[k]) * e; if (inputs[k]) inputs[k].value = s[k]; }
+          update(Object.keys(cfg.ask.set)[0]);
+          if (f < 1) requestAnimationFrame(tick); else ans.replaceWith(prose("note", cfg.ask.a));
+        };
+        requestAnimationFrame(tick);
+      };
+      right.append(ask);
+    }
+    wrap.append(left, right); box.append(wrap);
+    function update(changed) {
+      for (const k in outs) outs[k].textContent = cfg.vars[k].fmt(s[k]);
+      grids.forEach(({g, G}) => G.set(g.ratio(s), g.unit(s)));
+      lines.forEach(({l, sp}) => { sp.textContent = l.t(s); sp.classList.toggle("hl", !!changed && (l.deps || []).includes(changed)); });
+      if (big) { big.textContent = cfg.big(s); big.append(el("small", null, cfg.bigLabel)); }
+    }
+    update();
+  };
+}
+
+const STEPS = [
+  {title: "Yield = quanto rende ÷ quanto custa",
+   say: "Yield (rendimento) é o que um ativo te paga em um ano dividido pelo preço dele. Exemplo sem bolsa: um apartamento que custa R$ 400.000 e é alugado por R$ 1.000 por mês. Mexa nos sliders.",
+   body: calcStep({
+     vars: {
+       aluguel: {label: "aluguel por mês", v: 1000, min: 500, max: 4000, step: 50, fmt: brl0},
+       imovel: {label: "preço do imóvel", v: 400000, min: 150000, max: 800000, step: 10000, fmt: brl0}},
+     grids: [{title: "100 quadrados = o preço do imóvel", ratio: s => s.aluguel * 12 / s.imovel,
+              unit: s => "cada quadrado = " + brl0(s.imovel / 100) + " (1% do preço)"}],
+     lines: [
+       {t: s => "aluguel no ano = " + brl0(s.aluguel) + " × 12 = " + brl0(s.aluguel * 12), deps: ["aluguel"]},
+       {t: s => "preço          = " + brl0(s.imovel), deps: ["imovel"]},
+       {t: s => "yield          = " + brl0(s.aluguel * 12) + " ÷ " + brl0(s.imovel) + " = " + pct(s.aluguel * 12 / s.imovel), res: true, deps: ["aluguel", "imovel"]}]
+   }),
+   note: "Os quadrados dourados são quantos \"pedaços do preço\" voltam para você por ano. 3 dourados = 3% ao ano."},
+
+  {title: "Dividend yield: o mesmo, para ações",
+   say: "Na ação, o \"aluguel\" são os [[proventos|Dinheiro que a empresa distribui aos acionistas: dividendos e JCP (juros sobre capital próprio). Os dois entram na conta do DY.]] por ação dos últimos 12 meses. O preço é a cotação de hoje. DY = proventos 12 meses ÷ preço.",
+   body: calcStep({
+     vars: {
+       div: {label: "proventos (12 meses)", v: 1.6, min: 0.2, max: 4, step: 0.05, fmt: brl},
+       price: {label: "preço da ação", v: 20, min: 5, max: 60, step: 0.5, fmt: brl}},
+     grids: [{title: "100 quadrados = o preço de 1 ação", ratio: s => s.div / s.price,
+              unit: s => "cada quadrado = " + brl(s.price / 100)}],
+     lines: [
+       {t: s => "proventos 12m = " + brl(s.div) + " por ação", deps: ["div"]},
+       {t: s => "preço hoje    = " + brl(s.price), deps: ["price"]},
+       {t: s => "DY            = " + brl(s.div) + " ÷ " + brl(s.price) + " = " + pct(s.div / s.price), res: true, deps: ["div", "price"]},
+       {t: s => "com 100 ações: " + brl(s.div * 100) + " por ano", deps: ["div"]}]
+   }),
+   note: "Exemplo fictício: empresa X a R$ 20,00 que pagou R$ 1,60 no último ano tem DY de 8%. Sites como Status Invest e Investidor10 mostram o DY de cada ação já calculado."},
+
+  {title: "Preço cai, DY sobe",
+   say: "O dividendo é o mesmo, mas o preço mudou. O DY anda ao contrário do preço.",
+   body: calcStep({
+     vars: {
+       div: {label: "proventos (12 meses)", v: 1.6, fixed: true, fmt: brl},
+       price: {label: "preço da ação", v: 20, min: 8, max: 40, step: 0.5, fmt: brl}},
+     grids: [{title: "100 quadrados = o preço de 1 ação", ratio: s => s.div / s.price,
+              unit: s => "cada quadrado = " + brl(s.price / 100)}],
+     lines: [
+       {t: s => "proventos 12m = " + brl(s.div) + " (não mudou)"},
+       {t: s => "preço hoje    = " + brl(s.price), deps: ["price"]},
+       {t: s => "DY            = " + pct(s.div / s.price), res: true, deps: ["price"]}],
+     ask: {q: "A ação cai de R$ 20 para R$ 16 e o provento continua R$ 1,60. Para quanto vai o DY?",
+           btn: "Revelar", set: {price: 16},
+           a: "10%. Cada quadrado ficou menor (R$ 0,16), então os mesmos R$ 1,60 enchem mais quadrados. Por isso o método Barsi compra na queda: mesmo dividendo, yield maior para quem compra agora."}
+   })},
+
+  {title: "Yield on cost: o DY do preço que VOCÊ pagou",
+   say: "O DY do site usa o preço de hoje. O [[yield on cost (YOC)|YOC = proventos 12 meses ÷ seu preço médio de compra. Mede quanto o SEU dinheiro está rendendo.]] usa o seu preço de compra. Você comprou a R$ 16; anos depois a ação vale R$ 30 e o provento cresceu.",
+   body: calcStep({
+     vars: {
+       paid: {label: "você pagou", v: 16, fixed: true, fmt: brl},
+       price: {label: "preço hoje", v: 30, min: 10, max: 50, step: 0.5, fmt: brl},
+       div: {label: "proventos hoje", v: 2.4, min: 0.8, max: 5, step: 0.05, fmt: brl}},
+     grids: [
+       {title: "Quem compra hoje (DY)", ratio: s => s.div / s.price, unit: s => "quadrado = " + brl(s.price / 100)},
+       {title: "Você (yield on cost)", ratio: s => s.div / s.paid, unit: s => "quadrado = " + brl(s.paid / 100)}],
+     lines: [
+       {t: s => "proventos 12m = " + brl(s.div), deps: ["div"]},
+       {t: s => "DY  = " + brl(s.div) + " ÷ " + brl(s.price) + " = " + pct(s.div / s.price), res: true, deps: ["div", "price"]},
+       {t: s => "YOC = " + brl(s.div) + " ÷ R$ 16,00 = " + pct(s.div / s.paid), res: true, deps: ["div"]}]
+   }),
+   note: "O YOC sobe sozinho quando a empresa aumenta os proventos. É a meta do método Barsi: comprar barato, segurar, e ver o YOC crescer ano a ano."},
+
+  {title: "Armadilha: DY alto demais",
+   say: "O DY olha para trás: usa os proventos dos últimos 12 meses. Uma empresa em crise pode mostrar um DY lindo.",
+   body: calcStep({
+     before: "A ação caiu de R$ 20 para R$ 10 porque o lucro despencou. O provento dos últimos 12 meses ainda é R$ 1,60 (pago quando a empresa ia bem).",
+     vars: {
+       div: {label: "proventos (12 meses)", v: 1.6, min: 0.2, max: 2, step: 0.05, fmt: brl},
+       price: {label: "preço da ação", v: 10, fixed: true, fmt: brl}},
+     grids: [{title: "100 quadrados = o preço de 1 ação", ratio: s => s.div / s.price,
+              unit: s => "cada quadrado = " + brl(s.price / 100)}],
+     lines: [
+       {t: s => "preço hoje    = R$ 10,00 (caiu 50%)"},
+       {t: s => "proventos 12m = " + brl(s.div), deps: ["div"]},
+       {t: s => "DY            = " + pct(s.div / s.price), res: true, deps: ["div"]}],
+     ask: {q: "16% de DY. Parece ótimo. O que acontece no ano seguinte, com o lucro menor?",
+           btn: "Passar 1 ano", set: {div: 0.4},
+           a: "A empresa corta o provento para R$ 0,40 e o DY desaba para 4%. Antes de comprar por DY alto, olhe o histórico de 5+ anos de proventos e se o lucro sustenta o pagamento."}
+   })},
+
+  {title: "Quanto preciso investir para ter R$ X por mês?",
+   say: "Inverta a conta: capital = renda que você quer no ano ÷ DY. Mexa nos dois sliders.",
+   body: calcStep({
+     vars: {
+       renda: {label: "renda por mês", v: 1000, min: 200, max: 10000, step: 100, fmt: brl0},
+       dy: {label: "DY médio da carteira", v: 0.08, min: 0.03, max: 0.14, step: 0.005, fmt: pct}},
+     grids: [{title: "100 quadrados = seu capital", ratio: s => s.dy,
+              unit: s => "cada quadrado = " + brl0(s.renda * 12 / s.dy / 100)}],
+     lines: [
+       {t: s => "renda no ano = " + brl0(s.renda) + " × 12 = " + brl0(s.renda * 12), deps: ["renda"]},
+       {t: s => "DY           = " + pct(s.dy), deps: ["dy"]},
+       {t: s => "capital      = " + brl0(s.renda * 12) + " ÷ " + pct(s.dy), res: true, deps: ["renda", "dy"]}],
+     big: s => brl0(s.renda * 12 / s.dy), bigLabel: "de capital investido"
+   }),
+   note: "Com DY de 8%, cada R$ 1.000 por mês pede R$ 150.000 investidos. Proventos de ações não são fixos: isso é uma média, não uma garantia."}
+];
+
+let i = 0;
+function show(n) {
+  i = Math.max(0, Math.min(STEPS.length - 1, n));
+  const s = STEPS[i], box = el("div", "step");
+  box.append(el("div", "num", `PASSO ${i + 1} DE ${STEPS.length}`), el("h2", null, s.title), prose("say", s.say));
+  s.body(box);
+  if (s.note) box.append(prose("note", s.note));
+  $("stage").replaceChildren(box);
+  fitObserver.disconnect(); fitObserver.observe(box);
+  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
+  $("count").textContent = `${i + 1} / ${STEPS.length}`;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === STEPS.length - 1;
+}
+function fit() {
+  const stage = $("stage"), box = stage.firstElementChild;
+  if (!box) return;
+  const cs = getComputedStyle(stage);
+  const h = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const k = Math.min(1, h / box.scrollHeight, w / box.scrollWidth);
+  box.style.scale = k < 1 ? k : "";
+  if (k < 1) box.dataset.fit = k.toFixed(3); else delete box.dataset.fit;
+}
+const fitObserver = new ResizeObserver(fit);
+addEventListener("resize", fit);
+document.addEventListener("mouseover", e => {
+  const t = e.target.closest("[data-tip]"), tip = $("tip");
+  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
+  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+});
+STEPS.forEach((s, k) => { const d = el("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d); });
+$("prev").onclick = () => show(i - 1);
+$("next").onclick = () => show(i + 1);
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowRight") show(i + 1);
+  else if (e.key === "ArrowLeft") show(i - 1);
+});
+show(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feira das árvores</title>
+<style>
+:root {
+  --bg: #f4f1e6; --panel: #fffdf7; --ink: #2a2620; --muted: #776f62; --line: #e3dccb;
+  --accent: #2f6fde; --leaf: #4f9a4a; --leaf2: #3d7d39; --trunk: #8a5a34; --gold: #d99a1e;
+  --sick: #b9a35a; --good: #1f8a4c; --bad: #c2382f; --sky: #e6f0f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --panel: #1d2026; --ink: #ecebe6; --muted: #9a998f; --line: #30333b;
+    --accent: #6ea0ff; --leaf: #5fb35a; --leaf2: #468c42; --trunk: #a8744a; --gold: #f2b84b;
+    --sick: #a8954f; --good: #4cc483; --bad: #ff7a70; --sky: #1a2329;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: clamp(14px, 1vmin + 7px, 17px)/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; padding: clamp(10px, 2vh, 20px) clamp(16px, 3vw, 48px); gap: clamp(8px, 1.4vh, 14px); }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 1.4rem; }
+header p { margin: 0; color: var(--muted); }
+header a { color: var(--accent); margin-left: auto; }
+.top { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 14px; }
+.stat b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: .85rem; display: block; }
+.goal { flex: 1; min-width: 220px; }
+.bar { height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; margin-top: 4px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .6s; }
+button { font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button:disabled { opacity: .4; cursor: default; }
+.layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(280px, 1fr); gap: 16px; }
+.trees { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; min-height: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 4px; min-height: 0; position: relative; }
+.card h3 { margin: 0; font-size: 1.05rem; }
+.card .kind { color: var(--muted); font-size: .8rem; }
+.card svg { width: 100%; height: clamp(90px, 22vh, 200px); display: block; background: var(--sky); border-radius: 10px; }
+.row { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; font-size: .92rem; }
+.row span:first-child { color: var(--muted); }
+.dy { font-size: 1.35rem; font-weight: 700; color: var(--gold); }
+.hist { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hist b { color: var(--ink); }
+.btns { display: flex; gap: 6px; margin-top: auto; }
+.btns button { flex: 1; padding: 6px 8px; }
+.up { color: var(--good); } .down { color: var(--bad); }
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; }
+.box h4 { margin: 0 0 4px; font-size: .95rem; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; font-variant-numeric: tabular-nums; }
+th { text-align: right; color: var(--muted); font-weight: 500; }
+td { text-align: right; padding: 2px 0; }
+th:first-child, td:first-child { text-align: left; }
+.log { flex: 1; min-height: 0; overflow: hidden; font-size: .86rem; }
+.log p { margin: 0 0 5px; animation: in .4s ease both; }
+@keyframes in { from { opacity: 0; transform: translateX(-8px); } }
+.legend { font-size: .82rem; color: var(--muted); }
+.legend b { color: var(--ink); }
+.coin { fill: var(--gold); stroke: #0003; }
+.fall { animation: fall 1s ease-in forwards; }
+@keyframes fall { to { transform: translateY(var(--dy)); opacity: 0; } }
+.win { position: fixed; inset: 0; display: grid; place-items: center; background: #0006; z-index: 5; }
+.win div { background: var(--panel); border-radius: 16px; padding: 22px 28px; max-width: min(60ch, 90vw); }
+.win h2 { margin: 0 0 8px; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .trees { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header><h1>Feira das árvores de dinheiro</h1><p>árvore = ação · frutas = proventos · DY = frutas por ano ÷ preço da árvore</p><a href="index.html">← lição passo a passo</a></header>
+
+<div class="top">
+  <div class="stat"><span>caixa</span><b id="cash"></b></div>
+  <div class="stat"><span>ano</span><b id="year"></b></div>
+  <div class="stat goal"><span>frutas por ano da sua carteira: <b id="income"></b> / meta R$ 150,00</span><div class="bar"><i id="goalbar"></i></div></div>
+  <button class="primary" id="harvest">Colher e passar 1 ano →</button>
+  <button id="reset">recomeçar</button>
+</div>
+
+<div class="layout">
+  <div class="trees" id="trees"></div>
+  <div class="side">
+    <div class="box">
+      <h4>Seu pomar</h4>
+      <table><thead><tr><th>árvore</th><th>qtd</th><th>pagou (média)</th><th>DY hoje</th><th>yield on cost</th></tr></thead><tbody id="hold"></tbody></table>
+    </div>
+    <div class="box log" id="log"></div>
+    <div class="box legend">
+      <b>Como ganhar:</b> chegue a R$ 150 de frutas por ano. Os preços oscilam a cada 2 segundos: compre quando a árvore está barata (DY alto) e reinvista cada colheita.
+      Olhe o <b>histórico de safras</b> antes de comprar: um DY enorme pode ser uma safra única.
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const brl = v => "R$ " + v.toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const pct = v => (v * 100).toLocaleString("pt-BR", {minimumFractionDigits: 1, maximumFractionDigits: 1}) + "%";
+const NS = "http://www.w3.org/2000/svg";
+const svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+// fruit = provento por "ação" nos últimos 12 meses; growth = how next year's fruit changes
+const TYPES = [
+  {id: "lar", name: "Laranjeira", kind: "estável, cresce devagar (tipo saneamento)", base: 20, fruit: 1.6, hist: [1.38, 1.45, 1.52],
+   vol: .025, next: t => t.fruit * 1.06},
+  {id: "man", name: "Mangueira", kind: "oscila muito, frutas variam (tipo commodity)", base: 40, fruit: 2.4, hist: [3.1, 1.7, 2.9],
+   vol: .06, next: t => t.fruit * (0.75 + Math.random() * 0.6)},
+  {id: "dou", name: "Árvore dourada", kind: "DY enorme... olhe o histórico", base: 10, fruit: 2.5, hist: [0.2, 0.25, 0.22],
+   vol: .03, next: t => t.year === 1 ? 0.2 : t.fruit * 1.02, crash: true}
+];
+let S;
+function reset() {
+  S = {cash: 1000, year: 1, won: false, trees: TYPES.map(t => ({...t, hist: [...t.hist], price: t.base, prev: t.base, qty: 0, cost: 0, year: 0, fruitsPos: seedFruits()}))};
+  $("log").replaceChildren();
+  log("Você tem R$ 1.000. Compre árvores e colha as frutas uma vez por ano.");
+  render();
+}
+function seedFruits() {
+  const pts = [];
+  for (let k = 0; k < 25; k++) { const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 46; pts.push([100 + Math.cos(a) * r * 1.25, 62 + Math.sin(a) * r * .8]); }
+  return pts;
+}
+function log(html) {
+  const p = document.createElement("p"); p.innerHTML = html; $("log").prepend(p);
+  while ($("log").children.length > 5) $("log").lastChild.remove();
+}
+
+function treeSVG(t) {
+  const svg = svgEl("svg", {viewBox: "0 0 200 150", preserveAspectRatio: "xMidYMid meet"});
+  svg.append(svgEl("rect", {x: 0, y: 128, width: 200, height: 22, fill: "var(--leaf2)", opacity: .35}));
+  svg.append(svgEl("rect", {x: 92, y: 85, width: 16, height: 46, rx: 4, fill: "var(--trunk)"}));
+  const sick = t.crash && t.year >= 1;
+  [[100, 62, 62, 44], [70, 72, 34, 28], [132, 70, 36, 30]].forEach(([cx, cy, rx, ry]) =>
+    svg.append(svgEl("ellipse", {cx, cy, rx, ry, fill: sick ? "var(--sick)" : "var(--leaf)"})));
+  // one fruit per 1% of DY: the crown shows the yield at a glance
+  const n = Math.min(25, Math.round(t.fruit / t.price * 100));
+  t.fruitsPos.slice(0, n).forEach(([x, y]) => svg.append(svgEl("circle", {cx: x, cy: y, r: 5, class: "coin"})));
+  const lbl = svgEl("text", {x: 8, y: 18, fill: "var(--muted)", "font-size": 11, "font-family": "system-ui"});
+  lbl.textContent = n + " frutas = " + n + "% do preço por ano";
+  svg.append(lbl);
+  return svg;
+}
+
+function render() {
+  $("cash").textContent = brl(S.cash);
+  $("year").textContent = S.year;
+  const inc = S.trees.reduce((a, t) => a + t.qty * t.fruit, 0);
+  $("income").textContent = brl(inc);
+  $("goalbar").style.width = Math.min(100, inc / 150 * 100) + "%";
+  const box = $("trees");
+  if (!box.children.length) S.trees.forEach(t => box.append(card(t)));
+  S.trees.forEach(t => fill(t));
+  $("hold").replaceChildren(...S.trees.filter(t => t.qty).map(t => {
+    const tr = document.createElement("tr");
+    [t.name, t.qty, brl(t.cost / t.qty), pct(t.fruit / t.price), pct(t.fruit / (t.cost / t.qty))].forEach(v => {
+      const td = document.createElement("td"); td.textContent = v; tr.append(td);
+    });
+    return tr;
+  }));
+  if (!S.trees.some(t => t.qty)) $("hold").innerHTML = '<tr><td colspan="5" style="color:var(--muted)">nenhuma árvore ainda</td></tr>';
+  if (!S.won && inc >= 150) {
+    S.won = true;
+    const w = document.createElement("div"); w.className = "win";
+    w.innerHTML = `<div><h2>Meta batida no ano ${S.year}!</h2><p>Seu pomar paga ${brl(inc)} por ano. O que fez a diferença: comprar quando o preço caía (mesma fruta, DY maior), reinvestir as colheitas e fugir da safra única.</p><button class="primary">jogar de novo</button></div>`;
+    w.querySelector("button").onclick = () => { w.remove(); reset(); };
+    document.body.append(w);
+  }
+}
+function card(t) {
+  const c = document.createElement("div"); c.className = "card"; c.id = "c-" + t.id;
+  c.innerHTML = `<h3>${t.name}</h3><div class="kind">${t.kind}</div><div class="pic"></div>
+    <div class="row"><span>preço da árvore</span><b class="p"></b></div>
+    <div class="row"><span>frutas últimos 12m</span><b class="f"></b></div>
+    <div class="row"><span>DY</span><span class="dy"></span></div>
+    <div class="hist"></div>
+    <div class="btns"><button class="b1">comprar 1</button><button class="b5">comprar 5</button></div>`;
+  c.querySelector(".b1").onclick = () => buy(t, 1);
+  c.querySelector(".b5").onclick = () => buy(t, 5);
+  return c;
+}
+function fill(t) {
+  const c = $("c-" + t.id);
+  c.querySelector(".pic").replaceChildren(treeSVG(t));
+  const p = c.querySelector(".p");
+  p.textContent = brl(t.price) + (t.price < t.prev ? " ▼" : " ▲");
+  p.className = "p " + (t.price < t.prev ? "down" : "up");
+  c.querySelector(".f").textContent = brl(t.fruit);
+  c.querySelector(".dy").textContent = pct(t.fruit / t.price);
+  c.querySelector(".hist").innerHTML = "safras anteriores: " + t.hist.slice(-3).map(brl).join(" · ") + " → <b>" + brl(t.fruit) + "</b>";
+  c.querySelector(".b1").disabled = S.cash < t.price;
+  c.querySelector(".b5").disabled = S.cash < t.price * 5;
+}
+function buy(t, n) {
+  if (S.cash < t.price * n) return;
+  S.cash -= t.price * n; t.qty += n; t.cost += t.price * n;
+  log(`Comprou ${n} ${t.name} a ${brl(t.price)}: DY de ${pct(t.fruit / t.price)} sobre esse preço.`);
+  render();
+}
+function harvest() {
+  let got = 0;
+  S.trees.forEach(t => {
+    const pay = t.qty * t.fruit;
+    if (pay > 0) dropCoins(t);
+    got += pay;
+  });
+  S.cash += got;
+  log(`Ano ${S.year}: colheu ${brl(got)}. Reinvista!`);
+  S.trees.forEach(t => {
+    const old = t.fruit;
+    t.hist.push(t.fruit); t.fruit = t.next(t); t.year++;
+    if (t.crash && t.year === 1) {
+      t.base *= 0.45; t.price = t.base;
+      log(`<b>${t.name} cortou a safra: ${brl(old)} → ${brl(t.fruit)}.</b> O DY gigante era uma colheita única; o histórico mostrava ~R$ 0,20. O preço desabou.`);
+    } else t.base *= t.fruit / old > 1 ? 1.04 : 0.98;
+  });
+  S.year++;
+  render();
+}
+function dropCoins(t) {
+  const svg = $("c-" + t.id).querySelector("svg");
+  for (let k = 0; k < 6; k++) {
+    const c = svgEl("circle", {cx: 70 + Math.random() * 60, cy: 50 + Math.random() * 30, r: 6, class: "coin fall"});
+    c.style.setProperty("--dy", "90px"); c.style.animationDelay = k * 80 + "ms";
+    svg.append(c);
+  }
+}
+// prices wander around their base each second; a dip is a chance to buy more yield
+setInterval(() => {
+  if (!S) return;
+  S.trees.forEach(t => {
+    t.prev = t.price;
+    const g = (Math.random() + Math.random() + Math.random() - 1.5) * 1.4;
+    t.price = Math.max(t.base * 0.6, Math.min(t.base * 1.4, t.price + (t.base - t.price) * 0.12 + t.base * t.vol * g));
+  });
+  render();
+}, 2000);
+$("harvest").onclick = () => { harvest(); };
+$("reset").onclick = reset;
+reset();
+</script>
+</body>
+</html>
