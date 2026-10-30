@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+  }
+}
+* { box-sizing: border-box; }
+/* One viewport, no scroll: header, stage and nav share 100% of the height.
+   A step that does not fit is split in two; fit() below is only a guard. */
+html, body { height: 100%; overflow: hidden; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  font: clamp(15px, 1.1vmin + 7px, 18px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 1600px;
+  margin: 0 auto; padding: clamp(10px, 2vh, 20px) clamp(16px, 3vw, 48px); }
+header h1 { font-size: 1.4rem; margin: 0 0 2px; }
+header p { margin: 0; color: var(--muted); }
+.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
+.dot {
+  width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
+  background: var(--line); cursor: pointer; transition: background .3s;
+}
+.dot.done { background: var(--accent-soft); }
+.dot.on { background: var(--accent); }
+.stage {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: clamp(14px, 2.4vh, 24px); flex: 1; min-height: 0; overflow: hidden;
+}
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+.step { animation: enter .45s ease both; transform-origin: top left; }
+@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
+.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
+.say { margin: 0 0 clamp(10px, 1.8vh, 18px); max-width: 75ch; }
+.say code, .note code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 75ch; }
+.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
+#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 14px/1.45 system-ui, sans-serif; pointer-events: none; }
+/* long lines wrap instead of scrolling sideways */
+pre {
+  margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 0;
+  font: clamp(12.5px, .9vmin + 6px, 15px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+.ln { display: block; padding: 0 16px 0 calc(16px + 2em); text-indent: -2em; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.55em;
+  border-left: 3px solid transparent; transition: background .4s, border-color .4s; }
+.ln.hl { background: var(--accent-soft); border-left-color: var(--accent); animation: pulse 1.6s ease .5s 2; }
+@keyframes pulse { 50% { background: transparent; } }
+.ln.add { background: var(--add-bg); border-left-color: var(--add); animation: grow .5s ease both; }
+.ln[data-tip] { cursor: help; text-decoration: underline dotted var(--muted); }
+.ln.del { background: var(--del-bg); border-left-color: var(--del); text-decoration: line-through; color: var(--del); }
+.ln.gone { animation: shrink .5s ease forwards; }
+@keyframes grow { from { opacity: 0; transform: translateX(-10px); max-height: 0; } to { max-height: 12em; } }
+@keyframes shrink { to { opacity: 0; max-height: 0; min-height: 0; } }
+.diff-label { font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+.term {
+  background: var(--term-bg); color: var(--term-ink); border-radius: 10px; padding: 14px 16px;
+  font: clamp(12.5px, .9vmin + 6px, 15px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; animation: enter .3s ease both; }
+.caret { display: inline-block; width: 8px; height: 1.1em; background: var(--term-ink);
+  vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+svg.diagram { max-width: 100%; height: auto; display: block; }
+svg .node rect { fill: var(--code-bg); stroke: var(--line); stroke-width: 1.5; }
+svg .node.hl rect { fill: var(--accent-soft); stroke: var(--accent); }
+svg .node text { fill: var(--ink); font: 14px system-ui, sans-serif; }
+svg .node { opacity: 0; animation: pop .4s ease forwards; }
+@keyframes pop { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+svg .edge { stroke: var(--muted); stroke-width: 1.8; fill: none; }
+svg .edge.hl { stroke: var(--accent); }
+svg .edge.draw { animation: draw .6s ease forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+svg .elabel { fill: var(--muted); font: 12px system-ui, sans-serif; opacity: 0; animation: pop .3s ease forwards; }
+svg marker path { fill: var(--muted); }
+nav {
+  position: relative; flex: none; background: var(--panel);
+  border-top: 1px solid var(--line); padding: clamp(8px, 1.4vh, 12px) 16px;
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+}
+nav button {
+  font: inherit; font-size: .95rem; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button:disabled { opacity: .4; cursor: default; }
+nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
+.bar { height: 3px; background: var(--accent); width: 0; position: absolute; left: 0; top: -2px; }
+.bar.run { transition: width linear; }
+
+.top-link { float: right; font-size: .9rem; color: var(--accent); }
+.wg { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 24px; align-items: center; }
+.wsvg { width: 100%; height: auto; max-height: 36vh; display: block; }
+.wsvg text { fill: var(--ink); font: 14px system-ui, sans-serif; }
+.wsvg .mut { fill: var(--muted); font-size: 12px; }
+.wsvg .big { font-size: 18px; font-weight: 600; }
+.wsvg rect, .wsvg line { transition: all .35s ease; }
+.f-asset { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.f-debt { fill: var(--del-bg); stroke: var(--del); stroke-width: 1.5; }
+.f-pl { fill: var(--add-bg); stroke: var(--add); stroke-width: 1.5; }
+.f-price { fill: var(--accent); }
+.f-gap-add { fill: var(--add-bg); stroke: var(--add); stroke-dasharray: 4 3; }
+.f-gap-del { fill: var(--del-bg); stroke: var(--del); stroke-dasharray: 4 3; }
+.ref { stroke: var(--muted); stroke-dasharray: 5 4; stroke-width: 1.5; }
+.ctl { display: flex; flex-direction: column; gap: 8px; }
+.ctl label { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: .95rem; }
+.ctl label b { font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
+.out { background: var(--code-bg); border-radius: 10px; padding: 10px 14px; font: clamp(13px, .9vmin + 6px, 15px)/1.6 ui-monospace, Menlo, monospace; }
+.out .k { font-size: 1.35em; font-weight: 700; color: var(--accent); }
+.out .good { color: var(--add); } .out .bad { color: var(--del); }
+.ctl .btns { display: flex; gap: 8px; }
+.ctl button { font: inherit; font-size: .95rem; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.ctl button:disabled { opacity: .4; cursor: default; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header><a class="top-link" href="creative.html">versão criativa: a feira dos cofrinhos →</a><h1 id="title"></h1><p id="subtitle"></p></header>
+  <div class="dots" id="dots"></div>
+  <section class="stage" id="stage" aria-live="polite"></section>
+</main>
+<nav>
+  <div class="bar" id="bar"></div>
+  <button id="prev">← Anterior</button>
+  <button id="play" class="primary">▶ Tocar</button>
+  <button id="next">Próximo →</button>
+  <span class="count" id="count"></span>
+</nav>
+<div id="tip" hidden></div>
+
+<!-- Only this block changes per lesson. Escape "</" as "<\/" inside strings. -->
+<script id="lesson" type="application/json">
+{
+  "title": "P/VP: preço sobre valor patrimonial",
+  "subtitle": "Quanto a bolsa cobra por cada R$ 1 que a empresa (ou o FII) tem no balanço",
+  "steps": [
+    {"title": "O que a empresa tem: o patrimônio líquido",
+     "say": "Toda empresa tem um [[balanço|Demonstração contábil publicada a cada trimestre (ITR) e no fim do ano (DFP). Os números do P/VP saem daí.]]: o que ela tem (ativos) menos o que ela deve (passivos) é o [[patrimônio líquido (PL)|O que sobraria para os sócios se a empresa vendesse tudo pelo valor do balanço e pagasse todas as dívidas.]]. Dividindo o PL pelo número de ações sai o `VPA`, o valor patrimonial por ação. Mexa nos controles.",
+     "show": {"kind": "widget", "name": "balanco"}},
+    {"title": "O preço contra o VPA",
+     "say": "A bolsa não olha só o balanço: o preço sobe e desce todo dia. `P/VP = preço ÷ VPA`. Com VPA de R$ 10, arraste o preço e veja se você está pagando com [[desconto|P/VP abaixo de 1: você compra R$ 1 de patrimônio por menos de R$ 1.]] ou com [[ágio|P/VP acima de 1: você paga mais do que o balanço diz que cada ação tem.]].",
+     "show": {"kind": "widget", "name": "preco"},
+     "note": "Mesma conta pela empresa inteira: `valor de mercado ÷ PL`. Dá o mesmo número, porque os dois lados têm o mesmo nº de ações."},
+    {"title": "Por que alguém paga ágio? O ROE",
+     "say": "Patrimônio parado não vale muito; patrimônio que dá lucro vale mais. O [[ROE|Return on Equity: lucro do ano ÷ patrimônio líquido. ROE 20% = cada R$ 10 de PL gera R$ 2 de lucro por ano.]] mede isso. Existe uma identidade exata: `P/VP = P/L × ROE`. Com o mesmo P/L, a empresa de ROE maior tem P/VP maior.",
+     "show": {"kind": "widget", "name": "roe"},
+     "note": "Por que é exata: P/L × ROE = (P ÷ LPA) × (LPA ÷ VPA) = P ÷ VPA. O LPA (lucro por ação) se cancela."},
+    {"title": "A armadilha do P/VP baixo",
+     "say": "Empresa que dá prejuízo come o próprio patrimônio: o VPA cai todo ano. O P/VP continua \"barato\" enquanto você perde dinheiro. Avance os anos (exemplo inventado: prejuízo de R$ 2 por ação por ano).",
+     "show": {"kind": "widget", "name": "armadilha"},
+     "note": "Nome em inglês: [[value trap|Armadilha de valor: parece barato pelo múltiplo, mas o \"valor\" está encolhendo. Sempre olhe o P/VP junto com o ROE e o histórico de lucros.]]."},
+    {"title": "Nos FIIs: o VP por cota",
+     "say": "No fundo imobiliário a conta é a mesma, com cotas no lugar de ações. O fundo publica todo mês o [[informe mensal|Documento obrigatório entregue à CVM e publicado na B3/site do fundo, com PL, nº de cotas e VP por cota.]] com o PL e o número de cotas. Passe o mouse nas caixas para ver de onde vem cada valor.",
+     "show": {"kind": "diagram",
+              "nodes": [
+                {"id": "im", "label": "Imóveis", "col": 0, "row": 0, "tip": "FII de tijolo: prédios, galpões, shoppings. Valor vem de laudo de avaliação, refeito periodicamente (em geral uma vez por ano)."},
+                {"id": "cri", "label": "CRIs / títulos", "col": 0, "row": 1, "tip": "FII de papel: dívidas imobiliárias (CRIs) marcadas a mercado. O valor se atualiza com muito mais frequência que um laudo."},
+                {"id": "cx", "label": "Caixa − obrigações", "col": 0, "row": 2, "tip": "Dinheiro em caixa e renda fixa, menos o que o fundo deve (taxas, aquisições a prazo...)."},
+                {"id": "pl", "label": "PL do fundo", "col": 1, "row": 1, "hl": true, "tip": "Soma de tudo. Ex.: R$ 1 bilhão."},
+                {"id": "vp", "label": "VP por cota", "col": 2, "row": 1, "hl": true, "tip": "PL ÷ nº de cotas. Ex.: R$ 1 bi ÷ 10 milhões de cotas = R$ 100. Cota a R$ 92 na bolsa → P/VP 0,92."}],
+              "edges": [{"from": "im", "to": "pl"}, {"from": "cri", "to": "pl"}, {"from": "cx", "to": "pl"}, {"from": "pl", "to": "vp", "label": "÷ cotas"}]}},
+    {"title": "Tijolo x papel: o que o P/VP quer dizer",
+     "say": "O mesmo número conta histórias diferentes nos dois tipos de FII. Passe o mouse nas linhas.",
+     "show": {"kind": "split", "panes": [
+       {"kind": "code", "code": "FII DE TIJOLO (imóveis)\nVP vem de laudo, atualiza devagar\nP/VP 0,85 = imóvel com 15% de desconto...\n...ou o laudo está otimista\nOlhe: vacância, inquilinos, contratos", "highlight": [3, 4],
+        "tips": {"2": "Entre um laudo e outro, o VP quase não muda, mesmo se o mercado imobiliário mudou.", "3": "Comprar a 0,85 é pagar R$ 85 por R$ 100 de imóvel, SE o laudo estiver certo.", "4": "Laudo é uma estimativa. Vacância subindo ou inquilino saindo derruba o valor real antes do laudo.", "5": "Vacância física e financeira, prazo e tipo dos contratos (típico x atípico), concentração de inquilinos."}},
+       {"kind": "code", "code": "FII DE PAPEL (CRIs)\nVP marcado a mercado, atualiza rápido\nP/VP costuma ficar perto de 1\nDesconto grande = medo de calote\nOlhe: devedores, garantias, indexador", "highlight": [3, 4],
+        "tips": {"2": "Os CRIs são reprecificados conforme juros e risco, então o VP acompanha o mercado.", "3": "Se o VP já reflete o preço dos títulos, não há muito motivo para a cota ficar longe dele.", "4": "Quando a bolsa paga bem abaixo do VP de um FII de papel, ela está dizendo que não acredita que todos os CRIs serão pagos.", "5": "Quem deve, quais garantias (alienação fiduciária, fundo de reserva), se é IPCA+ ou CDI+."}}]}},
+    {"title": "Por que o P/VP importa numa emissão de cotas",
+     "say": "Quando o FII emite cotas novas, o preço da emissão em relação ao VP decide se o cotista antigo ganha ou perde. Exemplo: fundo com 10 milhões de cotas, VP R$ 100, emite mais 2 milhões. Arraste o preço da emissão.",
+     "show": {"kind": "widget", "name": "emissao"},
+     "note": "Simplificado: ignora custos de emissão, que reduzem o VP um pouco em qualquer cenário."},
+    {"title": "Cola: P/VP em uma tela",
+     "say": "Tudo junto. Passe o mouse nas linhas para o detalhe.",
+     "show": {"kind": "code", "code": "P/VP = preço ÷ VPA = valor de mercado ÷ PL\nVPA  = PL ÷ nº de ações (ou de cotas)\nP/VP < 1 → bolsa paga menos que o balanço diz\nP/VP > 1 → bolsa paga mais (espera ROE alto)\nP/VP = P/L × ROE\nGraham: P/L × P/VP ≤ 22,5\nBancos e seguradoras: P/VP é métrica central\nSoftware, marca, serviços: VP diz pouco\nFII de papel longe de 1: pergunte por quê\nFII de tijolo: o VP é tão bom quanto o laudo",
+       "highlight": [1, 5],
+       "tips": {"3": "Pode ser oportunidade ou problema (prejuízos, ativos superavaliados). Sozinho não diz qual.", "4": "Normal em empresas muito rentáveis. P/VP 5 com ROE 30% pode ser mais barato que P/VP 0,5 com ROE 2%.", "5": "Por isso P/VP nunca se analisa sozinho: ele carrega o ROE dentro.", "6": "Benjamin Graham (O Investidor Inteligente): P/L até 15 e P/VP até 1,5, ou o produto dos dois até 22,5.", "7": "O ativo deles é quase todo financeiro (crédito, títulos), então o balanço fica perto do valor real.", "8": "Marca, software e pessoas quase não aparecem no balanço (custo histórico, intangíveis não contabilizados). P/VP alto ali é o normal.", "9": "Onde ver: informe mensal do fundo, ou sites como Status Invest, Fundamentus, Investidor10.", "10": "Compare a data do último laudo e a vacância antes de comemorar um desconto."}}}
+  ]
+}
+</script>
+
+<script>
+const LESSON = JSON.parse(document.getElementById("lesson").textContent);
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+const svgEl = (tag, attrs) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+// `inline code` and [[word|hover detail]] in prose, everything else as text
+const prose = (cls, s) => {
+  const p = el("p", cls);
+  String(s).split(/(`[^`]+`|\[\[[^\]]+\]\])/).forEach(part => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) p.append(el("code", null, part.slice(1, -1)));
+    else if (part.startsWith("[[") && part.endsWith("]]")) {
+      const [word, tip] = part.slice(2, -2).split("|");
+      const t = el("span", "tip", word); t.dataset.tip = tip || ""; p.append(t);
+    } else p.append(part);
+  });
+  return p;
+};
+
+let i = 0, playing = false, timer = null, pending = [];
+const later = (fn, ms) => pending.push(setTimeout(fn, ms));
+const clearPending = () => { pending.forEach(clearTimeout); pending = []; };
+
+function renderCode(s) {
+  const pre = el("pre");
+  const hl = new Set(s.highlight || []);
+  s.code.split("\n").forEach((t, n) => {
+    const ln = el("span", "ln" + (hl.has(n + 1) ? " hl" : ""), t);
+    if (s.tips && s.tips[n + 1]) ln.dataset.tip = s.tips[n + 1];
+    pre.append(ln);
+  });
+  return [pre, 0];
+}
+
+// LCS line diff -> [{op: "same"|"del"|"add", t}]
+function diffLines(a, b) {
+  const m = a.length, n = b.length, L = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+  for (let x = m - 1; x >= 0; x--) for (let y = n - 1; y >= 0; y--)
+    L[x][y] = a[x] === b[y] ? L[x + 1][y + 1] + 1 : Math.max(L[x + 1][y], L[x][y + 1]);
+  const out = []; let x = 0, y = 0;
+  while (x < m && y < n) {
+    if (a[x] === b[y]) { out.push({op: "same", t: a[x]}); x++; y++; }
+    else if (L[x + 1][y] >= L[x][y + 1]) out.push({op: "del", t: a[x++]});
+    else out.push({op: "add", t: b[y++]});
+  }
+  while (x < m) out.push({op: "del", t: a[x++]});
+  while (y < n) out.push({op: "add", t: b[y++]});
+  return out;
+}
+
+function renderDiff(s) {
+  const wrap = el("div"), label = el("div", "diff-label", "before"), pre = el("pre");
+  wrap.append(label, pre);
+  const ops = diffLines(s.before.split("\n"), s.after.split("\n"));
+  const spans = ops.map(o => {
+    const sp = el("span", "ln", o.t);
+    if (o.op === "add") sp.style.display = "none";
+    pre.append(sp);
+    return sp;
+  });
+  later(() => {
+    label.textContent = "before → after";
+    ops.forEach((o, k) => { if (o.op === "del") spans[k].classList.add("del"); });
+  }, 900);
+  later(() => {
+    label.textContent = "after";
+    ops.forEach((o, k) => {
+      if (o.op === "del") spans[k].classList.add("gone");
+      if (o.op === "add") { spans[k].style.display = ""; spans[k].classList.add("add"); }
+    });
+  }, 2100);
+  return [wrap, 2600];
+}
+
+// keeps the last `max` rows (default 12), like a real terminal, so it never grows past the stage
+function renderTerminal(s) {
+  const box = el("div", "term"), caret = el("span", "caret"), max = s.max || 12;
+  box.append(caret);
+  const add = row => { box.insertBefore(row, caret); while (box.children.length > max + 1) box.firstChild.remove(); };
+  let t = 400;
+  s.lines.forEach(line => {
+    if (line.cmd != null) {
+      const row = el("div", "cmd");
+      later(() => add(row), t);
+      [...line.cmd].forEach(ch => { t += 45; later(() => row.textContent += ch, t); });
+      t += 350;
+    } else {
+      const row = el("div", "out", line.out);
+      later(() => add(row), t);
+      t += 250;
+    }
+  });
+  return [box, t];
+}
+
+function renderDiagram(s) {
+  const W = 170, H = 52, GX = 70, GY = 60, PAD = 10;
+  const cols = Math.max(...s.nodes.map(n => n.col)) + 1, rows = Math.max(...s.nodes.map(n => n.row)) + 1;
+  const vw = cols * W + (cols - 1) * GX + 2 * PAD, vh = rows * H + (rows - 1) * GY + 2 * PAD;
+  const svg = svgEl("svg", {class: "diagram", width: vw, viewBox: `0 0 ${vw} ${vh}`});
+  const defs = svgEl("defs", {}), mk = svgEl("marker", {id: "arr", viewBox: "0 0 10 10", refX: 9, refY: 5,
+    markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse"});
+  mk.append(svgEl("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(mk); svg.append(defs);
+  const pos = {};
+  s.nodes.forEach(n => pos[n.id] = {x: PAD + n.col * (W + GX), y: PAD + n.row * (H + GY)});
+  let t = 0;
+  s.nodes.forEach(n => {
+    const g = svgEl("g", {class: "node" + (n.hl ? " hl" : ""), style: `animation-delay:${t}ms;transform-origin:${pos[n.id].x + W / 2}px ${pos[n.id].y + H / 2}px`});
+    if (n.tip) g.dataset.tip = n.tip;
+    g.append(svgEl("rect", {x: pos[n.id].x, y: pos[n.id].y, width: W, height: H, rx: 10}));
+    const tx = svgEl("text", {x: pos[n.id].x + W / 2, y: pos[n.id].y + H / 2 + 5, "text-anchor": "middle"});
+    tx.textContent = n.label; g.append(tx); svg.append(g);
+    t += 250;
+  });
+  (s.edges || []).forEach(e => {
+    const a = pos[e.from], b = pos[e.to];
+    const ac = {x: a.x + W / 2, y: a.y + H / 2}, bc = {x: b.x + W / 2, y: b.y + H / 2};
+    // clip the line to the box edges so the arrowhead touches the border
+    const clip = (c, o) => {
+      const dx = o.x - c.x, dy = o.y - c.y;
+      const k = Math.min(dx ? (W / 2) / Math.abs(dx) : Infinity, dy ? (H / 2) / Math.abs(dy) : Infinity);
+      return {x: c.x + dx * k, y: c.y + dy * k};
+    };
+    const p = clip(ac, bc), q = clip(bc, ac);
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    const line = svgEl("path", {class: "edge draw" + (e.hl ? " hl" : ""), d: `M${p.x},${p.y} L${q.x},${q.y}`,
+      "marker-end": "url(#arr)", style: `stroke-dasharray:${len};stroke-dashoffset:${len};animation-delay:${t}ms`});
+    svg.insertBefore(line, svg.querySelector(".node"));
+    if (e.label) {
+      const lb = svgEl("text", {class: "elabel", x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - 7,
+        "text-anchor": "middle", style: `animation-delay:${t + 400}ms`});
+      lb.textContent = e.label; svg.append(lb);
+    }
+    t += 500;
+  });
+  return [svg, t + 400];
+}
+
+function renderSplit(s) {
+  const box = el("div", "split");
+  let t = 0;
+  s.panes.forEach(p => { const [node, ms] = RENDER[p.kind](p); box.append(node); t = Math.max(t, ms); });
+  return [box, t];
+}
+
+
+const BR = (n, d = 2) => n.toLocaleString("pt-BR", {minimumFractionDigits: d, maximumFractionDigits: d});
+function slider(label, min, max, step, value, fmt, on) {
+  const l = el("label"), name = el("span", null, label), v = el("b"), r = el("input");
+  Object.assign(r, {type: "range", min, max, step, value});
+  const upd = () => { v.textContent = fmt(+r.value); on(+r.value); };
+  r.oninput = upd; l.append(name, v, r); l.upd = upd; l.input = r;
+  return l;
+}
+function rect(svg, cls, x, y, w, h) { const r = svgEl("rect", {class: cls, x, y, width: w, height: Math.max(0, h), rx: 6}); svg.append(r); return r; }
+function text(svg, x, y, t, cls, anchor = "middle") { const e = svgEl("text", {x, y, "text-anchor": anchor}); if (cls) e.setAttribute("class", cls); e.textContent = t; svg.append(e); return e; }
+const setR = (r, y, h) => { r.setAttribute("y", y); r.setAttribute("height", Math.max(0, h)); };
+
+const WIDGETS = {
+  balanco(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260, K = 230 / 30;
+    const ra = rect(svg, "f-asset", 50, 0, 140, 0), rd = rect(svg, "f-debt", 250, 0, 140, 0), rp = rect(svg, "f-pl", 250, 0, 140, 0);
+    const ta = text(svg, 120, 0, ""), td = text(svg, 320, 0, ""), tp = text(svg, 320, 0, "");
+    text(svg, 120, B + 24, "o que tem", "mut"); text(svg, 320, B + 24, "o que deve + o que sobra", "mut");
+    const out = el("div", "out");
+    let A = 20, D = 12, N = 1;
+    const draw = () => {
+      D = Math.min(D, A);
+      setR(ra, B - A * K, A * K); setR(rd, B - D * K, D * K); setR(rp, B - A * K, (A - D) * K);
+      ta.setAttribute("y", B - A * K / 2 + 5); ta.textContent = `Ativos ${BR(A, 0)} bi`;
+      td.setAttribute("y", B - D * K / 2 + 5); td.textContent = D > 1.5 ? `Passivos ${BR(D, 0)} bi` : "";
+      tp.setAttribute("y", B - D * K - (A - D) * K / 2 + 5); tp.textContent = A - D > 1.5 ? `PL ${BR(A - D, 0)} bi` : "";
+      const vpa = (A - D) / N;
+      out.innerHTML = `PL  = ${BR(A, 0)} − ${BR(D, 0)} = R$ ${BR(A - D, 0)} bi<br>VPA = ${BR(A - D, 0)} bi ÷ ${BR(N, 1)} bi ações<br>VPA = <span class="k">R$ ${BR(vpa)}</span> por ação`;
+    };
+    const sd = slider("Passivos (dívidas, fornecedores...)", 0, 30, 1, D, v => `R$ ${v} bi`, v => { D = v; draw(); });
+    const sa = slider("Ativos (fábricas, caixa, estoque...)", 5, 30, 1, A, v => `R$ ${v} bi`, v => {
+      A = v; sd.input.max = v; if (D > v) { D = v; sd.input.value = v; sd.upd(); } draw(); });
+    const sn = slider("Nº de ações", 0.5, 4, 0.5, N, v => `${BR(v, 1)} bi`, v => { N = v; draw(); });
+    const ctl = el("div", "ctl"); ctl.append(sa, sd, sn, out);
+    box.append(svg, ctl); sa.upd(); sd.upd(); sn.upd();
+  },
+  preco(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260, K = 230 / 30, V = 10;
+    const gap = rect(svg, "f-gap-add", 250, 0, 140, 0);
+    rect(svg, "f-pl", 50, B - V * K, 140, V * K);
+    const rp = rect(svg, "f-price", 270, 0, 100, 0);
+    const ref = svgEl("line", {class: "ref", x1: 30, x2: 410, y1: B - V * K, y2: B - V * K}); svg.append(ref);
+    text(svg, 120, B - V * K / 2 + 5, "VPA R$ 10,00");
+    const tp = text(svg, 320, 0, "", "big"), tg = text(svg, 320, 0, "", "mut");
+    text(svg, 120, B + 24, "o balanço diz", "mut"); text(svg, 320, B + 24, "a bolsa cobra", "mut");
+    const out = el("div", "out");
+    const s = slider("Preço da ação na bolsa", 2, 30, 0.5, 15, v => `R$ ${BR(v)}`, P => {
+      setR(rp, B - P * K, P * K);
+      const lo = Math.min(P, V), hi = Math.max(P, V);
+      gap.setAttribute("class", P < V ? "f-gap-add" : "f-gap-del"); setR(gap, B - hi * K, (hi - lo) * K);
+      tp.setAttribute("y", B - P * K - 10); tp.textContent = `R$ ${BR(P)}`;
+      tg.setAttribute("y", B - hi * K + (hi - lo) * K / 2 + 4);
+      tg.textContent = P === V ? "" : P < V ? `desconto R$ ${BR(V - P)}` : (hi - lo > 2 ? `ágio R$ ${BR(P - V)}` : "");
+      const r = P / V, pct = Math.round(Math.abs(r - 1) * 100);
+      const verdict = r < 1 ? `<span class="good">desconto de ${pct}%</span>` : r > 1 ? `<span class="bad">ágio de ${pct}%</span>` : "exatamente o VP";
+      out.innerHTML = `P/VP = ${BR(P)} ÷ 10,00<br>P/VP = <span class="k">${BR(r)}</span><br>R$ ${BR(r)} por cada R$ 1 de patrimônio<br>${verdict}`;
+    });
+    const ctl = el("div", "ctl"); ctl.append(s, out); box.append(svg, ctl); s.upd();
+  },
+  roe(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260, V = 10;
+    let roe = 20, pl = 8;
+    const out = el("div", "out");
+    const rv = rect(svg, "f-pl", 30, 0, 110, 0), rl = rect(svg, "f-add f-pl", 165, 0, 110, 0), rp = rect(svg, "f-price", 300, 0, 110, 0);
+    const tv = text(svg, 85, 0, "", ""), tl = text(svg, 220, 0, ""), tp = text(svg, 355, 0, "", "big");
+    text(svg, 85, B + 24, "VPA", "mut"); text(svg, 220, B + 24, "lucro/ano (LPA)", "mut"); text(svg, 355, B + 24, "preço", "mut");
+    const draw = () => {
+      const lpa = V * roe / 100, P = pl * lpa, K = 230 / Math.max(30, P);
+      setR(rv, B - V * K, V * K); setR(rl, B - lpa * K, lpa * K); setR(rp, B - P * K, P * K);
+      tv.setAttribute("y", B - V * K - 8); tv.textContent = "R$ 10,00";
+      tl.setAttribute("y", B - lpa * K - 8); tl.textContent = `R$ ${BR(lpa)}`;
+      tp.setAttribute("y", B - P * K - 8); tp.textContent = `R$ ${BR(P)}`;
+      out.innerHTML = `LPA  = ${roe}% × R$ 10 = R$ ${BR(lpa)}<br>Preço = ${pl} × R$ ${BR(lpa)} = R$ ${BR(P)}<br>P/VP = ${pl} × ${BR(roe / 100)} = <span class="k">${BR(pl * roe / 100)}</span>`;
+    };
+    const sr = slider("ROE (lucro ÷ patrimônio)", 2, 30, 1, roe, v => `${v}%`, v => { roe = v; draw(); });
+    const sp = slider("P/L (anos de lucro que o preço paga)", 3, 25, 1, pl, v => `${v}`, v => { pl = v; draw(); });
+    const ctl = el("div", "ctl"); ctl.append(sr, sp, out); box.append(svg, ctl); sr.upd(); sp.upd();
+  },
+  armadilha(box) {
+    const VPA = [10, 8, 6, 4], P = [6, 5, 4, 3], B = 260, K = 23;
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"});
+    const bars = VPA.map((v, k) => {
+      const x = 20 + k * 105;
+      const a = rect(svg, "f-pl", x, B - v * K, 42, v * K), b = rect(svg, "f-price", x + 46, B - P[k] * K, 42, P[k] * K);
+      const t = text(svg, x + 44, B + 22, `ano ${k}`, "mut");
+      const g = [a, b, t, text(svg, x + 21, B - v * K - 6, BR(v, 0), "mut"), text(svg, x + 67, B - P[k] * K - 6, BR(P[k], 0), "mut")];
+      return g;
+    });
+    text(svg, 20, 18, "■ verde: VPA   ■ azul: preço", "mut", "start");
+    const out = el("div", "out"), prev = el("button", null, "← ano anterior"), fwd = el("button", null, "próximo ano →");
+    let y = 0;
+    const draw = () => {
+      bars.forEach((g, k) => g.forEach(e => e.style.opacity = k <= y ? 1 : 0.08));
+      const loss = Math.round((1 - P[y] / P[0]) * 100);
+      out.innerHTML = `Ano ${y}: VPA R$ ${BR(VPA[y])}, preço R$ ${BR(P[y])}<br>P/VP = <span class="k">${BR(P[y] / VPA[y])}</span> (\"barato\")<br>` +
+        (y ? `<span class="bad">quem comprou no ano 0 perdeu ${loss}%</span>` : "parece uma pechincha: 40% de desconto");
+      prev.disabled = y === 0; fwd.disabled = y === 3;
+    };
+    prev.onclick = () => { y--; draw(); }; fwd.onclick = () => { y++; draw(); };
+    const btns = el("div", "btns"); btns.append(prev, fwd);
+    const ctl = el("div", "ctl"); ctl.append(btns, out); box.append(svg, ctl); draw();
+  },
+  emissao(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260, K = 230 / 125;
+    rect(svg, "f-pl", 50, B - 100 * K, 140, 100 * K);
+    text(svg, 120, B - 100 * K / 2 + 5, "VP R$ 100,00");
+    const ra = rect(svg, "f-pl", 250, 0, 140, 0), ta = text(svg, 320, 0, "", "big");
+    const ref = svgEl("line", {class: "ref", x1: 30, x2: 410, y1: B - 100 * K, y2: B - 100 * K}); svg.append(ref);
+    text(svg, 120, B + 24, "VP antes", "mut"); text(svg, 320, B + 24, "VP depois da emissão", "mut");
+    const out = el("div", "out");
+    const s = slider("Preço da emissão por cota", 80, 120, 1, 90, v => `R$ ${v}`, E => {
+      const vp = (1000 + 2 * E) / 12, d = (vp / 100 - 1) * 100;
+      ra.setAttribute("class", E < 100 ? "f-gap-del" : E > 100 ? "f-pl" : "f-pl");
+      setR(ra, B - vp * K, vp * K); ta.setAttribute("y", B - vp * K - 8); ta.textContent = `R$ ${BR(vp)}`;
+      const tag = E < 100 ? `<span class="bad">cotista antigo perde ${BR(-d, 1)}%</span>` : E > 100 ? `<span class="good">cotista antigo ganha ${BR(d, 1)}%</span>` : "ninguém ganha nem perde";
+      out.innerHTML = `PL   = R$ 1.000 mi + 2 mi × R$ ${E}<br>     = R$ ${BR(1000 + 2 * E, 0)} mi<br>VP   = ${BR(1000 + 2 * E, 0)} ÷ 12 mi cotas = <span class="k">R$ ${BR(vp)}</span><br>${tag}`;
+    });
+    const ctl = el("div", "ctl"); ctl.append(s, out); box.append(svg, ctl); s.upd();
+  }
+};
+function renderWidget(s) { const box = el("div", "wg"); WIDGETS[s.name](box); return [box, 0]; }
+const RENDER = {code: renderCode, diff: renderDiff, terminal: renderTerminal, diagram: renderDiagram, split: renderSplit, widget: renderWidget};
+
+function show(n) {
+  clearPending(); clearTimeout(timer);
+  i = Math.max(0, Math.min(LESSON.steps.length - 1, n));
+  const s = LESSON.steps[i], stage = $("stage"), box = el("div", "step");
+  box.append(el("div", "num", `PASSO ${i + 1} DE ${LESSON.steps.length}`), el("h2", null, s.title), prose("say", s.say));
+  let anim = 0;
+  if (s.show && RENDER[s.show.kind]) { const [node, ms] = RENDER[s.show.kind](s.show); box.append(node); anim = ms; }
+  if (s.note) box.append(prose("note", s.note));
+  stage.replaceChildren(box);
+  fitObserver.disconnect(); fitObserver.observe(box);
+  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
+  $("count").textContent = `${i + 1} / ${LESSON.steps.length}`;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === LESSON.steps.length - 1;
+  if (playing) schedule(anim + 2500 + 45 * (s.say || "").length);
+}
+
+function schedule(ms) {
+  const bar = $("bar");
+  bar.classList.remove("run"); bar.style.width = "0"; void bar.offsetWidth;
+  bar.classList.add("run"); bar.style.transitionDuration = ms + "ms"; bar.style.width = "100%";
+  timer = setTimeout(() => i < LESSON.steps.length - 1 ? show(i + 1) : setPlaying(false), ms);
+}
+
+function setPlaying(on) {
+  playing = on;
+  $("play").textContent = on ? "❚❚ Pausar" : "▶ Tocar";
+  clearTimeout(timer);
+  const bar = $("bar"); bar.classList.remove("run"); bar.style.width = "0";
+  if (on) show(i === LESSON.steps.length - 1 ? 0 : i);
+}
+
+// Last-resort guard: shrink a step that overflows the stage and mark it with
+// data-fit, which fit-check.py reports as "split this step".
+function fit() {
+  const stage = $("stage"), box = stage.firstElementChild;
+  if (!box) return;
+  const cs = getComputedStyle(stage);
+  const h = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const k = Math.min(1, h / box.scrollHeight, w / box.scrollWidth);
+  box.style.scale = k < 1 ? k : "";
+  if (k < 1) box.dataset.fit = k.toFixed(3); else delete box.dataset.fit;
+}
+const fitObserver = new ResizeObserver(fit);
+addEventListener("resize", fit);
+
+document.addEventListener("mouseover", e => {
+  const t = e.target.closest("[data-tip]"), tip = $("tip");
+  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
+  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+});
+
+document.title = LESSON.title;
+$("title").textContent = LESSON.title;
+$("subtitle").textContent = LESSON.subtitle || "";
+LESSON.steps.forEach((s, k) => {
+  const d = el("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d);
+});
+$("prev").onclick = () => show(i - 1);
+$("next").onclick = () => show(i + 1);
+$("play").onclick = () => setPlaying(!playing);
+document.addEventListener("keydown", e => {
+  if (e.target.matches && e.target.matches("input")) return;
+  if (e.key === "ArrowRight") show(i + 1);
+  else if (e.key === "ArrowLeft") show(i - 1);
+  else if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+});
+show(0);
+</script>
+</body>
+</html>
