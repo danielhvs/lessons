@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROE</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+  }
+}
+* { box-sizing: border-box; }
+/* One viewport, no scroll: header, stage and nav share 100% of the height.
+   A step that does not fit is split in two; fit() below is only a guard. */
+html, body { height: 100%; overflow: hidden; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  font: clamp(15px, 1.1vmin + 7px, 18px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 1600px;
+  margin: 0 auto; padding: clamp(10px, 2vh, 20px) clamp(16px, 3vw, 48px); }
+header h1 { font-size: 1.4rem; margin: 0 0 2px; }
+header p { margin: 0; color: var(--muted); }
+.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
+.dot {
+  width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
+  background: var(--line); cursor: pointer; transition: background .3s;
+}
+.dot.done { background: var(--accent-soft); }
+.dot.on { background: var(--accent); }
+.stage {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: clamp(14px, 2.4vh, 24px); flex: 1; min-height: 0; overflow: hidden;
+}
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+.step { animation: enter .45s ease both; transform-origin: top left; }
+@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
+.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
+.say { margin: 0 0 clamp(10px, 1.8vh, 18px); max-width: 75ch; }
+.say code, .note code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 75ch; }
+.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
+#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 14px/1.45 system-ui, sans-serif; pointer-events: none; }
+/* long lines wrap instead of scrolling sideways */
+pre {
+  margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 0;
+  font: clamp(12.5px, .9vmin + 6px, 15px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+.ln { display: block; padding: 0 16px 0 calc(16px + 2em); text-indent: -2em; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.55em;
+  border-left: 3px solid transparent; transition: background .4s, border-color .4s; }
+.ln.hl { background: var(--accent-soft); border-left-color: var(--accent); animation: pulse 1.6s ease .5s 2; }
+@keyframes pulse { 50% { background: transparent; } }
+.ln.add { background: var(--add-bg); border-left-color: var(--add); animation: grow .5s ease both; }
+.ln[data-tip] { cursor: help; text-decoration: underline dotted var(--muted); }
+.ln.del { background: var(--del-bg); border-left-color: var(--del); text-decoration: line-through; color: var(--del); }
+.ln.gone { animation: shrink .5s ease forwards; }
+@keyframes grow { from { opacity: 0; transform: translateX(-10px); max-height: 0; } to { max-height: 12em; } }
+@keyframes shrink { to { opacity: 0; max-height: 0; min-height: 0; } }
+.diff-label { font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+.term {
+  background: var(--term-bg); color: var(--term-ink); border-radius: 10px; padding: 14px 16px;
+  font: clamp(12.5px, .9vmin + 6px, 15px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; animation: enter .3s ease both; }
+.caret { display: inline-block; width: 8px; height: 1.1em; background: var(--term-ink);
+  vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+svg.diagram { max-width: 100%; height: auto; display: block; }
+svg .node rect { fill: var(--code-bg); stroke: var(--line); stroke-width: 1.5; }
+svg .node.hl rect { fill: var(--accent-soft); stroke: var(--accent); }
+svg .node text { fill: var(--ink); font: 14px system-ui, sans-serif; }
+svg .node { opacity: 0; animation: pop .4s ease forwards; }
+@keyframes pop { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+svg .edge { stroke: var(--muted); stroke-width: 1.8; fill: none; }
+svg .edge.hl { stroke: var(--accent); }
+svg .edge.draw { animation: draw .6s ease forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+svg .elabel { fill: var(--muted); font: 12px system-ui, sans-serif; opacity: 0; animation: pop .3s ease forwards; }
+svg marker path { fill: var(--muted); }
+nav {
+  position: relative; flex: none; background: var(--panel);
+  border-top: 1px solid var(--line); padding: clamp(8px, 1.4vh, 12px) 16px;
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+}
+nav button {
+  font: inherit; font-size: .95rem; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button:disabled { opacity: .4; cursor: default; }
+nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
+.bar { height: 3px; background: var(--accent); width: 0; position: absolute; left: 0; top: -2px; }
+.bar.run { transition: width linear; }
+
+.top-link { float: right; font-size: .9rem; color: var(--accent); }
+.wg { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 24px; align-items: center; }
+.wsvg { width: 100%; height: auto; max-height: 36vh; display: block; }
+.wsvg text { fill: var(--ink); font: 14px system-ui, sans-serif; }
+.wsvg .mut { fill: var(--muted); font-size: 12px; }
+.wsvg .big { font-size: 18px; font-weight: 600; }
+.wsvg rect, .wsvg line { transition: all .35s ease; }
+.f-asset { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.f-debt { fill: var(--del-bg); stroke: var(--del); stroke-width: 1.5; }
+.f-pl { fill: var(--add-bg); stroke: var(--add); stroke-width: 1.5; }
+.f-price { fill: var(--accent); }
+.f-gap-add { fill: var(--add-bg); stroke: var(--add); stroke-dasharray: 4 3; }
+.f-gap-del { fill: var(--del-bg); stroke: var(--del); stroke-dasharray: 4 3; }
+.ref { stroke: var(--muted); stroke-dasharray: 5 4; stroke-width: 1.5; }
+.ctl { display: flex; flex-direction: column; gap: 8px; }
+.ctl label { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: .95rem; }
+.ctl label b { font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
+.out { background: var(--code-bg); border-radius: 10px; padding: 10px 14px; font: clamp(13px, .9vmin + 6px, 15px)/1.6 ui-monospace, Menlo, monospace; }
+.out .k { font-size: 1.35em; font-weight: 700; color: var(--accent); }
+.out .good { color: var(--add); } .out .bad { color: var(--del); }
+.ctl .btns { display: flex; gap: 8px; }
+.ctl button { font: inherit; font-size: .95rem; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.ctl button.on { border-color: var(--accent); background: var(--accent-soft); }
+.ctl button:disabled { opacity: .4; cursor: default; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header><a class="top-link" href="creative.html">versão criativa: a máquina de lucro →</a><h1 id="title"></h1><p id="subtitle"></p></header>
+  <div class="dots" id="dots"></div>
+  <section class="stage" id="stage" aria-live="polite"></section>
+</main>
+<nav>
+  <div class="bar" id="bar"></div>
+  <button id="prev">← Anterior</button>
+  <button id="play" class="primary">▶ Tocar</button>
+  <button id="next">Próximo →</button>
+  <span class="count" id="count"></span>
+</nav>
+<div id="tip" hidden></div>
+
+<!-- Only this block changes per lesson. Escape "</" as "<\/" inside strings. -->
+<script id="lesson" type="application/json">
+{
+  "title": "ROE: retorno sobre o patrimônio",
+  "subtitle": "Quanto lucro a empresa tira de cada R$ 1 que é dos sócios",
+  "steps": [
+    {"title": "A conta: lucro ÷ patrimônio",
+     "say": "O [[patrimônio líquido (PL)|Ativos menos passivos: o dinheiro que é dos sócios dentro da empresa. Sai do balanço.]] é o dinheiro dos sócios dentro da empresa. O [[lucro líquido|O que sobra no ano depois de custos, despesas, juros e impostos. Sai da DRE (demonstração de resultado).]] é o que ele rendeu no ano. `ROE = lucro líquido ÷ PL`. Mexa nos dois.",
+     "show": {"kind": "widget", "name": "conta"},
+     "note": "ROE = [[Return on Equity|Em português: retorno sobre o patrimônio líquido. Nos sites aparece como ROE mesmo.]]. Sites diferentes usam lucro dos últimos 12 meses e PL do fim do período ou a média do PL no período, então o número varia um pouco de site para site."},
+    {"title": "O lucro que fica vira patrimônio",
+     "say": "O lucro que a empresa não paga como dividendo fica dentro dela e soma ao PL. No ano seguinte o mesmo ROE trabalha sobre um PL maior: bola de neve. O ritmo é `g = ROE × (1 − payout)`. Mexa no ROE e no [[payout|Fatia do lucro paga aos acionistas (dividendos + JCP). Payout 40% = paga R$ 40 de cada R$ 100 de lucro e reinveste R$ 60.]].",
+     "show": {"kind": "widget", "name": "bola"},
+     "note": "Supõe ROE constante e nenhuma ação nova emitida. Na vida real o ROE costuma cair quando a empresa cresce e acha menos projetos tão bons."},
+    {"title": "De onde vem o ROE: as três alavancas",
+     "say": "A [[análise DuPont|Nasceu dentro da empresa DuPont, no começo do século 20. Quebra o ROE em três números que mostram como a empresa ganha dinheiro.]] quebra o ROE em três partes. É uma identidade exata: receita e ativo se cancelam. `ROE = margem × giro × alavancagem`.",
+     "show": {"kind": "widget", "name": "dupont"},
+     "note": "Mesmo ROE, histórias diferentes: [[varejo|Margem baixa, giro alto: vende muito com pouco ativo e ganha pouco em cada venda.]], [[software|Margem alta: cada venda extra custa quase nada.]], [[banco|Alavancagem alta: empresta muito mais dinheiro do que o patrimônio dos sócios.]]."},
+    {"title": "Alavancagem: o ROE alto que veio da dívida",
+     "say": "Duas empresas com o mesmo ativo de R$ 100 e o mesmo lucro sobre o ativo ([[ROA|Return on Assets: lucro líquido ÷ ativo total. Mede o lucro sobre tudo que a empresa tem, venha o dinheiro dos sócios ou de dívida.]]). A da direita só tem R$ 25 de PL: o resto é dívida. Arraste o ROA para baixo.",
+     "show": {"kind": "widget", "name": "alavanca"},
+     "note": "Simplificado: o mesmo ROA nas duas. Na vida real a endividada paga mais juros, o que deixa o lucro dela ainda menor no cenário ruim."},
+    {"title": "Quando o ROE mente",
+     "say": "O ROE é uma divisão: se o de cima ou o de baixo estiver estranho, o resultado engana. Clique em cada caso.",
+     "show": {"kind": "widget", "name": "armadilhas"}},
+    {"title": "O ROE da empresa não é o seu retorno",
+     "say": "Você não compra o PL pelo valor do balanço: compra pelo preço da bolsa. Pagando P/VP 3, R$ 100 compram só R$ 33 de patrimônio. O lucro que cabe a você por real investido é `lucro ÷ preço = ROE ÷ P/VP`.",
+     "show": {"kind": "widget", "name": "retorno"},
+     "note": "Lucro ÷ preço é o inverso do P/L. Não é dinheiro no bolso: parte vira dividendo, parte fica na empresa e o lucro futuro pode subir ou cair."},
+    {"title": "Cola: ROE em uma tela",
+     "say": "Tudo junto. Passe o mouse nas linhas para o detalhe.",
+     "show": {"kind": "code", "code": "ROE = lucro líquido ÷ patrimônio líquido\nROE = margem × giro × alavancagem\nCrescimento sem emitir ações = ROE × (1 − payout)\nSeu retorno sobre o preço = ROE ÷ P/VP\nOlhe 5 a 10 anos de ROE, não um só\nROE alto + dívida alta → olhe a dívida\nROE subiu de repente → lucro não recorrente?\nPL pequeno ou negativo → ROE não serve\nCompare dentro do mesmo setor\nROE abaixo da renda fixa por anos → por quê?",
+       "highlight": [1, 4],
+       "tips": {"1": "Os dois números estão no balanço (PL) e na DRE (lucro). Sites como Status Invest, Fundamentus e Investidor10 já mostram o ROE calculado.",
+                "2": "Margem = lucro ÷ receita. Giro = receita ÷ ativo. Alavancagem = ativo ÷ PL. Multiplique e sobra lucro ÷ PL.",
+                "3": "Só vale com ROE estável e sem emissão de ações. Recompra de ações também mexe no PL.",
+                "4": "Mesma conta do P/VP: P/VP = P/L × ROE, então 1 ÷ P/L = ROE ÷ P/VP.",
+                "5": "Um ano bom ou ruim isolado diz pouco. ROE alto e estável por muitos anos é o sinal forte.",
+                "6": "Veja dívida líquida ÷ EBITDA ou ativo ÷ PL. Em banco, alavancagem alta é o normal do negócio.",
+                "7": "Venda de imóvel, de uma subsidiária, ganho em processo, crédito tributário. Procure \"lucro recorrente\" ou \"ajustado\" no release de resultados.",
+                "8": "Prejuízos acumulados ou recompras grandes encolhem o PL e inflam o ROE. PL negativo dá ROE sem sentido.",
+                "9": "Banco, varejo, energia e software têm ROE típico muito diferente. Compare com os concorrentes.",
+                "10": "Se por anos a empresa rende menos que a renda fixa sem risco, o dinheiro dos sócios estaria melhor fora dela."}}}
+  ]
+}
+</script>
+
+<script>
+const LESSON = JSON.parse(document.getElementById("lesson").textContent);
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+const svgEl = (tag, attrs) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+// `inline code` and [[word|hover detail]] in prose, everything else as text
+const prose = (cls, s) => {
+  const p = el("p", cls);
+  String(s).split(/(`[^`]+`|\[\[[^\]]+\]\])/).forEach(part => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) p.append(el("code", null, part.slice(1, -1)));
+    else if (part.startsWith("[[") && part.endsWith("]]")) {
+      const [word, tip] = part.slice(2, -2).split("|");
+      const t = el("span", "tip", word); t.dataset.tip = tip || ""; p.append(t);
+    } else p.append(part);
+  });
+  return p;
+};
+
+let i = 0, playing = false, timer = null, pending = [];
+const later = (fn, ms) => pending.push(setTimeout(fn, ms));
+const clearPending = () => { pending.forEach(clearTimeout); pending = []; };
+
+function renderCode(s) {
+  const pre = el("pre");
+  const hl = new Set(s.highlight || []);
+  s.code.split("\n").forEach((t, n) => {
+    const ln = el("span", "ln" + (hl.has(n + 1) ? " hl" : ""), t);
+    if (s.tips && s.tips[n + 1]) ln.dataset.tip = s.tips[n + 1];
+    pre.append(ln);
+  });
+  return [pre, 0];
+}
+
+// LCS line diff -> [{op: "same"|"del"|"add", t}]
+function diffLines(a, b) {
+  const m = a.length, n = b.length, L = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+  for (let x = m - 1; x >= 0; x--) for (let y = n - 1; y >= 0; y--)
+    L[x][y] = a[x] === b[y] ? L[x + 1][y + 1] + 1 : Math.max(L[x + 1][y], L[x][y + 1]);
+  const out = []; let x = 0, y = 0;
+  while (x < m && y < n) {
+    if (a[x] === b[y]) { out.push({op: "same", t: a[x]}); x++; y++; }
+    else if (L[x + 1][y] >= L[x][y + 1]) out.push({op: "del", t: a[x++]});
+    else out.push({op: "add", t: b[y++]});
+  }
+  while (x < m) out.push({op: "del", t: a[x++]});
+  while (y < n) out.push({op: "add", t: b[y++]});
+  return out;
+}
+
+function renderDiff(s) {
+  const wrap = el("div"), label = el("div", "diff-label", "before"), pre = el("pre");
+  wrap.append(label, pre);
+  const ops = diffLines(s.before.split("\n"), s.after.split("\n"));
+  const spans = ops.map(o => {
+    const sp = el("span", "ln", o.t);
+    if (o.op === "add") sp.style.display = "none";
+    pre.append(sp);
+    return sp;
+  });
+  later(() => {
+    label.textContent = "before → after";
+    ops.forEach((o, k) => { if (o.op === "del") spans[k].classList.add("del"); });
+  }, 900);
+  later(() => {
+    label.textContent = "after";
+    ops.forEach((o, k) => {
+      if (o.op === "del") spans[k].classList.add("gone");
+      if (o.op === "add") { spans[k].style.display = ""; spans[k].classList.add("add"); }
+    });
+  }, 2100);
+  return [wrap, 2600];
+}
+
+// keeps the last `max` rows (default 12), like a real terminal, so it never grows past the stage
+function renderTerminal(s) {
+  const box = el("div", "term"), caret = el("span", "caret"), max = s.max || 12;
+  box.append(caret);
+  const add = row => { box.insertBefore(row, caret); while (box.children.length > max + 1) box.firstChild.remove(); };
+  let t = 400;
+  s.lines.forEach(line => {
+    if (line.cmd != null) {
+      const row = el("div", "cmd");
+      later(() => add(row), t);
+      [...line.cmd].forEach(ch => { t += 45; later(() => row.textContent += ch, t); });
+      t += 350;
+    } else {
+      const row = el("div", "out", line.out);
+      later(() => add(row), t);
+      t += 250;
+    }
+  });
+  return [box, t];
+}
+
+function renderDiagram(s) {
+  const W = 170, H = 52, GX = 70, GY = 60, PAD = 10;
+  const cols = Math.max(...s.nodes.map(n => n.col)) + 1, rows = Math.max(...s.nodes.map(n => n.row)) + 1;
+  const vw = cols * W + (cols - 1) * GX + 2 * PAD, vh = rows * H + (rows - 1) * GY + 2 * PAD;
+  const svg = svgEl("svg", {class: "diagram", width: vw, viewBox: `0 0 ${vw} ${vh}`});
+  const defs = svgEl("defs", {}), mk = svgEl("marker", {id: "arr", viewBox: "0 0 10 10", refX: 9, refY: 5,
+    markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse"});
+  mk.append(svgEl("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(mk); svg.append(defs);
+  const pos = {};
+  s.nodes.forEach(n => pos[n.id] = {x: PAD + n.col * (W + GX), y: PAD + n.row * (H + GY)});
+  let t = 0;
+  s.nodes.forEach(n => {
+    const g = svgEl("g", {class: "node" + (n.hl ? " hl" : ""), style: `animation-delay:${t}ms;transform-origin:${pos[n.id].x + W / 2}px ${pos[n.id].y + H / 2}px`});
+    if (n.tip) g.dataset.tip = n.tip;
+    g.append(svgEl("rect", {x: pos[n.id].x, y: pos[n.id].y, width: W, height: H, rx: 10}));
+    const tx = svgEl("text", {x: pos[n.id].x + W / 2, y: pos[n.id].y + H / 2 + 5, "text-anchor": "middle"});
+    tx.textContent = n.label; g.append(tx); svg.append(g);
+    t += 250;
+  });
+  (s.edges || []).forEach(e => {
+    const a = pos[e.from], b = pos[e.to];
+    const ac = {x: a.x + W / 2, y: a.y + H / 2}, bc = {x: b.x + W / 2, y: b.y + H / 2};
+    // clip the line to the box edges so the arrowhead touches the border
+    const clip = (c, o) => {
+      const dx = o.x - c.x, dy = o.y - c.y;
+      const k = Math.min(dx ? (W / 2) / Math.abs(dx) : Infinity, dy ? (H / 2) / Math.abs(dy) : Infinity);
+      return {x: c.x + dx * k, y: c.y + dy * k};
+    };
+    const p = clip(ac, bc), q = clip(bc, ac);
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    const line = svgEl("path", {class: "edge draw" + (e.hl ? " hl" : ""), d: `M${p.x},${p.y} L${q.x},${q.y}`,
+      "marker-end": "url(#arr)", style: `stroke-dasharray:${len};stroke-dashoffset:${len};animation-delay:${t}ms`});
+    svg.insertBefore(line, svg.querySelector(".node"));
+    if (e.label) {
+      const lb = svgEl("text", {class: "elabel", x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - 7,
+        "text-anchor": "middle", style: `animation-delay:${t + 400}ms`});
+      lb.textContent = e.label; svg.append(lb);
+    }
+    t += 500;
+  });
+  return [svg, t + 400];
+}
+
+function renderSplit(s) {
+  const box = el("div", "split");
+  let t = 0;
+  s.panes.forEach(p => { const [node, ms] = RENDER[p.kind](p); box.append(node); t = Math.max(t, ms); });
+  return [box, t];
+}
+
+
+const BR = (n, d = 2) => n.toLocaleString("pt-BR", {minimumFractionDigits: d, maximumFractionDigits: d});
+function slider(label, min, max, step, value, fmt, on) {
+  const l = el("label"), name = el("span", null, label), v = el("b"), r = el("input");
+  Object.assign(r, {type: "range", min, max, step, value});
+  const upd = () => { v.textContent = fmt(+r.value); on(+r.value); };
+  r.oninput = upd; l.append(name, v, r); l.upd = upd; l.input = r;
+  return l;
+}
+function rect(svg, cls, x, y, w, h) { const r = svgEl("rect", {class: cls, x, y, width: w, height: Math.max(0, h), rx: 6}); svg.append(r); return r; }
+function text(svg, x, y, t, cls, anchor = "middle") { const e = svgEl("text", {x, y, "text-anchor": anchor}); if (cls) e.setAttribute("class", cls); e.textContent = t; svg.append(e); return e; }
+const setR = (r, y, h) => { r.setAttribute("y", y); r.setAttribute("height", Math.max(0, h)); };
+
+const PCT = (n, d = 1) => BR(n * 100, d) + "%";
+// bar from baseline B (value v, scale K): grows up for v >= 0, down for v < 0
+const setV = (r, B, v, K) => { r.setAttribute("y", v >= 0 ? B - v * K : B); r.setAttribute("height", Math.abs(v) * K); };
+
+const WIDGETS = {
+  conta(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260, K = 230 / 200;
+    const rp = rect(svg, "f-pl", 50, 0, 140, 0), rl = rect(svg, "f-price", 250, 0, 140, 0), rs = rect(svg, "f-gap-add", 250, 0, 140, 0);
+    const tp = text(svg, 120, 0, "", "big"), tl = text(svg, 320, 0, "", "big"), ts = text(svg, 320, 0, "", "mut");
+    text(svg, 120, B + 24, "patrimônio líquido", "mut"); text(svg, 320, B + 24, "lucro do ano", "mut");
+    const out = el("div", "out");
+    let PL = 100, L = 15;
+    const draw = () => {
+      setR(rp, B - PL * K, PL * K); setR(rl, B - L * K, L * K);
+      setR(rs, B - PL * K, (PL - L) * K); rs.style.opacity = L < PL ? 0.6 : 0;
+      tp.setAttribute("y", B - PL * K - 8); tp.textContent = `R$ ${PL} mi`;
+      tl.setAttribute("y", B - L * K - 8); tl.textContent = `R$ ${L} mi`;
+      ts.setAttribute("y", B - PL * K + 18); ts.textContent = L < PL - 20 ? "do tamanho do PL, para comparar" : "";
+      const r = L / PL;
+      out.innerHTML = `ROE = ${L} ÷ ${PL}<br>ROE = <span class="k">${PCT(r)}</span> ao ano<br>cada R$ 100 de PL rendeu R$ ${BR(100 * r)}`;
+    };
+    const sp = slider("Patrimônio líquido (PL)", 20, 200, 5, PL, v => `R$ ${v} mi`, v => { PL = v; draw(); });
+    const sl = slider("Lucro líquido do ano", 0, 60, 1, L, v => `R$ ${v} mi`, v => { L = v; draw(); });
+    const ctl = el("div", "ctl"); ctl.append(sp, sl, out); box.append(svg, ctl); sp.upd(); sl.upd();
+  },
+  bola(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260, N = 10, W = 32, GAP = 7;
+    const bars = [], divs = [], labels = [];
+    for (let t = 0; t <= N; t++) {
+      const x = 12 + t * (W + GAP);
+      bars.push(rect(svg, "f-pl", x, 0, W, 0)); divs.push(rect(svg, "f-gap-add", x, 0, W, 0));
+      if (t % 2 === 0) text(svg, x + W / 2, B + 20, `${t}`, "mut");
+      labels.push(text(svg, x + W / 2, 0, "", "mut"));
+    }
+    text(svg, 220, B + 38, "anos", "mut");
+    text(svg, 12, 18, "■ verde: PL   ┅ tracejado: dividendos pagos até ali", "mut", "start");
+    const out = el("div", "out");
+    let roe = 20, pay = 40;
+    const draw = () => {
+      const g = roe / 100 * (1 - pay / 100), pl = [100], dv = [0];
+      for (let t = 1; t <= N; t++) { const l = pl[t - 1] * roe / 100; pl.push(pl[t - 1] + l * (1 - pay / 100)); dv.push(dv[t - 1] + l * pay / 100); }
+      const K = 200 / Math.max(...pl.map((p, t) => p + dv[t]));
+      pl.forEach((p, t) => {
+        setR(bars[t], B - p * K, p * K); setR(divs[t], B - (p + dv[t]) * K, dv[t] * K);
+        labels[t].setAttribute("y", B - (p + dv[t]) * K - 6); labels[t].textContent = t === 0 || t === N ? BR(p, 0) : "";
+      });
+      out.innerHTML = `g = ${roe}% × (1 − ${pay}%) = <span class="k">${PCT(g)}</span> ao ano<br>PL: R$ 100 → R$ ${BR(pl[N], 0)} em ${N} anos<br>dividendos somados: R$ ${BR(dv[N], 0)}`;
+    };
+    const sr = slider("ROE", 0, 30, 1, roe, v => `${v}%`, v => { roe = v; draw(); });
+    const sp = slider("Payout (fatia paga como dividendo)", 0, 100, 5, pay, v => `${v}%`, v => { pay = v; draw(); });
+    const ctl = el("div", "ctl"); ctl.append(sr, sp, out); box.append(svg, ctl); sr.upd(); sp.upd();
+  },
+  dupont(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 250;
+    const names = ["PL", "Ativo", "Receita", "Lucro"], cls = ["f-pl", "f-asset", "f-asset", "f-price"];
+    const bars = names.map((n, k) => rect(svg, cls[k], 20 + k * 105, 0, 80, 0));
+    const vals = names.map((n, k) => text(svg, 60 + k * 105, 0, "", "big"));
+    names.forEach((n, k) => text(svg, 60 + k * 105, B + 22, n, "mut"));
+    const ops = ["× alav.", "× giro", "× margem"].map((o, k) => text(svg, 112 + k * 105, B + 42, o, "mut"));
+    const out = el("div", "out");
+    let m = 10, gi = 1, al = 2;
+    const draw = () => {
+      const v = [10, 10 * al, 10 * al * gi, 10 * al * gi * m / 100], K = 200 / Math.max(...v);
+      v.forEach((x, k) => { setR(bars[k], B - x * K, x * K); vals[k].setAttribute("y", B - x * K - 8); vals[k].textContent = BR(x, x < 10 ? 1 : 0); });
+      out.innerHTML = `margem  = lucro ÷ receita = ${m}%<br>giro    = receita ÷ ativo = ${BR(gi, 1)}<br>alav.   = ativo ÷ PL      = ${BR(al, 1)}<br>ROE = ${m}% × ${BR(gi, 1)} × ${BR(al, 1)} = <span class="k">${PCT(m / 100 * gi * al)}</span>`;
+    };
+    const sm = slider("Margem líquida", 1, 30, 1, m, v => `${v}%`, v => { m = v; draw(); });
+    const sg = slider("Giro do ativo", 0.2, 3, 0.1, gi, v => BR(v, 1), v => { gi = v; draw(); });
+    const sa = slider("Alavancagem (ativo ÷ PL)", 1, 10, 0.5, al, v => BR(v, 1), v => { al = v; draw(); });
+    const ctl = el("div", "ctl"); ctl.append(sm, sg, sa, out); box.append(svg, ctl); sm.upd(); sg.upd(); sa.upd();
+  },
+  alavanca(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), Z = 200, K = 3.5;
+    // balance sheets: asset 100 split into PL (green) and debt (red)
+    rect(svg, "f-pl", 30, 20, 60, 100); text(svg, 60, 75, "PL 100");
+    rect(svg, "f-pl", 250, 95, 60, 25); rect(svg, "f-debt", 250, 20, 60, 75);
+    text(svg, 280, 62, "dívida"); text(svg, 280, 112, "PL 25");
+    text(svg, 60, 140, "sem dívida", "mut"); text(svg, 280, 140, "4× alavancada", "mut");
+    const zero = svgEl("line", {class: "ref", x1: 100, x2: 420, y1: Z, y2: Z}); svg.append(zero);
+    const ra = rect(svg, "f-price", 110, 0, 90, 0), rb = rect(svg, "f-price", 330, 0, 90, 0);
+    const ta = text(svg, 155, 0, "", "big"), tb = text(svg, 375, 0, "", "big");
+    text(svg, 155, 36, "ROE", "mut"); text(svg, 375, 36, "ROE", "mut");
+    const out = el("div", "out");
+    const s = slider("Lucro sobre o ativo (ROA), igual nas duas", -5, 10, 0.5, 5, v => `${BR(v, 1)}%`, roa => {
+      const a = roa, b = roa * 4;
+      [[ra, ta, a], [rb, tb, b]].forEach(([r, t, v]) => {
+        setV(r, Z, v, K); r.setAttribute("class", v < 0 ? "f-debt" : "f-price");
+        t.setAttribute("y", v >= 0 ? Z - v * K - 8 : Z - v * K + 18); t.textContent = `${BR(v, 1)}%`;
+      });
+      out.innerHTML = `lucro = ${BR(roa, 1)}% × R$ 100 = R$ ${BR(roa, 1)}<br>sem dívida: ${BR(roa, 1)} ÷ 100 = <span class="k">${BR(a, 1)}%</span><br>alavancada: ${BR(roa, 1)} ÷ 25 = <span class="k ${b < 0 ? "bad" : ""}">${BR(b, 1)}%</span><br>` +
+        (roa < 0 ? `<span class="bad">no prejuízo, a dívida multiplica a perda por 4</span>` : `<span class="good">no lucro, a dívida multiplica o ROE por 4</span>`);
+    });
+    const ctl = el("div", "ctl"); ctl.append(s, out); box.append(svg, ctl); s.upd();
+  },
+  armadilhas(box) {
+    const CASES = {
+      normal: {btn: "Normal", pl: 100, rec: 10, one: 0, msg: "Lucro de operação de todo ano sobre um PL saudável. Esse ROE você pode comparar."},
+      unica: {btn: "Lucro de uma vez só", pl: 100, rec: 10, one: 15, msg: "Vendeu um imóvel e lucrou R$ 15 uma vez. O ROE pulou para 25%, mas o <b>recorrente</b> continua 10%. Ano que vem volta."},
+      encolhido: {btn: "PL encolhido", pl: 20, rec: 10, one: 0, msg: "Anos de prejuízo comeram o PL até R$ 20. O mesmo lucro de R$ 10 vira ROE de 50%: não é eficiência, é patrimônio pequeno."},
+      negativo: {btn: "PL negativo", pl: -20, rec: -5, one: 0, msg: "Deve mais do que tem (PL −20) e teve prejuízo (−5). Negativo ÷ negativo dá ROE <b>positivo</b> de 25%. Número sem sentido."}
+    };
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), Z = 200, K = 1.6;
+    const zero = svgEl("line", {class: "ref", x1: 20, x2: 420, y1: Z, y2: Z}); svg.append(zero);
+    const rp = rect(svg, "f-pl", 50, 0, 140, 0), rr = rect(svg, "f-price", 250, 0, 140, 0), ro = rect(svg, "f-gap-add", 250, 0, 140, 0);
+    const tp = text(svg, 120, 0, "", "big"), tr = text(svg, 320, 0, "", "big"), to = text(svg, 320, 0, "", "mut");
+    text(svg, 120, 290, "patrimônio líquido", "mut"); text(svg, 320, 290, "lucro do ano", "mut");
+    const out = el("div", "out"), btns = el("div", "btns");
+    const pick = key => {
+      const c = CASES[key], L = c.rec + c.one;
+      [...btns.children].forEach(b => b.classList.toggle("on", b.dataset.k === key));
+      setV(rp, Z, c.pl, K); rp.setAttribute("class", c.pl < 0 ? "f-debt" : "f-pl");
+      setV(rr, Z, c.rec, K); rr.setAttribute("class", c.rec < 0 ? "f-debt" : "f-price");
+      ro.setAttribute("y", Z - L * K); ro.setAttribute("height", c.one * K);
+      tp.setAttribute("y", c.pl >= 0 ? Z - c.pl * K - 8 : Z - c.pl * K + 20); tp.textContent = `R$ ${c.pl}`;
+      tr.setAttribute("y", L >= 0 ? Z - L * K - 8 : Z - L * K + 20); tr.textContent = `R$ ${L}`;
+      to.setAttribute("y", Z - c.rec * K - c.one * K / 2 + 4); to.textContent = c.one ? "venda do imóvel" : "";
+      out.innerHTML = `ROE = ${L} ÷ ${c.pl} = <span class="k">${BR(L / c.pl * 100, 0)}%</span><br>${c.msg}`;
+    };
+    Object.entries(CASES).forEach(([k, c]) => { const b = el("button", null, c.btn); b.dataset.k = k; b.onclick = () => pick(k); btns.append(b); });
+    btns.style.flexWrap = "wrap";
+    const ctl = el("div", "ctl"); ctl.append(btns, out); box.append(svg, ctl); pick("normal");
+  },
+  retorno(box) {
+    const svg = svgEl("svg", {class: "wsvg", viewBox: "0 0 440 300"}), B = 260;
+    const names = ["você paga", "PL que leva", "lucro dele", "renda fixa"], cls = ["f-price", "f-pl", "f-price", "f-asset"];
+    const bars = names.map((n, k) => rect(svg, cls[k], 20 + k * 105, 0, 80, 0));
+    const vals = names.map((n, k) => text(svg, 60 + k * 105, 0, "", "big"));
+    names.forEach((n, k) => text(svg, 60 + k * 105, B + 24, n, "mut"));
+    const out = el("div", "out");
+    let roe = 30, pvp = 3, rf = 12;
+    const draw = () => {
+      const pl = 100 / pvp, l = pl * roe / 100, v = [100, pl, l, rf], K = 220 / Math.max(...v);
+      v.forEach((x, k) => { setR(bars[k], B - x * K, x * K); vals[k].setAttribute("y", B - x * K - 8); vals[k].textContent = `R$ ${BR(x, x < 100 ? 1 : 0)}`; });
+      const y = roe / pvp;
+      out.innerHTML = `R$ 100 ÷ P/VP ${BR(pvp, 1)} = R$ ${BR(pl, 1)} de PL<br>R$ ${BR(pl, 1)} × ROE ${roe}% = R$ ${BR(l, 1)}/ano<br>lucro ÷ preço = ${roe}% ÷ ${BR(pvp, 1)} = <span class="k">${BR(y, 1)}%</span><br>` +
+        (y >= rf ? `<span class="good">acima da renda fixa de ${rf}%</span>` : `<span class="bad">abaixo da renda fixa de ${rf}%</span>`);
+    };
+    const sr = slider("ROE da empresa", 5, 40, 1, roe, v => `${v}%`, v => { roe = v; draw(); });
+    const sp = slider("P/VP que você paga", 0.5, 6, 0.1, pvp, v => BR(v, 1), v => { pvp = v; draw(); });
+    const sf = slider("Renda fixa sem risco (compare com a Selic de hoje)", 5, 16, 0.5, rf, v => `${BR(v, 1)}%`, v => { rf = v; draw(); });
+    const ctl = el("div", "ctl"); ctl.append(sr, sp, sf, out); box.append(svg, ctl); sr.upd(); sp.upd(); sf.upd();
+  }
+};
+function renderWidget(s) { const box = el("div", "wg"); WIDGETS[s.name](box); return [box, 0]; }
+const RENDER = {code: renderCode, diff: renderDiff, terminal: renderTerminal, diagram: renderDiagram, split: renderSplit, widget: renderWidget};
+
+function show(n) {
+  clearPending(); clearTimeout(timer);
+  i = Math.max(0, Math.min(LESSON.steps.length - 1, n));
+  const s = LESSON.steps[i], stage = $("stage"), box = el("div", "step");
+  box.append(el("div", "num", `PASSO ${i + 1} DE ${LESSON.steps.length}`), el("h2", null, s.title), prose("say", s.say));
+  let anim = 0;
+  if (s.show && RENDER[s.show.kind]) { const [node, ms] = RENDER[s.show.kind](s.show); box.append(node); anim = ms; }
+  if (s.note) box.append(prose("note", s.note));
+  stage.replaceChildren(box);
+  fitObserver.disconnect(); fitObserver.observe(box);
+  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
+  $("count").textContent = `${i + 1} / ${LESSON.steps.length}`;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === LESSON.steps.length - 1;
+  if (playing) schedule(anim + 2500 + 45 * (s.say || "").length);
+}
+
+function schedule(ms) {
+  const bar = $("bar");
+  bar.classList.remove("run"); bar.style.width = "0"; void bar.offsetWidth;
+  bar.classList.add("run"); bar.style.transitionDuration = ms + "ms"; bar.style.width = "100%";
+  timer = setTimeout(() => i < LESSON.steps.length - 1 ? show(i + 1) : setPlaying(false), ms);
+}
+
+function setPlaying(on) {
+  playing = on;
+  $("play").textContent = on ? "❚❚ Pausar" : "▶ Tocar";
+  clearTimeout(timer);
+  const bar = $("bar"); bar.classList.remove("run"); bar.style.width = "0";
+  if (on) show(i === LESSON.steps.length - 1 ? 0 : i);
+}
+
+// Last-resort guard: shrink a step that overflows the stage and mark it with
+// data-fit, which fit-check.py reports as "split this step".
+function fit() {
+  const stage = $("stage"), box = stage.firstElementChild;
+  if (!box) return;
+  const cs = getComputedStyle(stage);
+  const h = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const k = Math.min(1, h / box.scrollHeight, w / box.scrollWidth);
+  box.style.scale = k < 1 ? k : "";
+  if (k < 1) box.dataset.fit = k.toFixed(3); else delete box.dataset.fit;
+}
+const fitObserver = new ResizeObserver(fit);
+addEventListener("resize", fit);
+
+document.addEventListener("mouseover", e => {
+  const t = e.target.closest("[data-tip]"), tip = $("tip");
+  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
+  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+});
+
+document.title = LESSON.title;
+$("title").textContent = LESSON.title;
+$("subtitle").textContent = LESSON.subtitle || "";
+LESSON.steps.forEach((s, k) => {
+  const d = el("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d);
+});
+$("prev").onclick = () => show(i - 1);
+$("next").onclick = () => show(i + 1);
+$("play").onclick = () => setPlaying(!playing);
+document.addEventListener("keydown", e => {
+  if (e.target.matches && e.target.matches("input")) return;
+  if (e.key === "ArrowRight") show(i + 1);
+  else if (e.key === "ArrowLeft") show(i - 1);
+  else if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+});
+show(0);
+</script>
+</body>
+</html>
