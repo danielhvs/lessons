@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A máquina de Bhaskara</title>
+<style>
+:root {
+  --bg: #f4efe4; --panel: #fffdf7; --ink: #2a2620; --muted: #7a7266; --line: #e2dccd;
+  --belt: #b9ae98; --metal: #ece6d8; --metal-ink: #4a443a;
+  --a: #d9534f; --b: #2f6fde; --c: #1f8a4c; --d: #d9822b; --root: #8a4fd0; --bad: #c2382f;
+  --glow: #ffcf4a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17151a; --panel: #211f25; --ink: #ece7dc; --muted: #9c9486; --line: #34313a;
+    --belt: #5a5446; --metal: #2c2a31; --metal-ink: #d8d1c2;
+    --a: #ff7a70; --b: #6ea0ff; --c: #4cc483; --d: #f0a35a; --root: #b88cf0; --bad: #ff7a70;
+    --glow: #ffd970;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  font: clamp(14px, 1vmin + 7px, 17px)/1.45 system-ui, sans-serif; padding: clamp(8px, 1.6vh, 16px) clamp(16px, 2.5vw, 40px); gap: clamp(6px, 1.2vh, 12px); }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 1.35rem; }
+header p { margin: 0; color: var(--muted); }
+a { color: var(--b); }
+.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bar label { font: 600 15px ui-monospace, monospace; display: flex; align-items: center; gap: 6px; }
+.bar input { width: 5.2em; font: 15px ui-monospace, monospace; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.bar button, .bar select { font: inherit; font-size: .95rem; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.bar button.go { background: var(--b); border-color: var(--b); color: #fff; }
+#status { color: var(--muted); }
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(240px, 22vw, 340px); gap: 16px; }
+.scene { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; min-height: 0; display: flex; }
+.scene svg { width: 100%; height: 100%; display: block; }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; min-height: 0; }
+aside h2 { margin: 0 0 4px; font-size: 1.05rem; }
+aside ol { margin: 0; padding-left: 1.3em; display: grid; gap: clamp(4px, 1vh, 10px); }
+aside li.won { color: var(--c); }
+aside li.won::marker { content: "✓ "; }
+.hint { color: var(--b); border-bottom: 1px dotted var(--b); cursor: help; font-size: .9em; }
+.score { color: var(--muted); font-size: .9rem; margin: 6px 0 10px; }
+#tip { position: fixed; z-index: 10; max-width: min(40ch, 90vw); padding: 8px 12px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 14px/1.45 system-ui, sans-serif; pointer-events: none; }
+
+svg .belt { stroke: var(--belt); stroke-width: 10; fill: none; stroke-linecap: round; stroke-dasharray: 2 14; }
+svg .pipe { stroke: var(--belt); stroke-width: 10; fill: none; stroke-linecap: round; opacity: .55; }
+svg .pipe.on { stroke: var(--glow); opacity: 1; }
+svg .st rect { fill: var(--metal); stroke: var(--metal-ink); stroke-width: 2; }
+svg .st.on rect { stroke: var(--glow); stroke-width: 4; }
+svg .st .t { fill: var(--muted); font: 600 12px system-ui, sans-serif; letter-spacing: .04em; }
+svg .st .v { fill: var(--metal-ink); font: 700 20px ui-monospace, monospace; }
+svg .st .bolt { fill: var(--metal-ink); }
+svg .gear { fill: none; stroke: var(--muted); stroke-width: 3; stroke-dasharray: 5 4; }
+svg .tok circle { stroke: var(--panel); stroke-width: 2.5; }
+svg .tok text { fill: #fff; font: 700 14px ui-monospace, monospace; }
+svg .in text.lab { fill: var(--ink); font: 700 15px ui-monospace, monospace; }
+svg .hop { fill: var(--metal); stroke: var(--metal-ink); stroke-width: 2; }
+svg .nl { stroke: var(--ink); stroke-width: 2.5; }
+svg .nt { fill: var(--muted); font: 12px ui-monospace, monospace; }
+svg .bin { fill: var(--metal); stroke: var(--bad); stroke-width: 2.5; }
+svg .bintx { fill: var(--bad); font: 700 14px system-ui, sans-serif; }
+svg .msg { font: 700 18px system-ui, sans-serif; }
+svg .cap { fill: var(--muted); font: 13px system-ui, sans-serif; }
+@media (max-width: 760px) { .body { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>A máquina de Bhaskara</h1><p>Coloque a, b e c na máquina. Ela mostra cada pedaço da fórmula e solta as raízes na reta.</p></div>
+  <a href="index.html">← aula passo a passo</a>
+</header>
+<div class="bar">
+  <label>a <input id="a" type="number" step="0.5" value="1"></label>
+  <label>b <input id="b" type="number" step="0.5" value="-5"></label>
+  <label>c <input id="c" type="number" step="0.5" value="6"></label>
+  <button class="go" id="run">▶ Rodar</button>
+  <button id="pause">❚❚ Pausar</button>
+  <select id="speed"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+  <span id="status"></span>
+</div>
+<div class="body">
+  <div class="scene"><svg id="svg" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <aside>
+    <h2>Desafios</h2>
+    <div class="score" id="score"></div>
+    <ol id="goals"></ol>
+  </aside>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const S = (tag, attrs = {}, text) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+};
+const fmt = n => { const r = Math.round(n * 100) / 100 || 0; return String(r).replace(".", ",").replace("-", "−"); };
+const close = (x, y) => Math.abs(x - y) < 1e-9;
+
+// where each part of the machine sits in the 1200x600 scene
+const P = {
+  a: [80, 110], b: [80, 255], c: [80, 400],
+  sq: [270, 170], ac: [270, 380], d: [460, 275], g: [630, 275], bin: [630, 450],
+  r: [790, 200], p: [960, 120], m: [960, 290], d1: [1110, 120], d2: [1110, 290]
+};
+const NL = {y: 540, x0: 170, x1: 1170};
+
+const GOALS = [
+  {text: "Faça a máquina soltar as raízes 1 e 4.", hint: "Raízes r e s: use a = 1, b = −(r + s), c = r·s.", ok: s => s.roots.length === 2 && close(s.lo, 1) && close(s.hi, 4)},
+  {text: "Faça sair uma raiz só, no 3.", hint: "Uma raiz só = Δ = 0. Tente a = 1, b = −6 e descubra o c que zera b² − 4ac.", ok: s => s.delta === 0 && close(s.x1, 3)},
+  {text: "Mande o Δ para o lixo usando b = 2.", hint: "Δ < 0 quando 4ac passa de b² = 4. a = 1 e c = 2 dão 4ac = 8.", ok: s => s.b === 2 && s.delta < 0},
+  {text: "Raízes −2 e 2 com b = 0.", hint: "b = 0: o meio −b/2a fica no zero. Falta c: −2 · 2 = −4.", ok: s => s.b === 0 && s.roots.length === 2 && close(s.lo, -2) && close(s.hi, 2)},
+  {text: "Raízes −1 e 3 com a negativo.", hint: "Multiplique x² − 2x − 3 inteiro por −1 (ou −2): as raízes não mudam.", ok: s => s.a < 0 && s.roots.length === 2 && close(s.lo, -1) && close(s.hi, 3)}
+];
+const won = new Set();
+
+function solve(a, b, c) {
+  const delta = b * b - 4 * a * c, s = {a, b, c, delta, roots: []};
+  if (delta >= 0) {
+    s.r = Math.sqrt(delta); s.x1 = (-b + s.r) / (2 * a); s.x2 = (-b - s.r) / (2 * a);
+    s.roots = delta === 0 ? [s.x1] : [s.x1, s.x2];
+    s.lo = Math.min(...s.roots); s.hi = Math.max(...s.roots);
+  }
+  return s;
+}
+
+let T = 0, playing = false, speed = 1, last = null, film = null;
+
+// one run of the machine = stations that switch on at a time + tokens that travel along keyframes
+function build(sol) {
+  const svg = $("svg"); svg.replaceChildren();
+  const gearDefs = S("defs");
+  svg.append(gearDefs);
+  const pipe = (pts, id) => { const e = S("path", {class: "pipe", d: "M" + pts.map(p => p.join(",")).join(" L"), "data-id": id}); svg.append(e); return e; };
+  const pipes = {
+    a: pipe([P.a, [180, 110], [180, 380], P.ac]), c: pipe([P.c, [180, 400], P.ac]),
+    b: pipe([P.b, [180, 255], [180, 170], P.sq]),
+    sqd: pipe([P.sq, [380, 170], [380, 275], P.d]), acd: pipe([P.ac, [380, 380], [380, 275], P.d]),
+    dg: pipe([P.d, P.g]), up: pipe([P.g, [700, 275], [700, 200], P.r]), down: pipe([P.g, P.bin]),
+    rp: pipe([P.r, [870, 200], [870, 120], P.p]), rm: pipe([P.r, [870, 200], [870, 290], P.m]),
+    p1: pipe([P.p, P.d1]), m2: pipe([P.m, P.d2])
+  };
+  svg.append(S("path", {class: "belt", d: `M${NL.x0 - 20},${NL.y + 30} L${NL.x1 + 10},${NL.y + 30}`}));
+
+  // number line wide enough for the roots
+  const R = Math.max(5, Math.ceil(Math.max(0, ...sol.roots.map(Math.abs))) + 1), step = R > 12 ? 5 : R > 6 ? 2 : 1;
+  const nx = x => NL.x0 + (x + R) / (2 * R) * (NL.x1 - NL.x0);
+  svg.append(S("line", {class: "nl", x1: NL.x0, x2: NL.x1, y1: NL.y, y2: NL.y}));
+  for (let k = -R; k <= R; k += 1) if (k % step === 0) {
+    svg.append(S("line", {class: "nl", x1: nx(k), x2: nx(k), y1: NL.y - 6, y2: NL.y + 6, "stroke-width": 1.5}));
+    svg.append(S("text", {class: "nt", x: nx(k), y: NL.y + 22, "text-anchor": "middle"}, fmt(k)));
+  }
+  svg.append(S("text", {class: "cap", x: NL.x0, y: NL.y - 14}, "reta dos números: as raízes caem aqui"));
+
+  const bin = S("g", {});
+  bin.append(S("path", {class: "bin", d: `M${P.bin[0] - 48},${P.bin[1] - 30} L${P.bin[0] + 48},${P.bin[1] - 30} L${P.bin[0] + 38},${P.bin[1] + 40} L${P.bin[0] - 38},${P.bin[1] + 40} z`}),
+    S("text", {class: "bintx", x: P.bin[0], y: P.bin[1] + 10, "text-anchor": "middle"}, "LIXO"),
+    S("text", {class: "cap", x: P.bin[0] + 58, y: P.bin[1] + 4}, "Δ < 0: sem raiz real"));
+  svg.append(bin);
+
+  const st = (key, title, value, on, w = 150) => {
+    const [x, y] = P[key], g = S("g", {class: "st"});
+    g.append(S("rect", {x: x - w / 2, y: y - 34, width: w, height: 68, rx: 12}),
+      S("circle", {class: "bolt", cx: x - w / 2 + 9, cy: y - 25, r: 2.5}), S("circle", {class: "bolt", cx: x + w / 2 - 9, cy: y - 25, r: 2.5}),
+      S("text", {class: "t", x, y: y - 14, "text-anchor": "middle"}, title));
+    const v = S("text", {class: "v", x, y: y + 20, "text-anchor": "middle"}, "");
+    g.append(v); svg.append(g);
+    return {g, v, value, on};
+  };
+  const halt = sol.delta < 0;
+  const stations = [
+    st("sq", "QUADRADOR  b²", fmt(sol.b * sol.b), 1.3),
+    st("ac", "MULTIPLICADOR  4·a·c", fmt(4 * sol.a * sol.c), 1.3, 170),
+    st("d", "SUBTRATOR  Δ = b² − 4ac", fmt(sol.delta), 3.0, 190),
+    st("g", "PORTEIRO", halt ? "Δ < 0" : sol.delta === 0 ? "Δ = 0" : "Δ > 0", 4.4, 110)
+  ];
+  if (!halt) stations.push(
+    st("r", "RAIZ  √Δ", fmt(sol.r), 5.5),
+    st("p", "−b + √Δ", fmt(-sol.b + sol.r), 6.8), st("m", "−b − √Δ", fmt(-sol.b - sol.r), 6.8),
+    st("d1", "÷ 2a", "x₁ = " + fmt(sol.x1), 8.2, 140), st("d2", "÷ 2a", "x₂ = " + fmt(sol.x2), 8.2, 140));
+
+  // hoppers holding the inputs
+  [["a", sol.a, "--a"], ["b", sol.b, "--b"], ["c", sol.c, "--c"]].forEach(([k, v]) => {
+    const [x, y] = P[k];
+    svg.append(S("path", {class: "hop", d: `M${x - 40},${y - 42} L${x + 40},${y - 42} L${x + 22},${y - 16} L${x - 22},${y - 16} z`}));
+    svg.append(S("text", {class: "cap", x, y: y - 48, "text-anchor": "middle"}, k + " = " + fmt(v)));
+  });
+
+  const tok = (label, color, keys, r = 22) => {
+    const g = S("g", {class: "tok"});
+    g.append(S("circle", {r, fill: `var(${color})`}), S("text", {"text-anchor": "middle", y: 5}, label));
+    svg.append(g);
+    return {g, keys};
+  };
+  // keys: [t, x, y] keyframes; hidden before the first and after `end`
+  const toks = [
+    tok("a", "--a", [[0, ...P.a], [0.4, 180, 110], [0.8, 180, 380], [1.2, ...P.ac], [1.3]]),
+    tok("c", "--c", [[0, ...P.c], [0.6, 180, 400], [1.2, ...P.ac], [1.3]]),
+    tok("b", "--b", [[0, ...P.b], [0.4, 180, 255], [0.8, 180, 170], [1.2, ...P.sq], [1.3]]),
+    tok("b²", "--b", [[1.6, ...P.sq], [2.0, 380, 170], [2.4, 380, 275], [2.9, ...P.d], [3.0]], 24),
+    tok("4ac", "--a", [[1.6, ...P.ac], [2.0, 380, 380], [2.4, 380, 275], [2.9, ...P.d], [3.0]], 24),
+    tok("Δ", "--d", halt ? [[3.3, ...P.d], [4.2, ...P.g], [4.8, ...P.g], [5.6, ...P.bin], [5.9]]
+                          : [[3.3, ...P.d], [4.2, ...P.g], [4.6, ...P.g], [4.9, 700, 275], [5.1, 700, 200], [5.4, ...P.r], [5.5]])
+  ];
+  if (!halt) toks.push(
+    tok("√Δ", "--d", [[5.8, ...P.r], [6.1, 870, 200], [6.4, 870, 120], [6.7, ...P.p], [6.8]]),
+    tok("√Δ", "--d", [[5.8, ...P.r], [6.1, 870, 200], [6.4, 870, 290], [6.7, ...P.m], [6.8]]),
+    tok("−b", "--b", [[5.4, ...P.b], [5.8, 180, 470], [6.3, 870, 470], [6.7, ...P.m], [6.8]]),
+    tok("−b", "--b", [[5.4, ...P.b], [5.8, 180, 470], [6.2, 1030, 470], [6.55, 1030, 120], [6.7, ...P.p], [6.8]]),
+    tok("", "--root", [[7.1, ...P.p], [8.1, ...P.d1], [8.2]], 16),
+    tok("", "--root", [[7.1, ...P.m], [8.1, ...P.d2], [8.2]], 16),
+    tok("x₁", "--root", [[8.6, ...P.d1], [9.2, P.d1[0], 200], [10.2, nx(sol.x1), NL.y - 24]]),
+    tok("x₂", "--root", [[8.6, ...P.d2], [9.4, P.d2[0], 360], [10.4, nx(sol.x2), NL.y - 24]]));
+
+  const lit = [[pipes.a, 0, 1.3], [pipes.c, 0, 1.3], [pipes.b, 0, 1.3], [pipes.sqd, 1.6, 3], [pipes.acd, 1.6, 3], [pipes.dg, 3.3, 4.4]];
+  if (halt) lit.push([pipes.down, 4.6, 6]);
+  else lit.push([pipes.up, 4.6, 5.6], [pipes.rp, 5.8, 6.8], [pipes.rm, 5.8, 6.8], [pipes.p1, 7.1, 8.2], [pipes.m2, 7.1, 8.2]);
+
+  const msg = S("text", {class: "msg", x: 600, y: 40, "text-anchor": "middle"}, "");
+  svg.append(msg);
+  const end = halt ? 6.6 : 10.8;
+  const verdict = halt ? ["Δ = " + fmt(sol.delta) + " foi pro lixo: √ de negativo não existe nos reais", "var(--bad)"]
+    : sol.delta === 0 ? ["Δ = 0: as duas contas dão " + fmt(sol.x1) + ". Uma raiz só.", "var(--d)"]
+    : ["Raízes: x₁ = " + fmt(sol.x1) + " e x₂ = " + fmt(sol.x2), "var(--root)"];
+  return {stations, toks, lit, msg, end, verdict, bin, halt};
+}
+
+const ease = u => u < .5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+function at(keys, t) {
+  if (t < keys[0][0] || t >= keys[keys.length - 1][0]) return null;
+  for (let k = 0; k < keys.length - 2; k++) {
+    const [t0, x0, y0] = keys[k], [t1, x1, y1] = keys[k + 1];
+    if (t <= t1) { const u = ease((t - t0) / (t1 - t0 || 1)); return [x0 + (x1 - x0) * u, y0 + (y1 - y0) * u]; }
+  }
+  const p = keys[keys.length - 2]; return [p[1], p[2]];
+}
+
+function draw() {
+  if (!film) return;
+  const f = film;
+  f.stations.forEach(s => {
+    s.v.textContent = T >= s.on ? s.value : "";
+    s.g.classList.toggle("on", T >= s.on && T < s.on + 0.8);
+  });
+  f.toks.forEach(k => {
+    const p = at(k.keys, T);
+    // the last root tokens stay on the number line after landing
+    const final = k.keys[k.keys.length - 1];
+    const keep = final.length === 3 && T >= final[0];
+    if (p || keep) { const [x, y] = p || [final[1], final[2]]; k.g.setAttribute("transform", `translate(${x},${y})`); k.g.style.display = ""; }
+    else k.g.style.display = "none";
+  });
+  f.lit.forEach(([e, t0, t1]) => e.classList.toggle("on", T >= t0 && T < t1));
+  if (f.halt && T >= 5.6 && T < 6.4) f.bin.setAttribute("transform", `rotate(${Math.sin(T * 60) * 4} ${P.bin[0]} ${P.bin[1]})`);
+  else f.bin.removeAttribute("transform");
+  if (T >= f.end) { f.msg.textContent = f.verdict[0]; f.msg.setAttribute("fill", f.verdict[1]); }
+  else f.msg.textContent = "";
+}
+
+function tick(now) {
+  if (!playing) { last = null; return; }
+  if (last != null) T += (now - last) / 1000 * speed;
+  last = now;
+  if (T >= film.end) { T = film.end; draw(); setPlaying(false); finish(); return; }
+  draw();
+  requestAnimationFrame(tick);
+}
+
+function setPlaying(on) {
+  playing = on;
+  $("pause").textContent = on ? "❚❚ Pausar" : "▶ Continuar";
+  $("pause").disabled = !film || T >= film.end;
+  if (on) { last = null; requestAnimationFrame(tick); }
+}
+
+let current = null;
+function run() {
+  const a = +$("a").value, b = +$("b").value, c = +$("c").value;
+  if (a === 0) { $("status").textContent = "a = 0 não é do 2º grau: a máquina dividiria por 2a = 0."; return; }
+  current = solve(a, b, c);
+  film = build(current); T = 0;
+  $("status").textContent = `rodando ${fmt(a)}x² ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}x ${c < 0 ? "−" : "+"} ${fmt(Math.abs(c))} = 0`;
+  draw(); setPlaying(true);
+}
+
+function finish() {
+  $("status").textContent = "pronto. Mude a, b ou c e rode de novo.";
+  GOALS.forEach((g, k) => { if (g.ok(current)) won.add(k); });
+  goals();
+}
+
+function goals() {
+  $("goals").replaceChildren(...GOALS.map((g, k) => {
+    const li = document.createElement("li");
+    li.className = won.has(k) ? "won" : "";
+    li.append(g.text + " ");
+    const h = document.createElement("span"); h.className = "hint"; h.textContent = "dica"; h.dataset.tip = g.hint;
+    li.append(h); return li;
+  }));
+  $("score").textContent = `${won.size} de ${GOALS.length} resolvidos`;
+}
+
+$("run").onclick = run;
+$("pause").onclick = () => setPlaying(!playing);
+$("speed").onchange = e => speed = +e.target.value;
+["a", "b", "c"].forEach(k => $(k).addEventListener("keydown", e => { if (e.key === "Enter") run(); }));
+document.addEventListener("mouseover", e => {
+  const t = e.target.closest("[data-tip]"), tip = $("tip");
+  if (!t) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left - w / 2)) + "px";
+  tip.style.top = (r.bottom + 6) + "px";
+});
+goals();
+run();
+</script>
+</body>
+</html>
