@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apt vs apt-get</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+  }
+}
+* { box-sizing: border-box; }
+/* The page may scroll vertically; nothing scrolls sideways or inside an element.
+   The font sits on html so every rem grows with it. Padding stays tiny so a
+   small laptop screen goes to content. */
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; min-height: 100vh;
+}
+main { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 1600px;
+  margin: 0 auto; padding: 6px; }
+header h1 { font-size: 1.4rem; margin: 0 0 2px; }
+header p { margin: 0; color: var(--muted); }
+.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
+.dot {
+  width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
+  background: var(--line); cursor: pointer; transition: background .3s;
+}
+.dot.done { background: var(--accent-soft); }
+.dot.on { background: var(--accent); }
+.stage {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px;
+}
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+.step { animation: enter .45s ease both; transform-origin: top left; }
+@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
+.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
+.say { margin: 0 0 clamp(10px, 1.8vh, 18px); max-width: 75ch; }
+.say code, .note code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 75ch; }
+.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
+#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 15px/1.45 system-ui, sans-serif; pointer-events: none; }
+/* long lines wrap instead of scrolling sideways */
+pre {
+  margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 0;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+.ln { display: block; padding: 0 16px 0 calc(16px + 2em); text-indent: -2em; white-space: pre-wrap; overflow-wrap: break-word; min-height: 1.55em;
+  border-left: 3px solid transparent; transition: background .4s, border-color .4s; }
+.ln.hl { background: var(--accent-soft); border-left-color: var(--accent); animation: pulse 1.6s ease .5s 2; }
+@keyframes pulse { 50% { background: transparent; } }
+.ln.add { background: var(--add-bg); border-left-color: var(--add); animation: grow .5s ease both; }
+.ln[data-tip] { cursor: help; text-decoration: underline dotted var(--muted); }
+.ln.del { background: var(--del-bg); border-left-color: var(--del); text-decoration: line-through; color: var(--del); }
+.ln.gone { animation: shrink .5s ease forwards; }
+@keyframes grow { from { opacity: 0; transform: translateX(-10px); max-height: 0; } to { max-height: 12em; } }
+@keyframes shrink { to { opacity: 0; max-height: 0; min-height: 0; } }
+.diff-label { font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+.term {
+  background: var(--term-bg); color: var(--term-ink); border-radius: 10px; padding: 14px 16px;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+  white-space: pre-wrap; overflow-wrap: break-word;
+}
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; animation: enter .3s ease both; }
+.caret { display: inline-block; width: 8px; height: 1.1em; background: var(--term-ink);
+  vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+svg.diagram { max-width: 100%; height: auto; display: block; }
+svg .node rect { fill: var(--code-bg); stroke: var(--line); stroke-width: 1.5; }
+svg .node.hl rect { fill: var(--accent-soft); stroke: var(--accent); }
+svg .node text { fill: var(--ink); font: 14px system-ui, sans-serif; }
+svg .node { opacity: 0; animation: pop .4s ease forwards; }
+@keyframes pop { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+svg .edge { stroke: var(--muted); stroke-width: 1.8; fill: none; }
+svg .edge.hl { stroke: var(--accent); }
+svg .edge.draw { animation: draw .6s ease forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+svg .elabel { fill: var(--muted); font: 13px system-ui, sans-serif; opacity: 0; animation: pop .3s ease forwards; }
+svg marker path { fill: var(--muted); }
+nav {
+  position: sticky; bottom: 0; z-index: 5; flex: none; background: var(--panel);
+  border-top: 1px solid var(--line); padding: clamp(8px, 1.4vh, 12px) 16px;
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+}
+nav button {
+  font: inherit; font-size: .95rem; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button:disabled { opacity: .4; cursor: default; }
+nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
+.bar { height: 3px; background: var(--accent); width: 0; position: absolute; left: 0; top: -2px; }
+.bar.run { transition: width linear; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+svg.knobs { width: 100%; height: auto; display: block; }
+svg.knobs .hdr { font: 700 19px ui-monospace, monospace; fill: var(--ink); }
+svg.knobs .lbl { font: 600 16px system-ui, sans-serif; fill: var(--ink); }
+svg.knobs .key { font: 14px ui-monospace, monospace; fill: var(--muted); }
+svg.knobs .row rect.bg { fill: transparent; transition: fill .4s; }
+svg.knobs .row.hl rect.bg { fill: var(--accent-soft); }
+svg.knobs .row.hl .lbl { fill: var(--accent); }
+svg.knobs .row.dim { opacity: .45; }
+svg.knobs .row { cursor: help; }
+svg.knobs .sw rect { transition: fill .4s; }
+svg.knobs .sw circle { fill: #fff; stroke: #0003; transition: transform .45s cubic-bezier(.5,.1,.3,1.4); }
+svg.knobs .sw.on rect { fill: var(--add); } svg.knobs .sw.off rect { fill: var(--line); }
+svg.knobs .sw.on circle { transform: translateX(26px); }
+svg.knobs .sw.flip rect { stroke: var(--accent); stroke-width: 3; }
+svg.knobs .state { font: 600 14px ui-monospace, monospace; fill: var(--muted); }
+svg.knobs .engine rect { fill: var(--code-bg); stroke: var(--line); stroke-width: 1.5; }
+svg.knobs .engine text { fill: var(--ink); font: 600 17px system-ui, sans-serif; }
+svg.knobs .engine .key { font: 14px ui-monospace, monospace; fill: var(--muted); }
+svg.knobs .wire { stroke: var(--muted); stroke-width: 2; fill: none; }
+.toplink { float: right; font-size: .95rem; color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header><a class="toplink" href="creative.html">creative page: the mixing desk →</a><h1 id="title"></h1><p id="subtitle"></p></header>
+  <div class="dots" id="dots"></div>
+  <section class="stage" id="stage" aria-live="polite"></section>
+</main>
+<nav>
+  <div class="bar" id="bar"></div>
+  <button id="prev">← Prev</button>
+  <button id="play" class="primary">▶ Play</button>
+  <button id="next">Next →</button>
+  <span class="count" id="count"></span>
+</nav>
+<div id="tip" hidden></div>
+
+<!-- Only this block changes per lesson. Escape "</" as "<\/" inside strings. -->
+<script id="lesson" type="application/json">
+{
+ "title": "apt vs apt-get",
+ "subtitle": "One engine, two front panels. apt is apt-get + apt-cache with different default switches. Real output from Ubuntu 24.04, apt 2.8.3.",
+ "steps": [
+  {
+   "title": "Same engine, different switches",
+   "say": "`apt` does not have its own installer. It runs the same library as `apt-get` and `apt-cache` and flips a few defaults in the [[Binary::apt scope|Config keys under Binary::apt:: apply only when the binary is named apt. apt-get ignores them.]]. Hover any row.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "all": true
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "apt-config dump | grep -i '^Binary::apt::' | grep -v '\"\"'"
+       },
+       {
+        "out": "binary::apt::APT::Color \"1\";"
+       },
+       {
+        "out": "binary::apt::APT::Cache::Show::Version \"2\";"
+       },
+       {
+        "out": "binary::apt::APT::Get::Upgrade-Allow-New \"1\";"
+       },
+       {
+        "out": "binary::apt::APT::Keep-Downloaded-Packages \"0\";"
+       },
+       {
+        "out": "binary::apt::DPkg::Progress-Fancy \"1\";"
+       },
+       {
+        "out": "binary::apt::DPkg::Lock::Timeout \"120\";"
+       },
+       {
+        "out": "(trimmed: 16 lines in all)"
+       }
+      ]
+     }
+    ]
+   },
+   "note": "man apt: \"apt(8) just changes the default value of some options (see apt.conf(5) and specifically the Binary scope).\""
+  },
+  {
+   "title": "On a terminal: color and progress",
+   "say": "Typed by a person, `apt` shows a progress counter and colors the package name green. Those bytes are escape codes, which a script would have to strip.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "hl": [
+       "color",
+       "progress"
+      ]
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "script -qc 'apt list cowsay' /dev/null | cat -v"
+       },
+       {
+        "out": "^MListing... 0%^M^MListing... Done^M^M"
+       },
+       {
+        "out": "^[[32mcowsay^[[0m/noble 3.03+dfsg2-8 all^M"
+       }
+      ]
+     }
+    ]
+   },
+   "note": "`script` fakes a terminal; `cat -v` makes the hidden bytes visible. ^[[32m is green, ^[[0m resets."
+  },
+  {
+   "title": "In a pipe: the warning",
+   "say": "Pipe `apt` into another program and it warns on stderr. `apt-cache` gives the same answer with no warning, because its output format is kept stable for scripts.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "hl": [
+       "warn"
+      ]
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "apt search ^cowsay$ | cat"
+       },
+       {
+        "out": "WARNING: apt does not have a stable CLI interface. Use with caution in scripts."
+       },
+       {
+        "out": "Sorting..."
+       },
+       {
+        "out": "Full Text Search..."
+       },
+       {
+        "out": "cowsay/noble 3.03+dfsg2-8 all"
+       },
+       {
+        "cmd": "apt-cache search ^cowsay$ | cat"
+       },
+       {
+        "out": "cowsay - configurable talking cow"
+       }
+      ]
+     }
+    ]
+   },
+   "note": "Same index, same match, different format. A script parsing apt output can break on an apt upgrade; man apt says so."
+  },
+  {
+   "title": "upgrade: the difference that matters",
+   "say": "Same machine, same index, one minute apart. `apt-get upgrade` never installs a new package, so it holds back every upgrade that needs one. `apt upgrade` installs them. Predict before you look: which one leaves more packages behind?",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "hl": [
+       "new"
+      ]
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "apt-get -s upgrade | tail -1"
+       },
+       {
+        "out": "162 upgraded, 0 newly installed, 0 to remove and 30 not upgraded."
+       },
+       {
+        "cmd": "apt -s upgrade | tail -1"
+       },
+       {
+        "out": "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
+       },
+       {
+        "cmd": "apt -s upgrade | grep -A1 NEW"
+       },
+       {
+        "out": "The following NEW packages will be installed:"
+       },
+       {
+        "out": "  libfwupd3 libnvidia-common-580 libqgis-3d3.44.7 ..."
+       }
+      ]
+     }
+    ]
+   },
+   "note": "-s simulates, no root needed. Neither one removes anything: removal is what full-upgrade (apt-get dist-upgrade) adds."
+  },
+  {
+   "title": "Prove it: flip one switch",
+   "say": "Turn that one switch off for `apt` and it gives exactly `apt-get`'s numbers. Turn it on for `apt-get` (or pass `--with-new-pkgs`) and it gives `apt`'s numbers.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "hl": [
+       "new"
+      ],
+      "flip": {
+       "new": {
+        "get": 1,
+        "apt": 0
+       }
+      }
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "apt -s -o APT::Get::Upgrade-Allow-New=0 upgrade | tail -1"
+       },
+       {
+        "out": "162 upgraded, 0 newly installed, 0 to remove and 30 not upgraded."
+       },
+       {
+        "cmd": "apt-get -s -o APT::Get::Upgrade-Allow-New=1 upgrade | tail -1"
+       },
+       {
+        "out": "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
+       },
+       {
+        "cmd": "apt-get -s --with-new-pkgs upgrade | tail -1"
+       },
+       {
+        "out": "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
+       }
+      ]
+     }
+    ]
+   },
+   "note": "The outlined switches are the ones -o flipped for that run."
+  },
+  {
+   "title": "show: same data, trimmed",
+   "say": "`apt show` hides checksums and the pool path and adds what a person wants before installing: download size and which source it comes from.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "hl": [
+       "show"
+      ]
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "apt show cowsay 2>/dev/null | wc -l"
+       },
+       {
+        "out": "21"
+       },
+       {
+        "cmd": "apt-cache show cowsay | wc -l"
+       },
+       {
+        "out": "27"
+       },
+       {
+        "cmd": "diff <(apt show cowsay | cut -d: -f1) <(apt-cache show cowsay | cut -d: -f1)"
+       },
+       {
+        "out": "< Download-Size   < APT-Sources   < Description"
+       },
+       {
+        "out": "> Architecture  > Filename  > Size  > MD5sum  > SHA1"
+       },
+       {
+        "out": "> SHA256  > SHA512  > Description-en  > Description-md5"
+       }
+      ]
+     }
+    ]
+   },
+   "note": "diff output squeezed onto 3 lines: < only in apt, > only in apt-cache."
+  },
+  {
+   "title": "Two quiet ones: cache and lock",
+   "say": "`apt` deletes the `.deb` files from `/var/cache/apt/archives` after a successful install; `apt-get` keeps them. `apt` also waits up to 120 s when another install holds the [[dpkg lock|Only one program can run dpkg at a time. unattended-upgrades often holds it right after boot.]] instead of failing at once.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "knobs",
+      "hl": [
+       "keep",
+       "lock"
+      ]
+     },
+     {
+      "kind": "terminal",
+      "lines": [
+       {
+        "cmd": "apt-config dump | grep -i -E 'Keep-Downloaded|Lock::Timeout'"
+       },
+       {
+        "out": "binary::apt::APT::Keep-Downloaded-Packages \"0\";"
+       },
+       {
+        "out": "binary::apt::DPkg::Lock::Timeout \"120\";"
+       },
+       {
+        "cmd": "ls /var/cache/apt/archives | head -2"
+       },
+       {
+        "out": "libnvidia-cfg1-580_580.173.02-0ubuntu0.24.04.1_amd64.deb"
+       },
+       {
+        "out": "libnvidia-cfg1-580_580.178.04-0ubuntu0.24.04.1_amd64.deb"
+       }
+      ]
+     }
+    ]
+   },
+   "note": "Only the Binary::apt scope sets these, so apt-get runs on the built-in defaults: keep the .debs, no lock wait."
+  },
+  {
+   "title": "Which one, when",
+   "say": "Type `apt` at the prompt. Write `apt-get` and `apt-cache` in scripts, Dockerfiles and CI, where output must not change between versions and a progress bar is noise.",
+   "show": {
+    "kind": "split",
+    "panes": [
+     {
+      "kind": "code",
+      "highlight": [
+       1,
+       9
+      ],
+      "code": "# at the prompt: apt\napt update\napt install cowsay\napt upgrade\napt full-upgrade\napt search cowsay; apt show cowsay\napt list --upgradable\n\n# in scripts: apt-get / apt-cache\napt-get update\napt-get install -y cowsay\napt-get upgrade --with-new-pkgs\napt-get dist-upgrade\napt-cache search cowsay; apt-cache show cowsay\n# apt-get list → E: Invalid operation list",
+      "tips": {
+       "12": "--with-new-pkgs makes it behave like apt upgrade. Plain apt-get upgrade holds those packages back.",
+       "13": "apt-get also accepts full-upgrade: both gave 192 upgraded, 57 newly installed here.",
+       "15": "Real error from apt-get 2.8.3: list exists only in apt."
+      }
+     },
+     {
+      "kind": "knobs",
+      "all": true
+     }
+    ]
+   }
+  }
+ ]
+}
+</script>
+
+<script>
+const LESSON = JSON.parse(document.getElementById("lesson").textContent);
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+const svgEl = (tag, attrs) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+// `inline code` and [[word|hover detail]] in prose, everything else as text
+const prose = (cls, s) => {
+  const p = el("p", cls);
+  String(s).split(/(`[^`]+`|\[\[[^\]]+\]\])/).forEach(part => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) p.append(el("code", null, part.slice(1, -1)));
+    else if (part.startsWith("[[") && part.endsWith("]]")) {
+      const [word, tip] = part.slice(2, -2).split("|");
+      const t = el("span", "tip", word); t.dataset.tip = tip || ""; p.append(t);
+    } else p.append(part);
+  });
+  return p;
+};
+
+let i = 0, playing = false, timer = null, pending = [];
+const later = (fn, ms) => pending.push(setTimeout(fn, ms));
+const clearPending = () => { pending.forEach(clearTimeout); pending = []; };
+
+function renderCode(s) {
+  const pre = el("pre");
+  const hl = new Set(s.highlight || []);
+  s.code.split("\n").forEach((t, n) => {
+    const ln = el("span", "ln" + (hl.has(n + 1) ? " hl" : ""), t);
+    if (s.tips && s.tips[n + 1]) ln.dataset.tip = s.tips[n + 1];
+    pre.append(ln);
+  });
+  return [pre, 0];
+}
+
+// LCS line diff -> [{op: "same"|"del"|"add", t}]
+function diffLines(a, b) {
+  const m = a.length, n = b.length, L = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+  for (let x = m - 1; x >= 0; x--) for (let y = n - 1; y >= 0; y--)
+    L[x][y] = a[x] === b[y] ? L[x + 1][y + 1] + 1 : Math.max(L[x + 1][y], L[x][y + 1]);
+  const out = []; let x = 0, y = 0;
+  while (x < m && y < n) {
+    if (a[x] === b[y]) { out.push({op: "same", t: a[x]}); x++; y++; }
+    else if (L[x + 1][y] >= L[x][y + 1]) out.push({op: "del", t: a[x++]});
+    else out.push({op: "add", t: b[y++]});
+  }
+  while (x < m) out.push({op: "del", t: a[x++]});
+  while (y < n) out.push({op: "add", t: b[y++]});
+  return out;
+}
+
+function renderDiff(s) {
+  const wrap = el("div"), label = el("div", "diff-label", "before"), pre = el("pre");
+  wrap.append(label, pre);
+  const ops = diffLines(s.before.split("\n"), s.after.split("\n"));
+  const spans = ops.map(o => {
+    const sp = el("span", "ln", o.t);
+    if (o.op === "add") sp.style.display = "none";
+    pre.append(sp);
+    return sp;
+  });
+  later(() => {
+    label.textContent = "before → after";
+    ops.forEach((o, k) => { if (o.op === "del") spans[k].classList.add("del"); });
+  }, 900);
+  later(() => {
+    label.textContent = "after";
+    ops.forEach((o, k) => {
+      if (o.op === "del") spans[k].classList.add("gone");
+      if (o.op === "add") { spans[k].style.display = ""; spans[k].classList.add("add"); }
+    });
+  }, 2100);
+  return [wrap, 2600];
+}
+
+// keeps the last `max` rows (default 12), like a real terminal, so it never grows past the stage
+function renderTerminal(s) {
+  const box = el("div", "term"), caret = el("span", "caret"), max = s.max || 12;
+  box.append(caret);
+  const add = row => { box.insertBefore(row, caret); while (box.children.length > max + 1) box.firstChild.remove(); };
+  let t = 400;
+  s.lines.forEach(line => {
+    if (line.cmd != null) {
+      const row = el("div", "cmd");
+      later(() => add(row), t);
+      [...line.cmd].forEach(ch => { t += 45; later(() => row.textContent += ch, t); });
+      t += 350;
+    } else {
+      const row = el("div", "out", line.out);
+      later(() => add(row), t);
+      t += 250;
+    }
+  });
+  return [box, t];
+}
+
+function renderDiagram(s) {
+  const W = 170, H = 52, GX = 70, GY = 60, PAD = 10;
+  const cols = Math.max(...s.nodes.map(n => n.col)) + 1, rows = Math.max(...s.nodes.map(n => n.row)) + 1;
+  const vw = cols * W + (cols - 1) * GX + 2 * PAD, vh = rows * H + (rows - 1) * GY + 2 * PAD;
+  const svg = svgEl("svg", {class: "diagram", width: vw, viewBox: `0 0 ${vw} ${vh}`});
+  const defs = svgEl("defs", {}), mk = svgEl("marker", {id: "arr", viewBox: "0 0 10 10", refX: 9, refY: 5,
+    markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse"});
+  mk.append(svgEl("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(mk); svg.append(defs);
+  const pos = {};
+  s.nodes.forEach(n => pos[n.id] = {x: PAD + n.col * (W + GX), y: PAD + n.row * (H + GY)});
+  let t = 0;
+  s.nodes.forEach(n => {
+    const g = svgEl("g", {class: "node" + (n.hl ? " hl" : ""), style: `animation-delay:${t}ms;transform-origin:${pos[n.id].x + W / 2}px ${pos[n.id].y + H / 2}px`});
+    if (n.tip) g.dataset.tip = n.tip;
+    g.append(svgEl("rect", {x: pos[n.id].x, y: pos[n.id].y, width: W, height: H, rx: 10}));
+    const tx = svgEl("text", {x: pos[n.id].x + W / 2, y: pos[n.id].y + H / 2 + 5, "text-anchor": "middle"});
+    tx.textContent = n.label; g.append(tx); svg.append(g);
+    t += 250;
+  });
+  (s.edges || []).forEach(e => {
+    const a = pos[e.from], b = pos[e.to];
+    const ac = {x: a.x + W / 2, y: a.y + H / 2}, bc = {x: b.x + W / 2, y: b.y + H / 2};
+    // clip the line to the box edges so the arrowhead touches the border
+    const clip = (c, o) => {
+      const dx = o.x - c.x, dy = o.y - c.y;
+      const k = Math.min(dx ? (W / 2) / Math.abs(dx) : Infinity, dy ? (H / 2) / Math.abs(dy) : Infinity);
+      return {x: c.x + dx * k, y: c.y + dy * k};
+    };
+    const p = clip(ac, bc), q = clip(bc, ac);
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    const line = svgEl("path", {class: "edge draw" + (e.hl ? " hl" : ""), d: `M${p.x},${p.y} L${q.x},${q.y}`,
+      "marker-end": "url(#arr)", style: `stroke-dasharray:${len};stroke-dashoffset:${len};animation-delay:${t}ms`});
+    svg.insertBefore(line, svg.querySelector(".node"));
+    if (e.label) {
+      const lb = svgEl("text", {class: "elabel", x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - 7,
+        "text-anchor": "middle", style: `animation-delay:${t + 400}ms`});
+      lb.textContent = e.label; svg.append(lb);
+    }
+    t += 500;
+  });
+  return [svg, t + 400];
+}
+
+function renderSplit(s) {
+  const box = el("div", "split");
+  let t = 0;
+  s.panes.forEach(p => { const [node, ms] = RENDER[p.kind](p); box.append(node); t = Math.max(t, ms); });
+  return [box, t];
+}
+
+// one engine, two front panels: each row is a Binary::apt default that differs
+const KNOB = [
+  {id: "color",    lbl: "Colored output",           key: "APT::Color", get: 0, apt: 1,
+   tip: "apt prints package names in green on a terminal. Set in Binary::apt::APT::Color \"1\"."},
+  {id: "progress", lbl: "Progress bar while installing", key: "DPkg::Progress-Fancy", get: 0, apt: 1,
+   tip: "The green 'Progress: [ 40%]' bar at the bottom of the screen during apt install."},
+  {id: "warn",     lbl: "Warns when piped",         key: "stderr WARNING", get: 0, apt: 1,
+   tip: "When stdout is not a terminal, apt prints 'WARNING: apt does not have a stable CLI interface' on stderr. apt-get and apt-cache never do."},
+  {id: "new",      lbl: "upgrade may add new pkgs", key: "APT::Get::Upgrade-Allow-New", get: 0, apt: 1,
+   tip: "apt upgrade installs new packages an upgrade needs (a new kernel, a renamed library). apt-get upgrade holds those upgrades back instead."},
+  {id: "show",     lbl: "Short show / search",      key: "APT::Cache::Show::Version 2", get: 0, apt: 1,
+   tip: "apt show drops checksums and file paths and adds Download-Size and APT-Sources."},
+  {id: "keep",     lbl: "Keeps downloaded .debs",   key: "APT::Keep-Downloaded-Packages", get: 1, apt: 0,
+   tip: "apt sets this to 0: after a successful install it deletes the .debs from /var/cache/apt/archives. apt-get leaves them."},
+  {id: "lock",     lbl: "Waits 120 s for dpkg lock", key: "DPkg::Lock::Timeout", get: 0, apt: 1,
+   tip: "If another install (unattended-upgrades) holds the lock, apt waits up to 120 s. No timeout is set for apt-get here."}
+];
+function renderKnobs(s) {
+  const RH = 46, Y0 = 52, XG = 468, XA = 578;
+  const svg = svgEl("svg", {class: "knobs", viewBox: `0 0 660 ${Y0 + KNOB.length * RH + 92}`});
+  const hdr = (x, t) => { const e = svgEl("text", {class: "hdr", x, y: 30, "text-anchor": "middle"}); e.textContent = t; svg.append(e); };
+  hdr(XG + 20, "apt-get"); hdr(XA + 20, "apt");
+  const hl = new Set(s.hl || []), flip = s.flip || {};
+  KNOB.forEach((k, n) => {
+    const y = Y0 + n * RH;
+    const g = svgEl("g", {class: "row" + (hl.has(k.id) ? " hl" : hl.size && !s.all ? " dim" : "")});
+    g.dataset.tip = k.tip;
+    g.append(svgEl("rect", {class: "bg", x: 4, y, width: 652, height: RH - 4, rx: 8}));
+    const l = svgEl("text", {class: "lbl", x: 14, y: y + 19}); l.textContent = k.lbl;
+    const kk = svgEl("text", {class: "key", x: 14, y: y + 37}); kk.textContent = k.key;
+    g.append(l, kk);
+    [["get", XG], ["apt", XA]].forEach(([who, x]) => {
+      const v = flip[k.id] && flip[k.id][who] != null ? flip[k.id][who] : k[who];
+      const sw = svgEl("g", {class: "sw " + (k[who] ? "on" : "off") + (flip[k.id] && flip[k.id][who] != null ? " flip" : "")});
+      sw.append(svgEl("rect", {x, y: y + 9, width: 52, height: 26, rx: 13}));
+      sw.append(svgEl("circle", {cx: x + 13, cy: y + 22, r: 10}));
+      g.append(sw);
+      if (v !== k[who]) later(() => sw.classList.replace(k[who] ? "on" : "off", v ? "on" : "off"), 700);
+    });
+    svg.append(g);
+  });
+  const ey = Y0 + KNOB.length * RH + 20;
+  [XG + 26, XA + 26].forEach(x => svg.insertBefore(svgEl("path", {class: "wire", d: `M${x},40 V${ey}`, "stroke-dasharray": "4 5", opacity: .5}), svg.querySelector(".row")));
+  const e = svgEl("g", {class: "engine"});
+  e.dataset.tip = "Both binaries link the same library and read the same /etc/apt config. Only the Binary::apt scope differs.";
+  e.append(svgEl("rect", {x: 4, y: ey, width: 652, height: 64, rx: 12}));
+  const t1 = svgEl("text", {x: 18, y: ey + 26}); t1.textContent = "same engine: libapt-pkg (solver, downloads, runs dpkg)";
+  const t2 = svgEl("text", {class: "key", x: 18, y: ey + 48}); t2.textContent = "apt = apt-get + apt-cache + Binary::apt::* defaults";
+  e.append(t1, t2); svg.append(e);
+  return [svg, 1200];
+}
+
+const RENDER = {knobs: renderKnobs, code: renderCode, diff: renderDiff, terminal: renderTerminal, diagram: renderDiagram, split: renderSplit};
+
+function show(n) {
+  clearPending(); clearTimeout(timer);
+  i = Math.max(0, Math.min(LESSON.steps.length - 1, n));
+  const s = LESSON.steps[i], stage = $("stage"), box = el("div", "step");
+  box.append(el("div", "num", `STEP ${i + 1} OF ${LESSON.steps.length}`), el("h2", null, s.title), prose("say", s.say));
+  let anim = 0;
+  if (s.show && RENDER[s.show.kind]) { const [node, ms] = RENDER[s.show.kind](s.show); box.append(node); anim = ms; }
+  if (s.note) box.append(prose("note", s.note));
+  stage.replaceChildren(box);
+  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
+  $("count").textContent = `${i + 1} / ${LESSON.steps.length}`;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === LESSON.steps.length - 1;
+  if (playing) schedule(anim + 2500 + 45 * (s.say || "").length);
+}
+
+function schedule(ms) {
+  const bar = $("bar");
+  bar.classList.remove("run"); bar.style.width = "0"; void bar.offsetWidth;
+  bar.classList.add("run"); bar.style.transitionDuration = ms + "ms"; bar.style.width = "100%";
+  timer = setTimeout(() => i < LESSON.steps.length - 1 ? show(i + 1) : setPlaying(false), ms);
+}
+
+function setPlaying(on) {
+  playing = on;
+  $("play").textContent = on ? "❚❚ Pause" : "▶ Play";
+  clearTimeout(timer);
+  const bar = $("bar"); bar.classList.remove("run"); bar.style.width = "0";
+  if (on) show(i === LESSON.steps.length - 1 ? 0 : i);
+}
+
+document.addEventListener("mouseover", e => {
+  const t = e.target.closest("[data-tip]"), tip = $("tip");
+  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
+  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+});
+
+document.title = LESSON.title;
+$("title").textContent = LESSON.title;
+$("subtitle").textContent = LESSON.subtitle || "";
+LESSON.steps.forEach((s, k) => {
+  const d = el("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d);
+});
+$("prev").onclick = () => show(i - 1);
+$("next").onclick = () => show(i + 1);
+$("play").onclick = () => setPlaying(!playing);
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") show(i + 1);
+  else if (e.key === "ArrowLeft") show(i - 1);
+  else if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+});
+show(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apt vs apt-get: the mixing desk</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+  --desk: #2b2d33; --desk-2: #3a3d45; --wood: #a8744a; --tape: #f3e7b8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+    --desk: #202227; --desk-2: #2c2f36; --wood: #7a5232; --tape: #e9dca8;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { max-width: 1600px; margin: 0 auto; padding: 6px; }
+header h1 { font-size: 1.4rem; margin: 0; }
+header p { margin: 0 0 8px; color: var(--muted); max-width: 95ch; }
+.toplink { float: right; font-size: .95rem; color: var(--accent); }
+.studio { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 10px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.argv { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.argv span { color: var(--muted); font-family: ui-monospace, monospace; font-size: .95rem; }
+button { font: inherit; font-size: .95rem; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mono { font-family: ui-monospace, monospace; }
+svg.desk { width: 100%; height: auto; display: block; }
+.strip { cursor: pointer; }
+.strip.na { cursor: not-allowed; }
+.strip .lever { transition: transform .35s cubic-bezier(.5,.1,.3,1.5); transform-box: view-box; }
+.strip .led { transition: fill .3s, filter .3s; }
+.strip.up .led { fill: #6dff9c; filter: drop-shadow(0 0 6px #6dff9c); }
+.strip.changed .tape { stroke: #ffb347; stroke-width: 3; }
+.strip .tape-t { font: 600 15px system-ui, sans-serif; fill: #3b3216; }
+.strip .val { font: 700 14px ui-monospace, monospace; fill: #d8dbe2; }
+.strip:hover:not(.na) .slot { stroke: #8ab4ff; }
+.badge { font: 700 20px ui-monospace, monospace; fill: #f4f1e6; }
+.badge-sub { font: 15px system-ui, sans-serif; fill: #c9ccd4; }
+.monitor { background: #111318; border-radius: 18px; padding: 12px; border: 6px solid var(--desk-2); box-shadow: inset 0 0 40px #0008; }
+.win { background: var(--term-bg); color: var(--term-ink); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
+  font: 14.5px/1.5 ui-monospace, "JetBrains Mono", Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #2c2f38; }
+.win:last-child { margin-bottom: 0; }
+.win .ttl { color: #8b93a6; font-size: 13.5px; display: block; margin-bottom: 2px; }
+.win .c::before { content: "$ "; color: #7fd18b; }
+.win .c { color: #fff; }
+.win .flag { color: #ffb347; }
+.win .warn { color: #ff9b93; }
+.win .g { color: #6fd36f; }
+.win .o { color: #b9b9b9; }
+.win.flash { animation: flash .6s ease; }
+@keyframes flash { 0% { box-shadow: 0 0 0 2px #ffb347; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.bar { display: inline-block; background: #1f8a4c; color: #fff; padding: 0 4px; }
+.cache { display: flex; gap: 10px; align-items: center; }
+.crate { display: inline-block; background: #d9a066; color: #3b2410; border: 2px solid #7a4a1d; border-radius: 4px; padding: 1px 6px; animation: drop .5s ease; }
+@keyframes drop { from { transform: translateY(-14px); opacity: 0; } }
+.goals { list-style: none; padding: 0; margin: 8px 0 0; }
+.goals li { padding: 3px 0; color: var(--muted); }
+.goals li::before { content: "○ "; }
+.goals li.done { color: var(--add); font-weight: 600; }
+.goals li.done::before { content: "● "; }
+.goals code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+.hint { color: var(--muted); font-size: .92rem; margin: 6px 0 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <a class="toplink" href="index.html">← step-by-step lesson</a>
+  <h1>The mixing desk: apt and apt-get are one machine</h1>
+  <p>The same engine with two presets. Pick a preset (the binary name), flip any switch, and watch the screen. Every flipped switch turns into a real <span class="mono">-o</span> flag you can type. All output is from Ubuntu 24.04, apt 2.8.3.</p>
+</header>
+<div class="studio">
+  <div class="card">
+    <div class="argv"><span>preset (argv[0]):</span><button id="p-apt">apt</button><button id="p-get">apt-get / apt-cache</button></div>
+    <svg class="desk" id="desk" viewBox="0 0 640 430" aria-label="mixing desk"></svg>
+    <ul class="goals" id="goals"></ul>
+    <p class="hint">An orange tape means the switch differs from the preset, so the command needs a <span class="mono">-o</span> flag.</p>
+  </div>
+  <div class="monitor" id="screen"></div>
+</div>
+</main>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const S = (tag, a, text) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (text != null) e.textContent = text; return e; };
+const H = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+// get = apt-get/apt-cache default, apt = Binary::apt default (apt-config dump)
+const SW = [
+  {id: "color",  tape: "color",     key: "APT::Color", get: 0, apt: 1,
+   tip: "Green package names on a terminal. Only the new search/list format is colored."},
+  {id: "search", tape: "new format", key: "APT::Cache::Search::Version=2 / Show::Version=2", get: 0, apt: 1, multi: ["APT::Cache::Search::Version", "APT::Cache::Show::Version"], on: "2", off: "1",
+   tip: "Version 2 search/show output: package/suite version arch, then the description; show drops checksums."},
+  {id: "warn",   tape: "warning",   key: "APT::Cmd::Disable-Script-Warning", get: 0, apt: 1, aptOnly: true, invert: true,
+   tip: "Only the apt binary has the pipe warning. Flip it down on apt with -o APT::Cmd::Disable-Script-Warning=1. apt-get and apt-cache never warn."},
+  {id: "new",    tape: "new pkgs",  key: "APT::Get::Upgrade-Allow-New", get: 0, apt: 1,
+   tip: "upgrade may install new packages an upgrade needs. Same as apt-get --with-new-pkgs."},
+  {id: "fancy",  tape: "progress",  key: "DPkg::Progress-Fancy", get: 0, apt: 1,
+   tip: "The green progress bar pinned to the bottom of the terminal during install."},
+  {id: "keep",   tape: "keep .debs", key: "APT::Keep-Downloaded-Packages", get: 1, apt: 0,
+   tip: "Up: downloaded .debs stay in /var/cache/apt/archives after install. apt sets it down and deletes them."}
+];
+let preset = "apt", v = {};
+
+function drawDesk() {
+  const d = document.getElementById("desk"); d.replaceChildren();
+  d.append(S("rect", {x: 0, y: 30, width: 640, height: 400, rx: 18, fill: "var(--wood)"}));
+  d.append(S("rect", {x: 14, y: 44, width: 612, height: 372, rx: 12, fill: "var(--desk)"}));
+  d.append(S("rect", {x: 150, y: 0, width: 340, height: 70, rx: 10, fill: "var(--desk-2)", stroke: "#0006"}));
+  const same = SW.every(s => v[s.id] === s.get), apt = SW.every(s => v[s.id] === s.apt);
+  d.append(S("text", {class: "badge", x: 320, y: 32, "text-anchor": "middle"}, preset === "apt" ? "$ apt" : "$ apt-get"));
+  d.append(S("text", {class: "badge-sub", x: 320, y: 56, "text-anchor": "middle"},
+    apt ? "sounds like: apt" : same ? "sounds like: apt-get" : "sounds like: a custom mix"));
+  SW.forEach((s, n) => {
+    const x = 30 + n * 100, na = s.aptOnly && preset !== "apt";
+    const up = !!v[s.id], changed = !na && v[s.id] !== s[preset === "apt" ? "apt" : "get"];
+    const g = S("g", {class: "strip" + (up ? " up" : "") + (changed ? " changed" : "") + (na ? " na" : "")});
+    g.append(S("title", {}, na ? "apt-get and apt-cache have no pipe warning to switch on." : s.tip + "\n" + s.key));
+    g.append(S("rect", {x, y: 86, width: 80, height: 312, rx: 10, fill: "var(--desk-2)"}));
+    g.append(S("circle", {class: "led", cx: x + 40, cy: 112, r: 9, fill: na ? "#555" : "#26402e"}));
+    g.append(S("rect", {class: "slot", x: x + 30, y: 140, width: 20, height: 150, rx: 10, fill: "#14161a", stroke: "#555", "stroke-width": 2}));
+    const lever = S("g", {class: "lever", style: `transform: translateY(${up ? 0 : 100}px)`});
+    lever.append(S("rect", {x: x + 12, y: 140, width: 56, height: 46, rx: 8, fill: na ? "#666" : up ? "#e9ecf2" : "#b7bcc6", stroke: "#0008", "stroke-width": 2}));
+    lever.append(S("path", {d: `M${x + 20} 156 h40 M${x + 20} 164 h40 M${x + 20} 172 h40`, stroke: "#0004", "stroke-width": 2}));
+    g.append(lever);
+    g.append(S("text", {class: "val", x: x + 40, y: 318, "text-anchor": "middle"}, na ? "n/a" : up ? "ON" : "OFF"));
+    g.append(S("rect", {class: "tape", x: x + 2, y: 334, width: 76, height: 50, rx: 3, fill: "var(--tape)", transform: `rotate(${n % 2 ? 1.5 : -1.5} ${x + 40} 359)`}));
+    const words = s.tape.split(" ");
+    words.forEach((w, k) => g.append(S("text", {class: "tape-t", x: x + 40, y: 356 + k * 18 - (words.length - 1) * 9, "text-anchor": "middle"}, w)));
+    if (!na) g.onclick = () => { v[s.id] = v[s.id] ? 0 : 1; render(s.id); };
+    d.append(g);
+  });
+}
+
+// the -o flags needed to get the current mix from the chosen binary
+function flags(ids) {
+  const out = [];
+  SW.filter(s => ids.includes(s.id)).forEach(s => {
+    if (s.aptOnly && preset !== "apt") return;
+    const base = preset === "apt" ? s.apt : s.get;
+    if (v[s.id] === base) return;
+    if (s.multi) s.multi.forEach(k => out.push(`-o ${k}=${v[s.id] ? s.on : s.off}`));
+    else if (s.invert) out.push(`-o ${s.key}=${v[s.id] ? 0 : 1}`);
+    else out.push(`-o ${s.key}=${v[s.id]}`);
+  });
+  return out;
+}
+function cmdLine(el, bin, ids, rest) {
+  const c = H("div", "c"); c.append(bin + " ");
+  flags(ids).forEach(f => { c.append(H("span", "flag", f), " "); });
+  c.append(rest); el.append(c);
+}
+const out = (el, cls, t) => el.append(H("div", cls, t));
+
+function screen(changed) {
+  const sc = document.getElementById("screen"); sc.replaceChildren();
+  const q = preset === "apt" ? "apt" : "apt-cache", g = preset === "apt" ? "apt" : "apt-get";
+  const win = (title, affects) => { const w = H("div", "win" + (affects.includes(changed) ? " flash" : "")); w.append(H("span", "ttl", title)); sc.append(w); return w; };
+
+  let w = win("at a terminal", ["color", "search"]);
+  cmdLine(w, q, ["color", "search"], "search ^cowsay$");
+  if (v.search) {
+    out(w, "o", "Sorting... Done\nFull Text Search... Done");
+    const r = H("div", "o"); r.append(v.color ? H("span", "g", "cowsay") : "cowsay", "/noble 3.03+dfsg2-8 all\n  configurable talking cow"); w.append(r);
+  } else out(w, "o", "cowsay - configurable talking cow");
+
+  w = win("in a pipe (a script)", ["warn", "search"]);
+  cmdLine(w, q, ["warn", "search"], "search ^cowsay$ | cat");
+  if (preset === "apt" && v.warn) out(w, "warn", "WARNING: apt does not have a stable CLI interface. Use with caution in scripts.");
+  out(w, "o", v.search ? "Sorting...\nFull Text Search...\ncowsay/noble 3.03+dfsg2-8 all\n  configurable talking cow" : "cowsay - configurable talking cow");
+
+  w = win("show", ["search"]);
+  cmdLine(w, q, ["search"], "show cowsay | wc -l");
+  out(w, "o", v.search ? "21      (no checksums, adds Download-Size, APT-Sources)" : "27      (Filename, Size, MD5sum, SHA1, SHA256, SHA512...)");
+
+  w = win("upgrade (simulated)", ["new"]);
+  cmdLine(w, g, ["new"], "-s upgrade | tail -1");
+  out(w, "o", v.new ? "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
+                    : "162 upgraded, 0 newly installed, 0 to remove and 30 not upgraded.");
+
+  w = win("installing", ["fancy", "keep"]);
+  cmdLine(w, "sudo " + g, ["fancy", "keep"], "install cowsay");
+  out(w, "o", "Setting up cowsay (3.03+dfsg2-8) ...");
+  if (v.fancy) { const b = H("div"); b.append(H("span", "bar", "Progress: [ 80%]"), " [###############################.......]"); w.append(b); }
+  const cache = H("div", "cache o"); cache.append("/var/cache/apt/archives/ ");
+  cache.append(v.keep ? H("span", "crate", "cowsay_3.03+dfsg2-8_all.deb") : H("span", "o", "(empty: deleted after install)"));
+  w.append(cache);
+}
+
+const GOALS = [
+  ["Preset <code>apt</code>, then make it sound exactly like apt-get", () => preset === "apt" && SW.every(s => v[s.id] === s.get)],
+  ["Preset <code>apt-get</code>: get apt's upgrade numbers (179 / 39)", () => preset !== "apt" && v.new === 1],
+  ["Preset <code>apt</code>: keep the downloaded .debs", () => preset === "apt" && v.keep === 1],
+  ["Make the script pipe clean: no WARNING line", () => preset === "apt" && !v.warn]
+];
+const done = new Set();
+function goals() {
+  GOALS.forEach((gl, k) => { if (gl[1]()) done.add(k); });
+  const ul = document.getElementById("goals"); ul.replaceChildren();
+  GOALS.forEach((gl, k) => { const li = H("li", done.has(k) ? "done" : ""); li.innerHTML = gl[0]; ul.append(li); });
+}
+function render(changed) { drawDesk(); screen(changed); goals(); }
+function setPreset(p) {
+  preset = p;
+  SW.forEach(s => v[s.id] = p === "apt" ? s.apt : s.get);
+  if (p !== "apt") v.warn = 0;
+  document.getElementById("p-apt").className = p === "apt" ? "on" : "";
+  document.getElementById("p-get").className = p === "apt" ? "" : "on";
+  render();
+}
+document.getElementById("p-apt").onclick = () => setPreset("apt");
+document.getElementById("p-get").onclick = () => setPreset("get");
+setPreset("apt");
+</script>
+</body>
+</html>
