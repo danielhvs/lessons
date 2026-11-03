@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Final 3, 4 e 11</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --on: #2f6fde; --on-soft: #2f6fde22; --pn: #c77d12; --pn-soft: #c77d1224;
+  --unit: #1f8a4c; --unit-soft: #1f8a4c1f; --bad: #c2382f;
+  --code-bg: #f1efe8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --on: #6ea0ff; --on-soft: #6ea0ff26; --pn: #f0a63a; --pn-soft: #f0a63a26;
+    --unit: #4cc483; --unit-soft: #4cc48322; --bad: #ff7a70;
+    --code-bg: #24262d;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; min-height: 100vh; }
+main { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 1600px; margin: 0 auto; padding: 6px; }
+header h1 { font-size: 1.4rem; margin: 0 0 2px; }
+header p { margin: 0; color: var(--muted); }
+header a { color: var(--accent); }
+.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
+.dot { width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0; background: var(--line); cursor: pointer; transition: background .3s; }
+.dot.done { background: var(--accent-soft); }
+.dot.on { background: var(--accent); }
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+.step { animation: enter .45s ease both; }
+@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
+.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
+.say { margin: 0 0 12px; max-width: 75ch; }
+.say code, .note code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 75ch; }
+.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
+#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 15px/1.45 system-ui, sans-serif; pointer-events: none; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.btns button, .act {
+  font: inherit; font-size: .95rem; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.btns button.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+.act { background: var(--unit); border-color: var(--unit); color: #fff; }
+svg.d { width: 100%; height: auto; display: block; }
+svg.d text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.d .mut { fill: var(--muted); }
+.mono { font-family: ui-monospace, Menlo, monospace; }
+.out { font: clamp(14px, .45vw + 8px, 17px)/1.6 ui-monospace, Menlo, monospace; background: var(--code-bg);
+  border-radius: 10px; padding: 10px 14px; white-space: pre-wrap; overflow-wrap: break-word; margin-top: 8px; }
+.out b.ok { color: var(--unit); } .out b.on { color: var(--on); } .out b.pn { color: var(--pn); }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+tr.pick td { background: var(--accent-soft); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+.card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; background: var(--bg); transition: border-color .3s, background .3s; }
+.card .tk { font: 600 1.2rem ui-monospace, monospace; }
+.card .ans { color: var(--muted); margin-top: 4px; }
+.card.open { border-color: var(--accent); background: var(--accent-soft); }
+.card.open .ans { color: var(--ink); }
+.fly { transition: transform .8s cubic-bezier(.5,.1,.3,1), opacity .5s; }
+.shake { animation: shake .5s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+nav { position: sticky; bottom: 0; z-index: 5; flex: none; background: var(--panel); border-top: 1px solid var(--line);
+  padding: clamp(8px, 1.4vh, 12px) 16px; display: flex; gap: 10px; justify-content: center; align-items: center; }
+nav button { font: inherit; font-size: .95rem; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button:disabled { opacity: .4; cursor: default; }
+nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Final 3, 4 e 11: ON, PN e units</h1>
+    <p>Mesma empresa, papéis diferentes. Preços de fechamento de 30/10/2026 (fundamentus). <a href="creative.html">Versão criativa →</a></p>
+  </header>
+  <div class="dots" id="dots"></div>
+  <section class="stage" id="stage" aria-live="polite"></section>
+</main>
+<nav>
+  <button id="prev">← Anterior</button>
+  <button id="next" class="primary">Próximo →</button>
+  <span class="count" id="count"></span>
+</nav>
+<div id="tip" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const brl = v => "R$ " + v.toFixed(2).replace(".", ",");
+const pct = v => v.toFixed(1).replace(".", ",") + "%";
+const tipSpan = (w, t) => `<span class="tip" data-tip="${t}">${w}</span>`;
+
+const P = {
+  TAEE3: [12.90, 7.8], TAEE4: [13.30, 7.5], TAEE11: [39.59, 7.6],
+  KLBN3: [3.56, 6.5], KLBN4: [3.41, 6.8], KLBN11: [17.20, 6.8],
+  ITSA3: [12.93, 8.7], ITSA4: [12.45, 9.1], BBDC3: [12.71, 10.9], BBDC4: [13.86, 11.0],
+};
+
+const STEPS = [
+  {
+    title: "O código tem duas partes",
+    say: `Todo código de ação da B3 tem 4 letras e um número. As letras dizem <b>qual empresa</b>. O número diz <b>que tipo de papel</b> daquela empresa você compra. Clique nos códigos.`,
+    draw(box) {
+      const T = {
+        TAEE11: ["Taesa", "unit: um pacote de ações ON e PN"],
+        EGIE3: ["Engie Brasil", "ação ordinária (ON): tem direito a voto"],
+        ITSA4: ["Itaúsa", "ação preferencial (PN): sem voto, com preferência no dividendo"],
+        KLBN4: ["Klabin", "ação preferencial (PN)"],
+        WEGE3: ["WEG", "ação ordinária (ON)"],
+      };
+      box.innerHTML = `<div class="split"><div>
+        <div class="btns" id="tks">${Object.keys(T).map(k => `<button data-k="${k}">${k}</button>`).join("")}</div>
+        <div class="out" id="o1"></div></div>
+        <svg class="d" viewBox="0 0 600 230" id="s1"></svg></div>`;
+      const s = box.querySelector("#s1");
+      const pick = k => {
+        box.querySelectorAll("#tks button").forEach(b => b.classList.toggle("sel", b.dataset.k === k));
+        const L = k.slice(0, 4), N = k.slice(4);
+        const col = N === "3" ? "var(--on)" : N === "4" ? "var(--pn)" : "var(--unit)";
+        s.innerHTML = [...L].map((c, j) => `<g class="step" style="animation-delay:${j * 60}ms"><rect x="${20 + j * 92}" y="40" width="82" height="100" rx="12" fill="var(--code-bg)" stroke="var(--line)"/><text x="${61 + j * 92}" y="110" text-anchor="middle" font-size="56" font-weight="700" class="mono">${c}</text></g>`).join("")
+          + `<g class="step" style="animation-delay:300ms"><rect x="${400}" y="40" width="${N.length * 70 + 20}" height="100" rx="12" fill="none" stroke="${col}" stroke-width="4"/><text x="${410 + N.length * 35}" y="110" text-anchor="middle" font-size="56" font-weight="700" fill="${col}" style="fill:${col}" class="mono">${N}</text></g>`
+          + `<text x="182" y="180" text-anchor="middle" font-size="18" class="mut">empresa: ${T[k][0]}</text>`
+          + `<text x="${410 + N.length * 35}" y="180" text-anchor="middle" font-size="18" style="fill:${col}">tipo</text>`
+          + `<path d="M20 196 H364" stroke="var(--muted)" stroke-width="2"/><path d="M400 196 H${420 + N.length * 70}" stroke="${col}" stroke-width="2"/>`;
+        box.querySelector("#o1").innerHTML = `${k}\n= ${T[k][0]}\n+ final ${N}: ${T[k][1]}`;
+      };
+      box.querySelectorAll("#tks button").forEach(b => b.onclick = () => pick(b.dataset.k));
+      pick("TAEE11");
+    },
+  },
+  {
+    title: "Final 3 = ON, ordinária: você vota",
+    say: `A ação ${tipSpan("ordinária", "ON = ordinária nominativa. Lei 6.404/76 (Lei das S.A.), art. 110: cada ação ordinária corresponde a 1 voto na assembleia.")} (ON) dá <b>voto</b> na assembleia, onde se escolhe o conselho e se aprovam contas e dividendos. Também tem ${tipSpan("tag along", "Se o controlador vender o controle, o comprador tem que oferecer aos minoritários ON pelo menos 80% do preço pago por ação do controlador. Lei 6.404, art. 254-A. No Novo Mercado o regulamento da B3 exige 100%.")} garantido por lei. Aperte <b>votar</b> e veja quem entra na urna.`,
+    draw(box) {
+      box.innerHTML = `<div class="split"><div>
+        <button class="act" id="vote">Votar</button>
+        <div class="out" id="o2">Empresas do ${tipSpan("Novo Mercado", "Segmento de governança mais exigente da B3: a empresa só pode ter ações ordinárias.")} só têm final 3.\nNa sua carteira: <b class="on">EGIE3</b>, <b class="on">WEGE3</b>, TOTS3, FLRY3, PSSA3, BBSE3.</div></div>
+        <svg class="d" viewBox="0 0 600 260" id="s2">
+          <rect x="390" y="120" width="150" height="110" rx="10" fill="var(--code-bg)" stroke="var(--muted)" stroke-width="2"/>
+          <rect x="435" y="114" width="60" height="10" rx="3" fill="var(--muted)"/>
+          <text x="465" y="185" text-anchor="middle" font-size="20" font-weight="600">urna</text>
+          <text x="465" y="252" text-anchor="middle" font-size="15" class="mut">assembleia</text>
+          <g id="on" class="fly"><rect x="40" y="40" width="130" height="70" rx="10" fill="var(--on-soft)" stroke="var(--on)" stroke-width="3"/>
+            <text x="105" y="83" text-anchor="middle" font-size="24" font-weight="700" class="mono" style="fill:var(--on)">TAEE3</text></g>
+          <g id="pn"><rect x="40" y="150" width="130" height="70" rx="10" fill="var(--pn-soft)" stroke="var(--pn)" stroke-width="3"/>
+            <text x="105" y="193" text-anchor="middle" font-size="24" font-weight="700" class="mono" style="fill:var(--pn)">TAEE4</text></g>
+          <text id="nope" x="190" y="192" font-size="17" style="fill:var(--bad);opacity:0;transition:opacity .4s">sem voto</text>
+        </svg></div>`;
+      box.querySelector("#vote").onclick = () => {
+        const on = box.querySelector("#on"), pn = box.querySelector("#pn"), no = box.querySelector("#nope");
+        on.style.transform = "none"; on.style.opacity = 1; void on.getBBox();
+        requestAnimationFrame(() => { on.style.transform = "translate(360px, 75px) scale(.6)"; on.style.opacity = .15; });
+        pn.classList.remove("shake"); void pn.getBBox(); pn.classList.add("shake"); no.style.opacity = 1;
+        setTimeout(() => { on.style.transition = "none"; on.style.transform = "none"; on.style.opacity = 1;
+          requestAnimationFrame(() => on.style.transition = ""); }, 1700);
+      };
+    },
+  },
+  {
+    title: "Final 4 = PN, preferencial: sem voto, prioridade no dividendo",
+    say: `A ${tipSpan("preferencial", "PN = preferencial nominativa. Para ser negociada em bolsa, a PN precisa de pelo menos uma vantagem (Lei 6.404, art. 17, §1º): prioridade num dividendo mínimo, dividendo pelo menos 10% maior que o da ON, ou tag along de 80%.")} (PN) troca o voto por uma ${tipSpan("vantagem", "Se a empresa passar 3 anos seguidos sem pagar o dividendo mínimo prometido, a PN ganha direito a voto até voltar a pagar (art. 111, §1º).")} no dividendo. Na prática, o que importa pra quem quer renda é: <b>quanto de dividendo cada R$ 1 compra</b>. Compare.`,
+    draw(box) {
+      box.innerHTML = `<div class="split"><div>
+        <div class="btns" id="cp"><button data-k="ITSA">Itaúsa</button><button data-k="BBDC">Bradesco</button></div>
+        <div class="out" id="o3"></div></div>
+        <svg class="d" viewBox="0 0 600 280" id="s3"></svg></div>`;
+      const s = box.querySelector("#s3");
+      const pick = k => {
+        box.querySelectorAll("#cp button").forEach(b => b.classList.toggle("sel", b.dataset.k === k));
+        const [p3, d3] = P[k + "3"], [p4, d4] = P[k + "4"];
+        const v3 = p3 * d3 / 100, v4 = p4 * d4 / 100;
+        const bar = (x, h, col, top, lab) => `<rect class="step" x="${x}" y="${230 - h}" width="70" height="${h}" rx="6" fill="${col}"/><text x="${x + 35}" y="${222 - h}" text-anchor="middle" font-size="16">${top}</text><text x="${x + 35}" y="254" text-anchor="middle" font-size="16" class="mono">${lab}</text>`;
+        s.innerHTML = `<text x="110" y="24" text-anchor="middle" font-size="17" font-weight="600">preço</text>
+          <text x="420" y="24" text-anchor="middle" font-size="17" font-weight="600">dividendo por ação (12 meses)</text>
+          ${bar(30, p3 * 12, "var(--on)", brl(p3), k + "3")}${bar(120, p4 * 12, "var(--pn)", brl(p4), k + "4")}
+          ${bar(340, v3 * 110, "var(--on)", brl(v3), k + "3")}${bar(430, v4 * 110, "var(--pn)", brl(v4), k + "4")}
+          <path d="M20 230 H580" stroke="var(--line)" stroke-width="2"/>`;
+        box.querySelector("#o3").innerHTML = k === "ITSA"
+          ? `<b class="on">ITSA3</b> ${brl(p3)}  DY ${pct(d3)}\n<b class="pn">ITSA4</b> ${brl(p4)}  DY ${pct(d4)}\n\nMesmo dividendo por ação (~${brl(v4)}),\nmas a PN custa menos.\n→ ITSA4 rende mais por real.`
+          : `<b class="on">BBDC3</b> ${brl(p3)}  DY ${pct(d3)}\n<b class="pn">BBDC4</b> ${brl(p4)}  DY ${pct(d4)}\n\nA PN recebe ~${Math.round((v4 / v3 - 1) * 100)}% a mais por ação\ne custa ~${Math.round((p4 / p3 - 1) * 100)}% a mais.\n→ DY quase igual: o mercado já cobrou a vantagem.`;
+      };
+      box.querySelectorAll("#cp button").forEach(b => b.onclick = () => pick(b.dataset.k));
+      pick("ITSA");
+    },
+    note: "Dividendo por ação = preço × DY. Aproximação com o DY dos últimos 12 meses do fundamentus, não o valor exato pago.",
+  },
+  {
+    title: "Final 11 = unit: um pacote de ON + PN",
+    say: `A ${tipSpan("unit", "Certificado de depósito que representa um conjunto fixo de ações da mesma empresa. A composição de cada unit está na página de units da B3.")} é um pacote com um número fixo de ON e PN. O preço dela fica colado na soma das partes, porque se descolar alguém compra o lado barato e vende o caro. Escolha a empresa e aperte <b>montar</b>.`,
+    draw(box) {
+      const U = { TAEE: [1, 2], KLBN: [1, 4] };
+      box.innerHTML = `<div class="split"><div>
+        <div class="btns" id="up"><button data-k="TAEE">TAEE11</button><button data-k="KLBN">KLBN11</button></div>
+        <button class="act" id="mk">Montar</button>
+        <div class="out" id="o4"></div></div>
+        <svg class="d" viewBox="0 0 600 300" id="s4"></svg></div>`;
+      const s = box.querySelector("#s4");
+      let cur = "TAEE";
+      const draw = (packed) => {
+        const [n3, n4] = U[cur], tiles = [["3"], ...Array(n4).fill(["4"])];
+        let h = `<rect x="330" y="40" width="250" height="230" rx="16" fill="var(--unit-soft)" stroke="var(--unit)" stroke-width="3" stroke-dasharray="${packed ? 0 : 8}"/>
+          <text x="455" y="290" text-anchor="middle" font-size="18" font-weight="700" class="mono" style="fill:var(--unit)">${cur}11 ${brl(P[cur + "11"][0])}</text>`;
+        tiles.forEach(([t], j) => {
+          const x0 = 20, y0 = 20 + j * 52, x1 = 355 + (j % 2) * 112, y1 = 60 + Math.floor(j / 2) * 64;
+          const col = t === "3" ? "var(--on)" : "var(--pn)", soft = t === "3" ? "var(--on-soft)" : "var(--pn-soft)";
+          const dx = packed ? x1 - x0 : 0, dy = packed ? y1 - y0 : 0;
+          h += `<g class="fly" style="transform:translate(${dx}px,${dy}px);transition-delay:${j * 120}ms"><rect x="${x0}" y="${y0}" width="100" height="44" rx="8" fill="${soft}" stroke="${col}" stroke-width="2.5"/><text x="${x0 + 50}" y="${y0 + 22}" text-anchor="middle" font-size="16" font-weight="700" class="mono" style="fill:${col}">${cur + t}</text><text x="${x0 + 50}" y="${y0 + 39}" text-anchor="middle" font-size="14" class="mut">${brl(P[cur + t][0])}</text></g>`;
+        });
+        s.innerHTML = h;
+        const sum = P[cur + "3"][0] * n3 + P[cur + "4"][0] * n4, u = P[cur + "11"][0];
+        box.querySelector("#o4").innerHTML = `1 ${cur}11 = ${n3} <b class="on">${cur}3</b> + ${n4} <b class="pn">${cur}4</b>\n\nsoma: ${brl(P[cur + "3"][0])} + ${n4} × ${brl(P[cur + "4"][0])} = ${brl(sum)}\nunit: ${brl(u)}\ndiferença: ${brl(u - sum)} (${pct((u / sum - 1) * 100)})`;
+      };
+      const pick = k => { cur = k; box.querySelectorAll("#up button").forEach(b => b.classList.toggle("sel", b.dataset.k === k)); draw(false); };
+      box.querySelectorAll("#up button").forEach(b => b.onclick = () => pick(b.dataset.k));
+      box.querySelector("#mk").onclick = () => { draw(false); requestAnimationFrame(() => requestAnimationFrame(() => {
+        const [n3, n4] = U[cur];
+        s.querySelectorAll(".fly").forEach((g, j) => {
+          g.style.transform = `translate(${355 + (j % 2) * 112 - 20}px,${60 + Math.floor(j / 2) * 64 - 20 - j * 52}px)`;
+        });
+        s.querySelector("rect").setAttribute("stroke-dasharray", 0);
+      })); };
+      pick("TAEE");
+    },
+    note: "Você pode pedir à corretora pra desmembrar uma unit nas ações ou juntar ações numa unit. Prazo e custo dependem da empresa e da corretora: confira antes.",
+  },
+  {
+    title: "Cuidado: 11 nem sempre é unit",
+    say: `O final 11 aparece em coisas que não são ações. E existem outros finais. Clique em cada cartão.`,
+    draw(box) {
+      const C = [
+        ["TAEE11", "unit: 1 ON + 2 PN da Taesa"],
+        ["HGLG11", "cota de FII (fundo imobiliário). Não tem ON nem PN"],
+        ["BOVA11", "cota de ETF: um fundo que copia o Ibovespa"],
+        ["XXXX5 / XXXX6", "PNA / PNB: classes diferentes de preferencial, cada uma com sua vantagem no estatuto"],
+        ["TAEE11F", "o F no fim é o mercado fracionário: o mesmo papel, comprado de 1 em 1 em vez do lote de 100"],
+      ];
+      box.innerHTML = `<div class="cards">${C.map(([t, a]) => `<div class="card"><div class="tk">${t}</div><div class="ans">clique pra ver</div></div>`).join("")}</div>`;
+      box.querySelectorAll(".card").forEach((c, j) => c.onclick = () => { c.classList.add("open"); c.querySelector(".ans").textContent = C[j][1]; });
+    },
+  },
+  {
+    title: "Qual comprar, ON, PN ou unit?",
+    say: `Para quem investe pra renda e não vai votar, a regra é simples: <b>compare o DY dos papéis da mesma empresa e fique com o que paga mais por real</b>, desde que tenha ${tipSpan("liquidez", "Volume negociado por dia. Pouco volume = diferença grande entre oferta de compra e de venda, e você paga mais caro pra entrar e sair. Não verificado aqui: confira o volume no home broker.")}. Clique numa empresa.`,
+    draw(box) {
+      const R = {
+        TAEE: ["TAEE3 7,8%", "TAEE4 7,5%", "TAEE11 7,6%", "TAEE3 por pouco, mas a diferença é pequena; a unit é o jeito simples de comprar as duas"],
+        KLBN: ["KLBN3 6,5%", "KLBN4 6,8%", "KLBN11 6,8%", "KLBN4 ou KLBN11 empatam; KLBN3 paga menos por real"],
+        ITSA: ["ITSA3 8,7%", "ITSA4 9,1%", "-", "ITSA4: mesmo dividendo, preço menor"],
+        BBDC: ["BBDC3 10,9%", "BBDC4 11,0%", "-", "praticamente empate; BBDC4 recebe 10% a mais por ação mas custa ~9% a mais"],
+      };
+      box.innerHTML = `<table><thead><tr><th>empresa</th><th>ON (3)</th><th>PN (4)</th><th>unit (11)</th><th>leitura</th></tr></thead><tbody>
+        ${Object.entries(R).map(([k, r]) => `<tr data-k="${k}" style="cursor:pointer"><td><code>${k}</code></td><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="lr">clique</td></tr>`).join("")}
+        </tbody></table>
+        <div class="out">ON  = voto + tag along de 80% por lei
+PN  = sem voto, alguma vantagem no dividendo
+11  = pacote de ON + PN, preço ≈ soma das partes</div>`;
+      box.querySelectorAll("tr[data-k]").forEach(tr => tr.onclick = () => {
+        box.querySelectorAll("tr").forEach(t => t.classList.remove("pick"));
+        tr.classList.add("pick"); tr.querySelector(".lr").textContent = R[tr.dataset.k][3];
+      });
+    },
+    note: "DY = dividendos dos últimos 12 meses ÷ preço, fundamentus em 30/10/2026. Isto é material de estudo, não recomendação de investimento.",
+  },
+];
+
+let i = 0;
+function show(n) {
+  i = Math.max(0, Math.min(STEPS.length - 1, n));
+  const s = STEPS[i], box = document.createElement("div");
+  box.className = "step";
+  box.innerHTML = `<div class="num">PASSO ${i + 1} DE ${STEPS.length}</div><h2>${s.title}</h2><p class="say">${s.say}</p><div id="draw"></div>${s.note ? `<p class="note">${s.note}</p>` : ""}`;
+  $("stage").replaceChildren(box);
+  s.draw(box.querySelector("#draw"));
+  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
+  $("count").textContent = `${i + 1} / ${STEPS.length}`;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === STEPS.length - 1;
+}
+document.addEventListener("mouseover", e => {
+  const t = e.target.closest("[data-tip]"), tip = $("tip");
+  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
+  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+});
+STEPS.forEach((s, k) => { const d = document.createElement("button"); d.className = "dot"; d.title = s.title; d.onclick = () => show(k); $("dots").append(d); });
+$("prev").onclick = () => show(i - 1);
+$("next").onclick = () => show(i + 1);
+document.addEventListener("keydown", e => { if (e.key === "ArrowRight") show(i + 1); else if (e.key === "ArrowLeft") show(i - 1); });
+show(0);
+</script>
+</body>
+</html>
