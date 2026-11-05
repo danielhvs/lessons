@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bhaskara, animated</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { min-width: 13em; color: var(--muted); }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">⏸</button>
+  <button id="next" title="next scene (→)">⏭</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <button id="auto" class="on" title="go to the next scene on its own">auto-advance</button>
+  <div id="timeline"></div>
+  <span id="where"></span>
+  <a href="index.html">lesson</a> <a href="creative.html">creative</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- the graph of y = x² − 2x + c, on the left of the stage
+const G = { x0: 40, y0: 60, w: 740, h: 700, xr: [-3, 5], yr: [-5, 8] };
+const gx = x => G.x0 + (x - G.xr[0]) / (G.xr[1] - G.xr[0]) * G.w;
+const gy = y => G.y0 + G.h - (y - G.yr[0]) / (G.yr[1] - G.yr[0]) * G.h;
+function axes(op = 1) {
+  if (op <= 0) return;
+  add(`<g opacity="${op}" stroke="${COL.l}" stroke-width="1">`);
+  for (let x = -2; x <= 4; x++) add(`<line x1="${gx(x)}" x2="${gx(x)}" y1="${G.y0}" y2="${G.y0 + G.h}"/>`);
+  for (let y = -4; y <= 8; y += 2) add(`<line x1="${G.x0}" x2="${G.x0 + G.w}" y1="${gy(y)}" y2="${gy(y)}"/>`);
+  add(`</g><g opacity="${op}" stroke="${COL.m}" stroke-width="2.5">
+    <line x1="${G.x0}" x2="${G.x0 + G.w}" y1="${gy(0)}" y2="${gy(0)}"/>
+    <line x1="${gx(0)}" x2="${gx(0)}" y1="${G.y0}" y2="${G.y0 + G.h}"/></g>`);
+  for (let x = -2; x <= 4; x++) if (x) text(gx(x), gy(0) + 30, [[x < 0 ? "−" + -x : "" + x, "m"]], 22, { anchor: "middle", op });
+  for (let y = -4; y <= 8; y += 2) if (y) text(gx(0) - 10, gy(y) + 8, [[y < 0 ? "−" + -y : "" + y, "m"]], 22, { anchor: "end", op });
+}
+function parabola(c, prog = 1, op = 1, color = "f", dash = "") {
+  if (prog <= 0 || op <= 0) return;
+  const pts = [], n = 160;
+  for (let i = 0; i <= n * prog; i++) {
+    const x = 1 - 3.6 + 7.2 * i / n;
+    pts.push(`${gx(x).toFixed(1)},${gy(x * x - 2 * x + c).toFixed(1)}`);
+  }
+  add(`<polyline clip-path="url(#gclip)" points="${pts.join(" ")}" fill="none" stroke="${COL[color]}" stroke-width="5" stroke-linecap="round" opacity="${op}" stroke-dasharray="${dash}"/>`);
+}
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function eqTitle(op, c = "−3") {
+  text(G.x0 + G.w / 2, 42, [["y = x² − 2x " + (c[0] === "−" ? "− " + c.slice(1) : "+ " + c)]], 30, { anchor: "middle", op, w: 1 });
+}
+
+// ---------- scenes: draw(t) renders the frame at local time t, so scrubbing is exact
+const SCENES = [
+{ title: "The question", dur: 7,
+  cap: [[0, "Solving <b>x² − 2x − 3 = 0</b> means asking: where does the curve <b>y = x² − 2x − 3</b> touch the floor (y = 0)?"],
+        [4.5, "Two spots. Reading them off a drawing is a guess - Bhaskara gives them exactly, for any a, b, c."]],
+  draw(t) {
+    axes(P(t, 0, 1));
+    eqTitle(P(t, .5, 1.5));
+    parabola(-3, P(t, 1, 4));
+    [-1, 3].forEach((x, i) => {
+      const p = P(t, 4 + i * .4, 5 + i * .4), bob = Math.sin(t * 4 + i) * 6 * p;
+      text(gx(x), gy(0) - 30 - bob, [["?", "r", 1]], 54, { anchor: "middle", op: p });
+    });
+    text(1190, 380, [["x² − 2x − 3 = 0", "f", 1]], 60, { anchor: "middle", op: P(t, 1.5, 2.5) });
+    text(1190, 460, [["x = ?", "r", 1]], 54, { anchor: "middle", op: P(t, 4, 5) });
+  } },
+
+{ title: "Read a, b, c", dur: 8,
+  cap: [[0, "Every quadratic has the same shape: <b>ax² + bx + c = 0</b>."],
+        [2.5, "Line ours up under it. The minus signs belong to the numbers: <b>a = 1, b = −2, c = −3</b>."]],
+  draw(t) {
+    axes(); eqTitle(1); parabola(-3);
+    const gen = row(1190, 200, [["a", "a", 1], ["x² + "], ["b", "b", 1], ["x + "], ["c", "c", 1], [" = 0"]], 56, { op: P(t, 0, 1) });
+    const spec = row(1190, 300, [["1", "a", 1], ["x² + "], ["(−2)", "b", 1], ["x + "], ["(−3)", "c", 1], [" = 0"]], 56, { op: P(t, 1.5, 2.5) });
+    const cells = [[960, "a = 1", "a", 0], [1190, "b = −2", "b", 2], [1420, "c = −3", "c", 4]];
+    cells.forEach(([x, lab, col, k], i) => {
+      const a = 3.5 + i * .9, p = clamp((t - a) / 1.2);
+      fly(spec[k], 290, x, 440, ease(p), ["1", "−2", "−3"][i], col, 46);
+      chip(x, 430, lab, col, 40, P(t, a + 1.1, a + 1.4));
+    });
+  } },
+
+{ title: "The discriminant Δ", dur: 10,
+  cap: [[0, "First compute <b>Δ = b² − 4ac</b> (delta). It's the number under the square root, and it decides everything."],
+        [2, "Plug the chips in. Keep the parentheses: (−2)² is +4, not −4."],
+        [6.5, "<b>Δ = 16</b>. Positive, so there will be two answers."]],
+  draw(t) {
+    axes(); eqTitle(1); parabola(-3);
+    const cells = [[960, "a = 1", "a"], [1190, "b = −2", "b"], [1420, "c = −3", "c"]];
+    cells.forEach(([x, l, c]) => chip(x, 150, l, c, 40));
+    row(1190, 290, [["Δ", "d", 1], [" = "], ["b", "b", 1], ["² − 4·"], ["a", "a", 1], ["·"], ["c", "c", 1]], 54, { op: P(t, 0, 1) });
+    const sub = [["Δ", "d", 1], [" = "], ["(−2)", "b", 1], ["² − 4·"], ["(1)", "a", 1], ["·"], ["(−3)", "c", 1]];
+    const show = [1, 1, P(t, 2.9, 3), 1, P(t, 3.7, 3.8), 1, P(t, 4.5, 4.6)];
+    const sx = row(1190, 400, sub, 54, { op: show.map((v, i) => i === 2 || i === 4 || i === 6 ? v : P(t, 1.8, 2.3)) });
+    [[2, 1190, "−2", "b", 2], [4, 960, "1", "a", 2.8], [6, 1420, "−3", "c", 3.6]].forEach(([k, x0, l, c, a]) =>
+      fly(x0, 160, sx[k], 390, clamp((t - a) / 1), l, c, 46));
+    row(1190, 510, [["   = "], ["4", "b", 1], [" + "], ["12", "c", 1]], 54, { op: P(t, 5, 6) });
+    text(1190, 565, [["−4·1·(−3) = +12", "m"]], 26, { anchor: "middle", op: P(t, 5.5, 6.2) });
+    const big = P(t, 6.5, 7.5);
+    row(1190, 650, [["Δ = ", "d", 1], ["16", "d", 1]], L(54, 84, big), { op: big });
+  } },
+
+{ title: "What Δ tells you", dur: 12,
+  cap: [[0, "Change c and watch: c only slides the curve up and down. Δ = (−2)² − 4·1·c = <b>4 − 4c</b>."],
+        [3.5, "As the curve rises, the two roots walk toward each other. At <b>Δ = 0</b> they merge into one."],
+        [7, "<b>Δ &lt; 0</b>: the curve floats above the floor - no real root. √ of a negative has no real answer."],
+        [10, "Back to c = −3: Δ = 16, two roots."]],
+  draw(t) {
+    const c = t < 1.5 ? -3 : t < 5 ? L(-3, 1, P(t, 1.5, 5)) : t < 6.5 ? 1 : t < 9 ? L(1, 3, P(t, 6.5, 9)) : t < 10 ? 3 : L(3, -3, P(t, 10, 12));
+    const D = 4 - 4 * c;
+    axes(); eqTitle(1, num(c));
+    parabola(-3, 1, .25, "m", "8 8");
+    parabola(c);
+    if (D > 0.05) [1 - Math.sqrt(1 - c), 1 + Math.sqrt(1 - c)].forEach(x => dot(gx(x), gy(0), "r"));
+    else if (D > -0.05) dot(gx(1), gy(0), "r", 14);
+    row(1190, 150, [["x² − 2x + "], ["c", "c", 1], [" = 0"]], 50);
+    text(1190, 250, [["c = ", "c", 1], [num(c), "c", 1]], 54, { anchor: "middle" });
+    text(1190, 340, [["Δ = 4 − 4c = ", "d", 1], [num(D), "d", 1]], 54, { anchor: "middle" });
+    // Δ number line: -10 .. 20
+    const lx = v => L(880, 1540, (v + 10) / 30), ly = 480;
+    add(`<rect x="${lx(-10)}" y="${ly - 14}" width="${lx(0) - lx(-10)}" height="28" fill="${COL.r}" opacity=".18"/>
+         <rect x="${lx(0)}" y="${ly - 14}" width="${lx(20) - lx(0)}" height="28" fill="${COL.c}" opacity=".18"/>
+         <line x1="${lx(0)}" x2="${lx(0)}" y1="${ly - 30}" y2="${ly + 30}" stroke="${COL.d}" stroke-width="4"/>`);
+    [-8, 0, 8, 16].forEach(v => text(lx(v), ly + 58, [[v < 0 ? "−" + -v : "" + v, "m"]], 24, { anchor: "middle" }));
+    add(`<polygon points="${lx(D)},${ly - 18} ${lx(D) - 14},${ly - 44} ${lx(D) + 14},${ly - 44}" fill="${COL.d}"/>`);
+    const zones = [[D < -0.05, "Δ &lt; 0: no real root", "r"], [Math.abs(D) <= 0.05, "Δ = 0: one root (touches)", "d"], [D > 0.05, "Δ > 0: two roots", "c"]];
+    zones.forEach(([on, l, col], i) => text(1210, 620 + i * 56, [[(on ? "▶ " : "   ") + l, on ? col : "m", on]], 34, { anchor: "middle" }));
+  } },
+
+{ title: "The formula", dur: 10,
+  cap: [[0, "Bhaskara's formula: <b>x = (−b ± √Δ) / 2a</b>."],
+        [2.5, "Swap each letter for its number. −b with b = −2 is −(−2) = <b>+2</b>. √16 = <b>4</b>."],
+        [7, "Everything collapses to <b>(2 ± 4) / 2</b>. The ± means: do it once with +, once with −."]],
+  draw(t) {
+    axes(); eqTitle(1); parabola(-3);
+    [[930, "a = 1", "a"], [1110, "b = −2", "b"], [1290, "c = −3", "c"], [1460, "Δ = 16", "d"]].forEach(([x, l, c]) => chip(x, 110, l, c, 32));
+    frac(1180, 270, [["−"], ["b", "b", 1], [" ± √"], ["Δ", "d", 1]], [["2"], ["a", "a", 1]], 62, P(t, 0, 1), "x =");
+    const p = P(t, 2.5, 3.5);
+    frac(1180, 500, [["−"], ["(−2)", "b", 1], [" ± √"], ["16", "d", 1]], [["2·"], ["1", "a", 1]], 62, p, "x =");
+    const q = P(t, 5, 6);
+    frac(1180, 710, [["2", "b", 1], [" ± "], ["4", "d", 1]], [["2", "a", 1]], 62, q, "x =");
+  } },
+
+{ title: "Two answers", dur: 11,
+  cap: [[0, "Split the ±. With <b>+</b>: (2 + 4) / 2 = 6 / 2 = <b>3</b>."],
+        [3, "With <b>−</b>: (2 − 4) / 2 = −2 / 2 = <b>−1</b>."],
+        [6, "Drop them on the graph: exactly where the curve crosses zero."],
+        [8.5, "Check by plugging back in: both give 0."]],
+  draw(t) {
+    axes(); eqTitle(1); parabola(-3);
+    frac(1190, 120, [["2", "b", 1], [" ± "], ["4", "d", 1]], [["2", "a", 1]], 52);
+    const pa = P(t, .3, 1.2), pb = P(t, 3, 3.9);
+    add(`<line x1="1170" y1="200" x2="${L(1170, 1000, pa)}" y2="${L(200, 260, pa)}" stroke="${COL.m}" stroke-width="3"/>`);
+    add(`<line x1="1210" y1="200" x2="${L(1210, 1380, pb)}" y2="${L(200, 260, pb)}" stroke="${COL.m}" stroke-width="3"/>`);
+    frac(1000, 330, [["2 + 4"]], [["2"]], 46, P(t, .8, 1.5));
+    text(1000, 470, [["= 6 / 2"]], 46, { anchor: "middle", op: P(t, 1.5, 2.2) });
+    frac(1380, 330, [["2 − 4"]], [["2"]], 46, P(t, 3.6, 4.3));
+    text(1380, 470, [["= −2 / 2"]], 46, { anchor: "middle", op: P(t, 4.3, 5) });
+    [[1000, 3, 2.2], [1380, -1, 5]].forEach(([bx, x, a]) => {
+      const p = P(t, a, a + .6);
+      chip(bx, 560, "x = " + (x < 0 ? "−1" : "3"), "r", 46, p);
+      const f = clamp((t - 6 - (x < 0 ? .5 : 0)) / 1.4);
+      if (f > 0 && f < 1) dot(L(bx, gx(x), ease(f)), L(560, gy(0), ease(f)) - Math.sin(f * Math.PI) * 120, "r", 13);
+      if (f >= 1) { dot(gx(x), gy(0), "r", 13); text(gx(x), gy(0) - 26, [[x < 0 ? "−1" : "3", "r", 1]], 32, { anchor: "middle" }); }
+    });
+    text(1190, 690, [["3² − 2·3 − 3 = 9 − 6 − 3 = 0 ✓", "c"]], 34, { anchor: "middle", op: P(t, 8.5, 9.3) });
+    text(1190, 750, [["(−1)² − 2·(−1) − 3 = 1 + 2 − 3 = 0 ✓", "c"]], 34, { anchor: "middle", op: P(t, 9.3, 10.1) });
+  } },
+
+{ title: "Why it works", dur: 17,
+  cap: [[0, "Where does the formula come from? Take a = 1 (divide everything by a first). <b>x²</b> is a square of side x."],
+        [1.5, "<b>bx</b> is a rectangle x by b. Cut it in two strips of width b/2."],
+        [4, "Move one strip under the square. Now it's almost a bigger square of side <b>x + b/2</b>..."],
+        [7, "...missing one corner of size <b>(b/2)²</b>. Add it to both sides of the equation: that's \"completing the square\"."],
+        [10, "The right side is <b>(b² − 4c)/4</b>: there is Δ. Take the square root, keep both signs, isolate x."],
+        [14, "Same formula, now with a = 1: <b>x = (−b ± √Δ) / 2</b>. With any a you get the 2a below."]],
+  draw(t) {
+    const ox = 140, oy = 150, X = 300, H = 120;
+    const pSq = P(t, 0, 1), pR = P(t, 1.5, 2.5), pCut = P(t, 3, 3.8), pMove = P(t, 4.2, 6.5), pCorner = P(t, 7, 8), pBig = P(t, 8.5, 9.5);
+    add(`<rect x="${ox}" y="${oy}" width="${X}" height="${X}" fill="${COL.b}" fill-opacity=".22" stroke="${COL.b}" stroke-width="3" opacity="${pSq}"/>`);
+    text(ox + X / 2, oy + X / 2 + 14, [["x²", "b", 1]], 50, { anchor: "middle", op: pSq });
+    text(ox + X / 2, oy - 14, [["x"]], 34, { anchor: "middle", op: pSq });
+    text(ox - 14, oy + X / 2 + 12, [["x"]], 34, { anchor: "end", op: pSq });
+    const s1 = { x: ox + X, y: oy, w: H, h: X };
+    const s2 = { x: L(ox + X + H, ox, pMove), y: L(oy, oy + X, pMove), w: L(H, X, pMove), h: L(X, H, pMove) };
+    if (pCut < 1) {
+      add(`<rect x="${ox + X}" y="${oy}" width="${2 * H}" height="${X}" fill="${COL.c}" fill-opacity=".22" stroke="${COL.c}" stroke-width="3" opacity="${pR * (1 - pCut)}"/>`);
+      text(ox + X + H, oy + X / 2 + 14, [["bx", "c", 1]], 46, { anchor: "middle", op: pR * (1 - pCut) });
+      text(ox + X + H, oy - 14, [["b"]], 34, { anchor: "middle", op: pR * (1 - pCut) });
+    }
+    if (pCut > 0) [s1, s2].forEach(s => {
+      add(`<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="${COL.c}" fill-opacity=".22" stroke="${COL.c}" stroke-width="3" opacity="${pCut}"/>`);
+      text(s.x + s.w / 2, s.y + s.h / 2 + 10, [["x·b/2", "c", 1]], 30, { anchor: "middle", op: pCut });
+    });
+    text(ox + X + H / 2, oy - 14, [["b/2"]], 30, { anchor: "middle", op: pCut });
+    add(`<rect x="${ox + X}" y="${oy + X}" width="${H}" height="${H}" fill="${COL.a}" fill-opacity="${.35 * pCorner}" stroke="${COL.a}" stroke-width="3" stroke-dasharray="10 8" opacity="${pCorner}"/>`);
+    text(ox + X + H / 2, oy + X + H / 2 + 10, [["(b/2)²", "a", 1]], 28, { anchor: "middle", op: pCorner });
+    add(`<rect x="${ox - 8}" y="${oy - 8}" width="${X + H + 16}" height="${X + H + 16}" fill="none" stroke="${COL.d}" stroke-width="4" opacity="${pBig}"/>`);
+    text(ox + (X + H) / 2, oy + X + H + 60, [["side = x + b/2", "d", 1]], 36, { anchor: "middle", op: pBig });
+
+    const lines = [
+      [0.5, [["x² + bx + c = 0"]]],
+      [2, [["x² + bx = −c"]]],
+      [7.5, [["x² + bx + "], ["(b/2)²", "a", 1], [" = "], ["(b/2)²", "a", 1], [" − c"]]],
+      [9.5, [["(x + b/2)²", "d", 1], [" = (b² − 4c) / 4"]]],
+      [11, [["(x + b/2)² = "], ["Δ", "d", 1], [" / 4"]]],
+      [12.5, [["x + b/2 = ± √"], ["Δ", "d", 1], [" / 2"]]],
+      [14, [["x = (−b ± √"], ["Δ", "d", 1, ], [") / 2"]]],
+    ];
+    lines.forEach(([a, tok], i) => text(760, 140 + i * 92, tok, 44, { op: P(t, a, a + .8), w: i === 6 }));
+    const box = P(t, 14.5, 15.3);
+    add(`<rect x="740" y="${140 + 6 * 92 - 52}" width="${width(lines[6][1], 44) + 40}" height="72" rx="10" fill="none" stroke="${COL.d}" stroke-width="3" opacity="${box}"/>`);
+  } },
+
+{ title: "One screen", dur: 6,
+  cap: [[0, "The whole thing: read <b>a, b, c</b> → compute <b>Δ</b> → if Δ ≥ 0, plug into the formula and split the ±."]],
+  draw(t) {
+    axes(); eqTitle(1); parabola(-3);
+    [-1, 3].forEach(x => { dot(gx(x), gy(0), "r", 13); text(gx(x), gy(0) - 26, [[x < 0 ? "−1" : "3", "r", 1]], 32, { anchor: "middle" }); });
+    const o = i => P(t, i * .6, i * .6 + .8);
+    text(870, 120, [["1. "], ["a", "a", 1], ["x² + "], ["b", "b", 1], ["x + "], ["c", "c", 1], [" = 0"]], 42, { op: o(0) });
+    text(870, 220, [["2. "], ["Δ", "d", 1], [" = "], ["b", "b", 1], ["² − 4"], ["a", "a", 1], ["c", "c", 1]], 42, { op: o(1) });
+    frac(1150, 325, [["−"], ["b", "b", 1], [" ± √"], ["Δ", "d", 1]], [["2"], ["a", "a", 1]], 42, o(2), "3.  x =");
+    [["Δ > 0", "two roots", "c"], ["Δ = 0", "one root", "d"], ["Δ &lt; 0", "no real root", "r"]].forEach(([k, v, c], i) => {
+      text(900, 490 + i * 60, [[k, c, 1]], 34, { op: o(3 + i * .5) });
+      text(1060, 490 + i * 60, [[v]], 34, { op: o(3 + i * .5) });
+    });
+    text(870, 720, [["ours: Δ = 16 → x = 3 or x = −1", "r", 1]], 36, { op: o(5) });
+  } },
+];
+
+// ---------- player
+const HOLD = 2.5, HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur + HOLD; });
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = `<defs><clipPath id="gclip"><rect x="${G.x0}" y="${G.y0}" width="${G.w}" height="${G.h}"/></clipPath></defs>`;
+let T = 0, playing = !HEADLESS, speed = 1, auto = true, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur + HOLD; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / (s.dur + HOLD)) + "%");
+  document.getElementById("where").textContent = `${i + 1}/${SCENES.length} · ${s.title}`;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const i = sceneAt(T), end = starts[i] + SCENES[i].dur + HOLD;
+    T += (ts - lastTs) / 1000 * speed;
+    if (!auto && T >= end - 1e-3) { T = end - 1e-3; setPlaying(false); }
+    if (T >= total) { T = total - 1e-3; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? starts[i] + SCENES[i].dur : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+document.getElementById("play").onclick = () => {
+  if (!playing && T >= total - 0.01) T = 0;
+  setPlaying(!playing);
+};
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.getElementById("auto").onclick = e => { auto = !auto; e.target.classList.toggle("on", auto); };
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) { setPlaying(false); go(0); } else setPlaying(true);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
