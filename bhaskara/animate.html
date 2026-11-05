@@ -46,12 +46,12 @@
 <div id="bar">
   <button id="restart" title="restart">⏮</button>
   <button id="prev" title="previous scene (←)">◀◀</button>
-  <button id="play" title="play / pause (space)">⏸</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="replay" title="replay this scene">↻</button>
   <button id="next" title="next scene (→)">⏭</button>
   <button class="spd" data-s="0.5">0.5x</button>
   <button class="spd on" data-s="1">1x</button>
   <button class="spd" data-s="2">2x</button>
-  <button id="auto" class="on" title="go to the next scene on its own">auto-advance</button>
   <div id="timeline"></div>
   <span id="where"></span>
   <a href="index.html">lesson</a> <a href="creative.html">creative</a>
@@ -330,18 +330,18 @@ const SCENES = [
 ];
 
 // ---------- player
-const HOLD = 2.5, HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
 const starts = []; let total = 0;
-SCENES.forEach(s => { starts.push(total); total += s.dur + HOLD; });
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
 const svg = document.getElementById("stage"), cap = document.getElementById("caption");
 const DEFS = `<defs><clipPath id="gclip"><rect x="${G.x0}" y="${G.y0}" width="${G.w}" height="${G.h}"/></clipPath></defs>`;
-let T = 0, playing = !HEADLESS, speed = 1, auto = true, lastTs = null, lastKey = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
 const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
 
 const tl = document.getElementById("timeline");
 SCENES.forEach((s, i) => {
   const seg = document.createElement("div");
-  seg.className = "seg"; seg.style.flex = s.dur + HOLD; seg.title = `${i + 1}. ${s.title}`;
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
   seg.innerHTML = '<div class="fill"></div>';
   tl.appendChild(seg);
 });
@@ -356,17 +356,16 @@ function render() {
   svg.innerHTML = DEFS + out.join("");
   const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
   if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
-  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / (s.dur + HOLD)) + "%");
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
   document.getElementById("where").textContent = `${i + 1}/${SCENES.length} · ${s.title}`;
   document.getElementById("prev").disabled = i === 0;
   document.getElementById("next").disabled = i === SCENES.length - 1;
 }
 function loop(ts) {
   if (playing && lastTs !== null) {
-    const i = sceneAt(T), end = starts[i] + SCENES[i].dur + HOLD;
+    const end = sceneEnd(sceneAt(T));
     T += (ts - lastTs) / 1000 * speed;
-    if (!auto && T >= end - 1e-3) { T = end - 1e-3; setPlaying(false); }
-    if (T >= total) { T = total - 1e-3; setPlaying(false); }
+    if (T >= end) { T = end; setPlaying(false); }
   }
   lastTs = ts;
   render();
@@ -376,18 +375,22 @@ function setPlaying(v) { playing = v; document.getElementById("play").textConten
 // headless (fit-check) jumps to each scene's final frame so the page settles
 function go(i) {
   i = clamp(i, 0, SCENES.length - 1);
-  T = HEADLESS ? starts[i] + SCENES[i].dur : starts[i];
+  T = HEADLESS ? sceneEnd(i) : starts[i];
   if (!HEADLESS) setPlaying(true);
   render();
 }
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
 document.getElementById("play").onclick = () => {
-  if (!playing && T >= total - 0.01) T = 0;
-  setPlaying(!playing);
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
 };
+document.getElementById("replay").onclick = () => go(sceneAt(T));
 document.getElementById("restart").onclick = () => go(0);
 document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
 document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
-document.getElementById("auto").onclick = e => { auto = !auto; e.target.classList.toggle("on", auto); };
 document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
   speed = +b.dataset.s;
   document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
@@ -395,6 +398,7 @@ document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
 function scrub(e) {
   const r = tl.getBoundingClientRect();
   T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
   render();
 }
 tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
@@ -404,7 +408,7 @@ addEventListener("keydown", e => {
   if (e.key === "ArrowRight") go(sceneAt(T) + 1);
   if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
 });
-if (HEADLESS) { setPlaying(false); go(0); } else setPlaying(true);
+if (HEADLESS) go(0);
 requestAnimationFrame(loop);
 </script>
 </body>
