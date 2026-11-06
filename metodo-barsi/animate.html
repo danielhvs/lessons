@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Método Barsi, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <a href="../">← todas as aulas</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "Luiz Barsi Filho": "o maior investidor pessoa física da B3; criou o método nos anos 1970",
+  "B3": "a bolsa de valores do Brasil, em São Paulo",
+  "pessoa física": "investidor individual, não um banco nem um fundo",
+  "dividendos": "parte do lucro que a empresa reparte entre os acionistas, em dinheiro",
+  "carteira previdenciária": "nome que Barsi dá à carteira cujos dividendos substituem a aposentadoria do INSS",
+  "BESST": "Bancos, Energia, Saneamento, Seguros e Telecom: setores que Barsi prefere",
+  "setor perene": "negócio que as pessoas pagam em qualquer economia: luz, água, banco, seguro, telefone",
+  "cíclicos": "setores cujo lucro sobe e desce com a economia: construção, varejo, commodities",
+  "commodities": "produtos padronizados vendidos a preço de mercado mundial: minério, petróleo, soja",
+  "DY": "dividend yield: dividendo por ação no ano ÷ preço que você pagou, em %",
+  "aporte": "dinheiro novo que você coloca na carteira, aqui R$ 1.000 por mês",
+  "reinvestir": "usar o dividendo recebido para comprar mais ações em vez de gastar",
+  "virada": "mês em que os dividendos do mês passam de R$ 1.000 e pagam sozinhos um aporte",
+  "recorrente": "que se repete todo ano porque vem do lucro normal do negócio",
+  "dividendo extraordinário": "pagamento de uma vez só, por exemplo da venda de um ativo; infla o DY daquele ano",
+};
+const TERMS = [["Luiz Barsi Filho", "B3", "pessoa física", "carteira previdenciária"], ["BESST", "setor perene", "cíclicos", "commodities"],
+  ["DY", "dividendos"], ["DY"], ["reinvestir", "dividendos"], ["aporte", "reinvestir", "virada"], ["recorrente", "dividendo extraordinário", "DY"]];
+const fmt = v => Math.round(v).toLocaleString("pt-BR");
+// monthly income after m months of R$ 1.000 deposits at 0,5% a month
+const incomeAt = (m, reinv) => { let c = 0, inc = 0; for (let k = 0; k < m; k++) { c += 1000; inc = c * .005; if (reinv) c += inc; } return inc; };
+const CURVE = { r: [], s: [] };
+for (let y = 0; y <= 30; y++) { CURVE.r.push(incomeAt(12 * y, true)); CURVE.s.push(incomeAt(12 * y, false)); }
+
+const SCENES = [
+{ title: "Três condições juntas", dur: 10,
+  cap: [[0, "<b>Luiz Barsi Filho</b> resume o método em uma frase: comprar ações de boas empresas, a bons preços, que paguem bons dividendos."],
+        [5, "As três juntas. Só dividendo alto ou só preço baixo não basta. O que sobra no meio vira a <b>carteira previdenciária</b>: dividendos no lugar da aposentadoria."]],
+  draw(t) {
+    [[640, 300, "boa empresa", "c", 0], [960, 300, "bom preço", "b", 1.3], [800, 520, "bom dividendo", "a", 2.6]].forEach(([x, y, l, c, a]) => {
+      const p = P(t, a, a + 1.2);
+      if (p > 0) add(`<circle cx="${x}" cy="${y}" r="${220 * p}" fill="${COL[c]}" fill-opacity=".18" stroke="${COL[c]}" stroke-width="3"/>`);
+      const dx = x === 800 ? 0 : x < 800 ? -110 : 110, dy = y > 400 ? 120 : -90;
+      text(x + dx, y + dy, [[l, c, 1]], 34, { anchor: "middle", op: P(t, a + .8, a + 1.4) });
+    });
+    const s = P(t, 5, 6);
+    dot(800, 380, "d", 16 * s + .01, s);
+    text(1380, 380, [["carteira", "d", 1]], 36, { anchor: "middle", op: s });
+    text(1380, 425, [["previdenciária", "d", 1]], 36, { anchor: "middle", op: s });
+    arrow(1250, 385, 830, 382, "d", P(t, 5.5, 6.5), 3);
+  } },
+
+{ title: "Filtro 1: setores perenes", dur: 12,
+  cap: [[0, "Primeiro filtra o setor. Barsi prefere negócios que as pessoas pagam em qualquer economia: <b>BESST</b>."],
+        [6, "Evita os <b>cíclicos</b>: o lucro sobe e desce com a economia, e o dividendo junto."],
+        [9.5, "BESST é preferência, não regra fechada: ele também cita papel e celulose como perene."]],
+  draw(t) {
+    [["B", "ancos"], ["E", "nergia"], ["S", "aneamento"], ["S", "eguros"], ["T", "elecom"]].forEach(([l, r], k) => {
+      const op = P(t, .8 + k * .8, 1.5 + k * .8), x = 220 + k * 270;
+      text(x, 260, [[l, "c", 1]], 110, { anchor: "middle", op });
+      text(x, 330, [[l + r]], 34, { anchor: "middle", op: P(t, 1.2 + k * .8, 1.8 + k * .8) });
+    });
+    [["construção civil", 330], ["varejo", 800], ["commodities", 1270]].forEach(([l, x], k) => {
+      const op = P(t, 6 + k * .6, 6.6 + k * .6);
+      box(x - 170, 470, 340, 90, "r", op, .12);
+      text(x, 528, [[l, "r", 1]], 34, { anchor: "middle", op });
+      line(x - 150, 515, x + 150, 515, "r", 4, P(t, 7.5 + k * .4, 8 + k * .4));
+    });
+    text(800, 650, [["+ papel e celulose", "m"]], 32, { anchor: "middle", op: P(t, 9.5, 10.2) });
+  } },
+
+{ title: "Filtro 2: o preço define o DY", dur: 12,
+  cap: [[0, "A empresa paga <b>R$ 0,60</b> por ação no ano. Esse valor é o mesmo para quem compra caro ou barato."],
+        [3, "Comprando a <b>R$ 10,00</b>: DY = 0,60 ÷ 10,00 = 6,0%. Passa raspando no mínimo de 6% que Louise Barsi cita."],
+        [7.5, "Comprando a <b>R$ 8,00</b>: 0,60 ÷ 8,00 = <b>7,5%</b>. Preço 20% menor, rendimento 25% maior."]],
+  draw(t) {
+    chip(800, 110, "dividendo por ação no ano = R$ 0,60", "a", 34);
+    [[460, "10,00", "6,0%", 3], [1140, "8,00", "7,5%", 7.5]].forEach(([x, p, dy, a]) => {
+      frac(x, 340, [["0,60", "a", 1]], [[p, "b", 1]], 56, P(t, a, a + .4), "DY =");
+      fly(800, 120, x, 323, clamp((t - a - .4) / 1), "0,60", "a", 44);
+      text(x, 530, [["= " + dy, "d", 1]], 68, { anchor: "middle", op: P(t, a + 1.6, a + 2.3) });
+      text(x, 600, [["preço R$ " + p, "b"]], 30, { anchor: "middle", op: P(t, a, a + .5) });
+    });
+  } },
+
+{ title: "Quem compra barato compra mais", dur: 12,
+  cap: [[0, "Com R$ 1.000 a R$ 10,00 você leva <b>100 ações</b>. A R$ 8,00, <b>125</b>."],
+        [5, "Cada ação paga os mesmos R$ 0,60: R$ 60 contra <b>R$ 75</b> por ano."],
+        [8.5, "Por isso Barsi compra quando o preço cai, crise incluída. Só vale se a queda for do preço, não da empresa: queda porque o lucro sumiu não é desconto."]],
+  draw(t) {
+    [[100, 10, 100, 60, 0], [125, 8, 125, 75, 1]].forEach(([n, pr, _, div, r]) => {
+      const y0 = 170 + r * 260, op = P(t, r * 1.5, r * 1.5 + .8);
+      text(80, y0 - 20, [["a R$ " + pr + ",00: "], [n + " ações", "b", 1]], 34, { op });
+      for (let k = 0; k < n; k++) {
+        const ap = P(t, r * 1.5 + .3 + k * .012, r * 1.5 + .7 + k * .012), x = 80 + (k % 25) * 34, y = y0 + Math.floor(k / 25) * 34;
+        const pay = P(t, 5 + r * .6 + k * .004, 5.4 + r * .6 + k * .004);
+        if (ap > 0) add(`<rect x="${x}" y="${y}" width="28" height="28" rx="5" fill="${pay > 0 ? COL.a : COL.b}" fill-opacity="${.3 + .4 * pay}" opacity="${ap}"/>`);
+      }
+      text(1250, y0 + 70, [["R$ " + div + "/ano", "a", 1]], 52, { anchor: "middle", op: P(t, 5.6 + r * .6, 6.2 + r * .6) });
+    });
+  } },
+
+{ title: "O dividendo compra mais ações", dur: 11,
+  cap: [[0, "Na fase de acumular, todo dividendo recebido compra mais ações."],
+        [3.5, "Mais ações pagam mais dividendos, que compram mais ações: um laço que não para."],
+        [7.5, "\"Eu fico comprando, nunca vendo\", diz Barsi."]],
+  draw(t) {
+    const cx = 800, cy = 400, R = 220;
+    const nodes = [[-90, "ações", "b"], [30, "dividendos", "a"], [150, "mais ações", "c"]];
+    nodes.forEach(([a, l, c], k) => {
+      const r = a * Math.PI / 180, x = cx + R * Math.cos(r), y = cy + R * Math.sin(r), op = P(t, k * 1, k + .8);
+      box(x - 130, y - 45, 260, 90, c, op, .2);
+      text(x, y + 12, [[l, c, 1]], 36, { anchor: "middle", op });
+    });
+    const spin = Math.max(0, t - 3.5);
+    for (let k = 0; k < 3; k++) {
+      const a0 = (-90 + k * 120 + 32) * Math.PI / 180, a1 = (-90 + k * 120 + 88) * Math.PI / 180;
+      const op = P(t, 1 + k * .8, 1.8 + k * .8);
+      if (op > 0) add(`<path d="M ${cx + R * Math.cos(a0)} ${cy + R * Math.sin(a0)} A ${R} ${R} 0 0 1 ${cx + R * Math.cos(a1)} ${cy + R * Math.sin(a1)}" fill="none" stroke="${COL.m}" stroke-width="4" opacity="${op}"/>`);
+    }
+    if (spin > 0) { const a = (-90 + spin * 70) * Math.PI / 180; dot(cx + R * Math.cos(a), cy + R * Math.sin(a), "a", 14); }
+  } },
+
+{ title: "A bola de neve em números", dur: 16,
+  cap: [[0, "Simulação: <b>R$ 1.000 por mês</b> durante 30 anos, DY de 6%, preço e dividendo constantes, sem impostos."],
+        [2, "Gastando os dividendos, a renda cresce em linha reta: <b>R$ 1.800 por mês</b> no fim."],
+        [7, "Reinvestindo, a curva acelera: <b>R$ 5.023 por mês</b>, com o mesmo dinheiro do bolso (R$ 360 mil)."],
+        [12, "Por volta do mês 140 (11 anos e meio) vem a <b>virada</b>: os dividendos do mês passam de R$ 1.000 e pagam sozinhos um aporte."]],
+  draw(t) {
+    const gx = y => L(150, 1050, y / 30), gy = v => L(680, 90, v / 5500);
+    add(`<g stroke="${COL.l}" stroke-width="1">`);
+    [1000, 2000, 3000, 4000, 5000].forEach(v => add(`<line x1="${gx(0)}" x2="${gx(30)}" y1="${gy(v)}" y2="${gy(v)}"/>`));
+    add(`</g>`);
+    line(gx(0), gy(0), gx(30), gy(0), "m", 3);
+    line(gx(0), gy(0), gx(0), gy(5500), "m", 3);
+    [1000, 2000, 3000, 4000, 5000].forEach(v => text(gx(0) - 12, gy(v) + 8, [["R$ " + fmt(v), "m"]], 24, { anchor: "end" }));
+    [0, 10, 20, 30].forEach(y => text(gx(y), gy(0) + 34, [[y + " anos", "m"]], 24, { anchor: "middle" }));
+    const curve = (arr, c, p) => {
+      const n = Math.floor(30 * p); if (n < 1) return;
+      add(`<polyline points="${arr.slice(0, n + 1).map((v, y) => `${gx(y)},${gy(v)}`).join(" ")}" fill="none" stroke="${COL[c]}" stroke-width="5"/>`);
+    };
+    const ps = P(t, 2, 5), pr = P(t, 7, 11);
+    curve(CURVE.s, "b", ps); curve(CURVE.r, "c", pr);
+    text(gx(30) + 14, gy(1800) + 10, [["R$ 1.800", "b", 1]], 32, { op: P(t, 4.6, 5.2) });
+    text(gx(30) + 14, gy(5023) + 10, [["R$ 5.023", "c", 1]], 32, { op: P(t, 10.6, 11.2) });
+    const v = P(t, 12, 13);
+    line(gx(0), gy(1000), gx(30), gy(1000), "a", 3, v, "10 8");
+    dot(gx(140 / 12), gy(1000), "a", 13, v);
+    text(gx(140 / 12), gy(1000) - 24, [["virada", "a", 1]], 30, { anchor: "middle", op: v });
+    text(1320, 250, [["reinvestindo", "c", 1]], 34, { anchor: "middle", op: pr });
+    text(1320, 420, [["gastando", "b", 1]], 34, { anchor: "middle", op: ps });
+    text(1320, 560, [["mesmos R$ 360 mil", "m"]], 30, { anchor: "middle", op: P(t, 8, 9) });
+    text(1320, 600, [["saídos do bolso", "m"]], 30, { anchor: "middle", op: P(t, 8, 9) });
+  } },
+
+{ title: "Simples, não automático", dur: 11,
+  cap: [[0, "Dividendo alto no passado não garante o futuro: ele precisa vir de lucro <b>recorrente</b>."],
+        [6, "A simulação ignorou inflação, crescimento do dividendo e impostos. É uma aula, não recomendação de investimento."]],
+  draw(t) {
+    [["balanço forte, pouca dívida", 1], ["lucro e dividendo recorrentes, não um ano bom", 1], ["setor perene", 1], ["preço que dá DY ≥ 6%", 1],
+     ["ranking de dividendos do ano passado", 0], ["vender na primeira queda", 0]].forEach(([s, ok], k) => {
+      const op = P(t, .5 + k * .7, 1.1 + k * .7), y = 140 + k * 90;
+      text(300, y, [[ok ? "✓" : "✗", ok ? "c" : "r", 1]], 46, { anchor: "middle", op });
+      text(350, y, [[s, ok ? "f" : "r"]], 38, { op });
+    });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
