@@ -10,725 +10,351 @@
   --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
   --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
   --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+  --apt: #1c7ed6; --get: #e8590c; --new: #9c36b5;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
     --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
     --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
     --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+    --apt: #4dabf7; --get: #ff922b; --new: #da77f2;
   }
 }
 * { box-sizing: border-box; }
-/* The page may scroll vertically; nothing scrolls sideways or inside an element.
-   The font sits on html so every rem grows with it. Padding stays tiny so a
-   small laptop screen goes to content. */
-html { font: clamp(16.5px, .55vw + 9px, 20px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-body {
-  margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; min-height: 100vh;
-}
-main { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 1600px;
-  margin: 0 auto; padding: 6px; }
-header h1 { font-size: 1.4rem; margin: 0 0 2px; }
-header p { margin: 0; color: var(--muted); }
-.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
-.dot {
-  width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
-  background: var(--line); cursor: pointer; transition: background .3s;
-}
-.dot.done { background: var(--accent-soft); }
-.dot.on { background: var(--accent); }
-.stage {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  padding: 10px 12px;
-}
+/* The page scrolls vertically only. The font sits on html so every rem grows with it. */
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.links a { color: var(--accent); font-size: .9rem; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
 .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
-.step { animation: enter .45s ease both; transform-origin: top left; }
-@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
-.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
-.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
-.say { margin: 0 0 clamp(10px, 1.8vh, 18px); max-width: 75ch; }
-.say code, .note code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
-.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 75ch; }
-.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
-#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
-  background: var(--ink); color: var(--bg); font: 15px/1.45 system-ui, sans-serif; pointer-events: none; }
 /* long lines wrap instead of scrolling sideways */
-pre {
-  margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 0;
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
   font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
 }
-.ln { display: block; padding: 0 16px 0 calc(16px + 2em); text-indent: -2em; white-space: pre-wrap; overflow-wrap: break-word; min-height: 1.55em;
-  border-left: 3px solid transparent; transition: background .4s, border-color .4s; }
-.ln.hl { background: var(--accent-soft); border-left-color: var(--accent); animation: pulse 1.6s ease .5s 2; }
-@keyframes pulse { 50% { background: transparent; } }
-.ln.add { background: var(--add-bg); border-left-color: var(--add); animation: grow .5s ease both; }
-.ln[data-tip] { cursor: help; text-decoration: underline dotted var(--muted); }
-.ln.del { background: var(--del-bg); border-left-color: var(--del); text-decoration: line-through; color: var(--del); }
-.ln.gone { animation: shrink .5s ease forwards; }
-@keyframes grow { from { opacity: 0; transform: translateX(-10px); max-height: 0; } to { max-height: 12em; } }
-@keyframes shrink { to { opacity: 0; max-height: 0; min-height: 0; } }
-.diff-label { font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
-.term {
-  background: var(--term-bg); color: var(--term-ink); border-radius: 10px; padding: 14px 16px;
-  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
-  white-space: pre-wrap; overflow-wrap: break-word;
-}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
 .term .cmd::before { content: "$ "; color: #7fd18b; }
-.term .out { color: #b9b9b9; animation: enter .3s ease both; }
-.caret { display: inline-block; width: 8px; height: 1.1em; background: var(--term-ink);
-  vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-svg.diagram { max-width: 100%; height: auto; display: block; }
-svg .node rect { fill: var(--code-bg); stroke: var(--line); stroke-width: 1.5; }
-svg .node.hl rect { fill: var(--accent-soft); stroke: var(--accent); }
-svg .node text { fill: var(--ink); font: 14px system-ui, sans-serif; }
-svg .node { opacity: 0; animation: pop .4s ease forwards; }
-@keyframes pop { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
-svg .edge { stroke: var(--muted); stroke-width: 1.8; fill: none; }
-svg .edge.hl { stroke: var(--accent); }
-svg .edge.draw { animation: draw .6s ease forwards; }
-@keyframes draw { to { stroke-dashoffset: 0; } }
-svg .elabel { fill: var(--muted); font: 13px system-ui, sans-serif; opacity: 0; animation: pop .3s ease forwards; }
-svg marker path { fill: var(--muted); }
-nav {
-  position: sticky; bottom: 0; z-index: 5; flex: none; background: var(--panel);
-  border-top: 1px solid var(--line); padding: clamp(8px, 1.4vh, 12px) 16px;
-  display: flex; gap: 10px; justify-content: center; align-items: center;
-}
-nav button {
-  font: inherit; font-size: .95rem; padding: 8px 16px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-}
-nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-nav button:disabled { opacity: .4; cursor: default; }
-nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
-.bar { height: 3px; background: var(--accent); width: 0; position: absolute; left: 0; top: -2px; }
-.bar.run { transition: width linear; }
-@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
-svg.knobs { width: 100%; height: auto; display: block; }
-svg.knobs .hdr { font: 700 19px ui-monospace, monospace; fill: var(--ink); }
-svg.knobs .lbl { font: 600 16px system-ui, sans-serif; fill: var(--ink); }
-svg.knobs .key { font: 14px ui-monospace, monospace; fill: var(--muted); }
-svg.knobs .row rect.bg { fill: transparent; transition: fill .4s; }
-svg.knobs .row.hl rect.bg { fill: var(--accent-soft); }
-svg.knobs .row.hl .lbl { fill: var(--accent); }
-svg.knobs .row.dim { opacity: .45; }
-svg.knobs .row { cursor: help; }
-svg.knobs .sw rect { transition: fill .4s; }
-svg.knobs .sw circle { fill: #fff; stroke: #0003; transition: transform .45s cubic-bezier(.5,.1,.3,1.4); }
-svg.knobs .sw.on rect { fill: var(--add); } svg.knobs .sw.off rect { fill: var(--line); }
-svg.knobs .sw.on circle { transform: translateX(26px); }
-svg.knobs .sw.flip rect { stroke: var(--accent); stroke-width: 3; }
-svg.knobs .state { font: 600 14px ui-monospace, monospace; fill: var(--muted); }
-svg.knobs .engine rect { fill: var(--code-bg); stroke: var(--line); stroke-width: 1.5; }
-svg.knobs .engine text { fill: var(--ink); font: 600 17px system-ui, sans-serif; }
-svg.knobs .engine .key { font: 14px ui-monospace, monospace; fill: var(--muted); }
-svg.knobs .wire { stroke: var(--muted); stroke-width: 2; fill: none; }
-.toplink { float: right; font-size: .95rem; color: var(--accent); }
+.term .out { color: #b9b9b9; }
+.term .green { color: #7fd18b; }
+.term .warn { color: #ff8a80; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+.term mark { background: #6ea0ff44; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .mono { font-family: ui-monospace, Menlo, monospace; }
+svg.diagram .box { fill: var(--code-bg); stroke: var(--line); stroke-width: 2; }
+svg.diagram .apt { fill: var(--apt); }
+svg.diagram .get { fill: var(--get); }
+svg.diagram .add { fill: var(--add); }
+svg.diagram .new { fill: var(--new); }
+svg.diagram .del { fill: var(--del); }
+svg.diagram .muted { fill: var(--muted); }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram marker path { fill: var(--muted); }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
 </style>
 </head>
 <body>
 <main>
-  <header><a class="toplink" href="animate.html">animated version →</a><h1 id="title"></h1><p id="subtitle"></p></header>
-  <div class="dots" id="dots"></div>
-  <section class="stage" id="stage" aria-live="polite"></section>
+<nav class="links"><a href="../">← all lessons</a><a href="animate.html">animation</a><a href="practice.html">interaction</a></nav>
+<h1>apt vs apt-get</h1>
+<p class="lead">Know which one to type: <code>apt</code> at the prompt, <code>apt-get</code> and <code>apt-cache</code> in scripts. Real output from Ubuntu 24.04, apt 2.8.4.</p>
+
+<section>
+  <h2><span class="num">1</span>The problem</h2>
+  <p>Ubuntu and Debian give you two ways to install a package: <code>apt install cowsay</code> and
+  <code>apt-get install cowsay</code>. Both work, so it is easy to think they are the same. They are not quite:
+  pick the wrong one and a script prints a warning or breaks after an update, or an upgrade quietly
+  skips your new kernel.</p>
+  <p><dfn>apt</dfn> is the front end for a person at a terminal. <dfn>apt-get</dfn> (install, upgrade)
+  and <dfn>apt-cache</dfn> (search, show) are the older front ends, with output kept stable for scripts.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>The smallest example: one engine, two front panels</h2>
+  <div class="split">
+    <div>
+      <p>All three programs link the same library, <dfn>libapt-pkg</dfn>: the part that reads the
+      package index, solves dependencies, downloads files and runs dpkg.</p>
+      <div class="term"><span class="cmd">ldd /usr/bin/apt /usr/bin/apt-get | grep apt-pkg</span>
+<span class="out">	<mark>libapt-pkg.so.6.0</mark> => /lib/x86_64-linux-gnu/libapt-pkg.so.6.0
+	<mark>libapt-pkg.so.6.0</mark> => /lib/x86_64-linux-gnu/libapt-pkg.so.6.0</span></div>
+      <p>apt only changes defaults. It reads extra config keys in the <dfn>Binary::apt scope</dfn>:
+      keys under <code>binary::apt::</code> apply only when the program is named apt.
+      <code>apt-config dump</code> prints every setting in effect:</p>
+      <div class="term"><span class="cmd">apt-config dump | grep -i binary::apt</span>
+<span class="out"><mark>binary::apt::APT::Color "1";</mark>
+binary::apt::APT::Get::Upgrade-Allow-New "1";
+binary::apt::APT::Keep-Downloaded-Packages "0";
+binary::apt::DPkg::Progress-Fancy "1";
+binary::apt::DPkg::Lock::Timeout "120";
+... (30 lines in all)</span></div>
+      <p><code>man apt</code> says it in one line: "apt(8) just changes the default value of some options
+      (see apt.conf(5) and specifically the Binary scope)."</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 330" role="img" aria-label="apt, apt-get and apt-cache over one library">
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0L10,5L0,10z"/></marker></defs>
+        <rect class="box" x="10" y="10" width="190" height="70" rx="10"/>
+        <text class="mono apt" x="105" y="54" font-size="28" font-weight="700" text-anchor="middle">apt</text>
+        <rect class="box" x="225" y="10" width="190" height="70" rx="10"/>
+        <text class="mono get" x="320" y="54" font-size="28" font-weight="700" text-anchor="middle">apt-get</text>
+        <rect class="box" x="440" y="10" width="190" height="70" rx="10"/>
+        <text class="mono get" x="535" y="54" font-size="26" font-weight="700" text-anchor="middle">apt-cache</text>
+        <text class="apt" x="105" y="112" font-size="24" text-anchor="middle">+ Binary::apt keys</text>
+        <path class="edge" d="M105,125 L250,195" marker-end="url(#arr)"/>
+        <path class="edge" d="M320,85 L320,195" marker-end="url(#arr)"/>
+        <path class="edge" d="M535,85 L390,195" marker-end="url(#arr)"/>
+        <rect class="box" x="120" y="200" width="400" height="80" rx="10"/>
+        <text class="mono" x="320" y="250" font-size="28" font-weight="700" text-anchor="middle">libapt-pkg</text>
+        <text class="muted" x="320" y="318" font-size="24" text-anchor="middle">same index, same solver, same dpkg</text>
+      </svg>
+      <figcaption>Three front panels, one engine. Only apt reads the Binary::apt keys.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>On a terminal: color and progress</h2>
+  <div class="split">
+    <div>
+      <p>Typed at a terminal, apt colors the package name green and shows a progress counter:</p>
+      <div class="term"><span class="cmd">apt list cowsay</span>
+<span class="out">Listing... Done
+<span class="green">cowsay</span>/noble,noble 3.03+dfsg2-8 all</span></div>
+      <p>The color is made of <dfn>escape codes</dfn>: hidden bytes that tell the terminal to switch color.
+      <code>script</code> runs a command inside a fake terminal and <code>cat -v</code> prints the
+      invisible bytes as text (<code>^[</code> is the ESC byte, <code>^M</code> a carriage return):</p>
+      <div class="term"><span class="cmd">script -qc 'apt list cowsay' /dev/null | cat -v</span>
+<span class="out">^MListing... 0%^M^MListing... 0%^M^MListing... 0%^M^MListing... Done^M^M
+<mark>^[[32m</mark>cowsay<mark>^[[0m</mark>/noble,noble 3.03+dfsg2-8 all^M</span></div>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 200" role="img" aria-label="escape codes around cowsay">
+        <text class="mono new" x="20" y="80" font-size="34" font-weight="700">^[[32m</text>
+        <text class="mono add" x="160" y="80" font-size="34" font-weight="700">cowsay</text>
+        <text class="mono new" x="300" y="80" font-size="34" font-weight="700">^[[0m</text>
+        <text class="mono" x="420" y="80" font-size="34">/noble</text>
+        <text class="new" x="78" y="135" font-size="24" text-anchor="middle">green on</text>
+        <text class="new" x="350" y="135" font-size="24" text-anchor="middle">reset</text>
+        <text class="muted" x="320" y="185" font-size="24" text-anchor="middle">a script reading this text gets the bytes too</text>
+      </svg>
+      <figcaption>The last line, zoomed. Only the name is green on screen.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Piped into a script: the warning</h2>
+  <div class="split">
+    <div>
+      <p>A <dfn>pipe</dfn> (<code>|</code>) sends one program's output into another. When apt's output is
+      not a terminal, it warns on <dfn>stderr</dfn>, the error stream that shows on screen but is not
+      passed down the pipe:</p>
+      <div class="term"><span class="cmd">apt search ^cowsay$ | cat</span>
+<span class="out"><span class="warn">WARNING: apt does not have a stable CLI interface. Use with caution in scripts.</span>
+
+Sorting...
+Full Text Search...
+cowsay/noble,noble 3.03+dfsg2-8 all
+  configurable talking cow</span></div>
+    </div>
+    <div>
+      <p>apt-cache answers the same search with no warning, in its own one-line format:</p>
+      <div class="term"><span class="cmd">apt-cache search ^cowsay$ | cat</span>
+<span class="out"><mark>cowsay - configurable talking cow</mark></span></div>
+      <p>A <dfn>stable CLI</dfn> is an output format that does not change between versions. <code>man apt</code>:
+      apt "may change behavior between versions", so prefer apt-get and apt-cache in scripts
+      "as they keep backward compatibility as much as possible".</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>upgrade: the difference that matters</h2>
+  <div class="split">
+    <div>
+      <p>Same machine, same package index. <code>-s</code> simulates: it prints the plan, needs no root
+      and changes nothing.</p>
+      <div class="term"><span class="cmd">apt-get -s upgrade | grep upgraded,</span>
+<span class="out">88 upgraded, 0 newly installed, 0 to remove and <mark>6 not upgraded.</mark></span>
+<span class="cmd">apt -s upgrade | grep upgraded,</span>
+<span class="out"><mark>94 upgraded, 11 newly installed</mark>, 0 to remove and 0 not upgraded.</span></div>
+      <p>apt-get upgrade never installs a new package, so every upgrade that needs one is
+      <dfn>held back</dfn> (apt-get prints "kept back"). Here the 6 are kernel packages:</p>
+      <div class="term"><span class="cmd">apt-get -s upgrade | grep -A3 'kept back'</span>
+<span class="out">The following packages have been kept back:
+  linux-generic linux-generic-hwe-24.04 linux-headers-generic
+  linux-headers-generic-hwe-24.04 linux-image-generic
+  linux-image-generic-hwe-24.04</span></div>
+      <p>Each needs a new kernel package, like <code>linux-image-6.8.0-149-generic</code>. apt upgrade installs
+      the 11 new packages, so all 6 go through: 88 + 6 = 94. Neither one removes anything; <code>apt full-upgrade</code>
+      (<code>apt-get dist-upgrade</code>) is the upgrade that may also remove packages.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 380" role="img" aria-label="upgrade bars: apt-get 88 upgraded 6 held back, apt 94 upgraded 11 new">
+        <text class="mono get" x="10" y="34" font-size="26" font-weight="700">apt-get -s upgrade</text>
+        <rect class="add" x="10" y="50" width="528" height="60" opacity=".6"/>
+        <rect class="del" x="538" y="50" width="36" height="60" opacity=".6"/>
+        <text class="add" x="274" y="145" font-size="24" font-weight="700" text-anchor="middle">88 upgraded</text>
+        <text class="del" x="556" y="145" font-size="24" font-weight="700" text-anchor="middle">6 held back</text>
+        <text class="mono apt" x="10" y="215" font-size="26" font-weight="700">apt -s upgrade</text>
+        <rect class="add" x="10" y="231" width="564" height="60" opacity=".6"/>
+        <rect class="new" x="574" y="231" width="56" height="60" opacity=".6"/>
+        <text class="add" x="292" y="326" font-size="24" font-weight="700" text-anchor="middle">94 upgraded</text>
+        <text class="new" x="602" y="326" font-size="24" font-weight="700" text-anchor="middle">11 new</text>
+        <text class="muted" x="320" y="370" font-size="24" text-anchor="middle">6 px per package</text>
+      </svg>
+      <figcaption>The 6 held-back upgrades go through once new packages are allowed.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Prove it: flip one switch</h2>
+  <p>The whole upgrade difference is one key, <code>APT::Get::Upgrade-Allow-New</code>. <code>-o</code> sets
+  one config option for a single run. Turn the key off for apt and you get apt-get's numbers; turn it on
+  for apt-get (or pass <code>--with-new-pkgs</code>) and you get apt's:</p>
+  <div class="term"><span class="cmd">apt -s -o APT::Get::Upgrade-Allow-New=0 upgrade | grep upgraded,</span>
+<span class="out"><mark>88 upgraded, 0 newly installed, 0 to remove and 6 not upgraded.</mark></span>
+<span class="cmd">apt-get -s -o APT::Get::Upgrade-Allow-New=1 upgrade | grep upgraded,</span>
+<span class="out"><mark>94 upgraded, 11 newly installed, 0 to remove and 0 not upgraded.</mark></span>
+<span class="cmd">apt-get -s --with-new-pkgs upgrade | grep upgraded,</span>
+<span class="out"><mark>94 upgraded, 11 newly installed, 0 to remove and 0 not upgraded.</mark></span></div>
+</section>
+
+<section>
+  <h2><span class="num">7</span>show: for people vs for scripts</h2>
+  <div class="split">
+    <div>
+      <p><code>apt-cache show</code> prints every field of the package index. <code>apt show</code> drops the
+      <dfn>checksums</dfn> (MD5 and SHA hashes that prove the download is not corrupted) and the file path,
+      and adds what a person checks before installing:</p>
+      <div class="term"><span class="cmd">apt show cowsay 2>/dev/null | wc -l</span>
+<span class="out">21</span>
+<span class="cmd">apt-cache show cowsay | wc -l</span>
+<span class="out">27</span>
+<span class="cmd">apt-cache show cowsay | grep ^Size</span>
+<span class="out">Size: <mark>18572</mark></span>
+<span class="cmd">apt show cowsay 2>/dev/null | grep -E '^(Download-Size|APT-Sources)'</span>
+<span class="out">Download-Size: <mark>18.6 kB</mark>
+APT-Sources: http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages</span></div>
+      <p>Same number, two formats: 18572 bytes ÷ 1000 = 18.6 kB (kilobytes).</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 420" role="img" aria-label="fields only in apt show vs only in apt-cache show">
+        <rect class="box" x="5" y="5" width="300" height="410" rx="10"/>
+        <rect class="box" x="335" y="5" width="300" height="410" rx="10"/>
+        <text class="mono apt" x="155" y="45" font-size="26" font-weight="700" text-anchor="middle">only in apt show</text>
+        <text class="mono get" x="485" y="45" font-size="24" font-weight="700" text-anchor="middle">only in apt-cache show</text>
+        <text class="mono" x="20" y="95" font-size="24">Download-Size</text>
+        <text class="mono" x="20" y="135" font-size="24">APT-Sources</text>
+        <text class="mono" x="20" y="175" font-size="24">Description</text>
+        <text class="mono" x="350" y="95" font-size="24">Architecture</text>
+        <text class="mono" x="350" y="130" font-size="24">Filename</text>
+        <text class="mono" x="350" y="165" font-size="24">Size</text>
+        <text class="mono del" x="350" y="200" font-size="24">MD5sum</text>
+        <text class="mono del" x="350" y="235" font-size="24">SHA1</text>
+        <text class="mono del" x="350" y="270" font-size="24">SHA256</text>
+        <text class="mono del" x="350" y="305" font-size="24">SHA512</text>
+        <text class="mono" x="350" y="340" font-size="24">Description-en</text>
+        <text class="mono" x="350" y="375" font-size="24">Description-md5</text>
+      </svg>
+      <figcaption>From <code>diff</code> of the field names; the other fields appear in both.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Two quiet ones: cache and lock</h2>
+  <div class="split">
+    <div>
+      <p>Two more keys exist only in the Binary::apt scope:</p>
+      <div class="term"><span class="cmd">apt-config dump | grep -i -E 'Keep-Downloaded|Lock::Timeout'</span>
+<span class="out">binary::apt::APT::Keep-Downloaded-Packages <mark>"0"</mark>;
+binary::apt::DPkg::Lock::Timeout <mark>"120"</mark>;</span></div>
+    </div>
+    <div>
+      <ol>
+        <li>After a successful install, apt deletes the downloaded <dfn>.deb</dfn> package files from
+        <code>/var/cache/apt/archives</code>. apt-get leaves them there.</li>
+        <li>Only one program can install packages at a time: it holds the <dfn>dpkg lock</dfn>
+        (unattended-upgrades often holds it right after boot). apt waits up to 120 s for it; apt-get
+        has no wait set and stops with an error at once.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Which one to type</h2>
+  <div class="split">
+    <pre># at the prompt: apt
+apt update
+apt install cowsay
+apt upgrade
+apt full-upgrade
+apt search cowsay
+apt show cowsay
+apt list --upgradable</pre>
+    <pre># in scripts, Dockerfiles, CI: apt-get / apt-cache
+apt-get update
+apt-get install -y cowsay
+<mark>apt-get upgrade --with-new-pkgs</mark>
+apt-get dist-upgrade
+apt-cache search cowsay
+apt-cache show cowsay</pre>
+  </div>
+  <p><dfn>CI</dfn> (continuous integration) is a server that builds and tests code on every push. Nobody
+  watches it: a progress bar is noise there, and the output must not change between versions.
+  A <dfn>Dockerfile</dfn> is the same case:</p>
+  <pre>FROM ubuntu:24.04
+RUN <mark>apt-get</mark> update && <mark>apt-get</mark> install -y curl</pre>
+</section>
+
+<section>
+  <h2><span class="num">10</span>Common mistakes</h2>
+  <p class="mistake"><code>apt</code> in a script or Dockerfile. It prints the stable-CLI warning on stderr,
+  and its output may change in the next release. Fix: <code>apt-get</code> for install and upgrade,
+  <code>apt-cache</code> for search and show.</p>
+  <p class="mistake">Expecting <code>apt-get upgrade</code> to install a new kernel. It holds back every upgrade
+  that needs a new package (6 kernel packages above). Fix: <code>apt-get upgrade --with-new-pkgs</code>, or
+  <code>apt-get dist-upgrade</code> when removals are fine.</p>
+  <p class="mistake"><code>apt-get list</code>. list exists only in apt:</p>
+  <div class="term"><span class="cmd">apt-get list</span>
+<span class="out"><span class="warn">E: Invalid operation list</span></span></div>
+  <p class="mistake">Reading checksums from <code>apt show</code>. It drops MD5sum and the SHA fields. Fix:
+  <code>apt-cache show</code>.</p>
+  <p class="mistake"><code>apt-get -s upgrade | tail -1</code> to get the summary line. With <code>-s</code> the
+  plan ends with <code>Conf ...</code> lines, so <code>tail -1</code> prints one of those. Fix:
+  <code>grep upgraded,</code>.</p>
+</section>
+
+<section class="summary">
+  <h2>Summary</h2>
+  <ol>
+    <li>apt, apt-get and apt-cache share one library, libapt-pkg; apt only flips defaults in the Binary::apt scope.</li>
+    <li>apt adds color, progress, a pipe warning, a trimmed <code>show</code>, a 120 s lock wait and deletes downloaded .debs.</li>
+    <li>apt upgrade installs new packages an upgrade needs; apt-get upgrade holds those back unless you pass <code>--with-new-pkgs</code>.</li>
+    <li>Type apt at the prompt; write apt-get and apt-cache in scripts, Dockerfiles and CI.</li>
+  </ol>
+</section>
 </main>
-<nav>
-  <div class="bar" id="bar"></div>
-  <button id="prev">← Prev</button>
-  <button id="play" class="primary">▶ Play</button>
-  <button id="next">Next →</button>
-  <span class="count" id="count"></span>
-</nav>
-<div id="tip" hidden></div>
-
-<!-- Only this block changes per lesson. Escape "</" as "<\/" inside strings. -->
-<script id="lesson" type="application/json">
-{
- "title": "apt vs apt-get",
- "subtitle": "One engine, two front panels. apt is apt-get + apt-cache with different default switches. Real output from Ubuntu 24.04, apt 2.8.3.",
- "steps": [
-  {
-   "title": "Same engine, different switches",
-   "say": "`apt` does not have its own installer. It runs the same library as `apt-get` and `apt-cache` and flips a few defaults in the [[Binary::apt scope|Config keys under Binary::apt:: apply only when the binary is named apt. apt-get ignores them.]]. Hover any row.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "all": true
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "apt-config dump | grep -i '^Binary::apt::' | grep -v '\"\"'"
-       },
-       {
-        "out": "binary::apt::APT::Color \"1\";"
-       },
-       {
-        "out": "binary::apt::APT::Cache::Show::Version \"2\";"
-       },
-       {
-        "out": "binary::apt::APT::Get::Upgrade-Allow-New \"1\";"
-       },
-       {
-        "out": "binary::apt::APT::Keep-Downloaded-Packages \"0\";"
-       },
-       {
-        "out": "binary::apt::DPkg::Progress-Fancy \"1\";"
-       },
-       {
-        "out": "binary::apt::DPkg::Lock::Timeout \"120\";"
-       },
-       {
-        "out": "(trimmed: 16 lines in all)"
-       }
-      ]
-     }
-    ]
-   },
-   "note": "man apt: \"apt(8) just changes the default value of some options (see apt.conf(5) and specifically the Binary scope).\""
-  },
-  {
-   "title": "On a terminal: color and progress",
-   "say": "Typed by a person, `apt` shows a progress counter and colors the package name green. Those bytes are escape codes, which a script would have to strip.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "hl": [
-       "color",
-       "progress"
-      ]
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "script -qc 'apt list cowsay' /dev/null | cat -v"
-       },
-       {
-        "out": "^MListing... 0%^M^MListing... Done^M^M"
-       },
-       {
-        "out": "^[[32mcowsay^[[0m/noble 3.03+dfsg2-8 all^M"
-       }
-      ]
-     }
-    ]
-   },
-   "note": "`script` fakes a terminal; `cat -v` makes the hidden bytes visible. ^[[32m is green, ^[[0m resets."
-  },
-  {
-   "title": "In a pipe: the warning",
-   "say": "Pipe `apt` into another program and it warns on stderr. `apt-cache` gives the same answer with no warning, because its output format is kept stable for scripts.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "hl": [
-       "warn"
-      ]
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "apt search ^cowsay$ | cat"
-       },
-       {
-        "out": "WARNING: apt does not have a stable CLI interface. Use with caution in scripts."
-       },
-       {
-        "out": "Sorting..."
-       },
-       {
-        "out": "Full Text Search..."
-       },
-       {
-        "out": "cowsay/noble 3.03+dfsg2-8 all"
-       },
-       {
-        "cmd": "apt-cache search ^cowsay$ | cat"
-       },
-       {
-        "out": "cowsay - configurable talking cow"
-       }
-      ]
-     }
-    ]
-   },
-   "note": "Same index, same match, different format. A script parsing apt output can break on an apt upgrade; man apt says so."
-  },
-  {
-   "title": "upgrade: the difference that matters",
-   "say": "Same machine, same index, one minute apart. `apt-get upgrade` never installs a new package, so it holds back every upgrade that needs one. `apt upgrade` installs them. Predict before you look: which one leaves more packages behind?",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "hl": [
-       "new"
-      ]
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "apt-get -s upgrade | tail -1"
-       },
-       {
-        "out": "162 upgraded, 0 newly installed, 0 to remove and 30 not upgraded."
-       },
-       {
-        "cmd": "apt -s upgrade | tail -1"
-       },
-       {
-        "out": "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
-       },
-       {
-        "cmd": "apt -s upgrade | grep -A1 NEW"
-       },
-       {
-        "out": "The following NEW packages will be installed:"
-       },
-       {
-        "out": "  libfwupd3 libnvidia-common-580 libqgis-3d3.44.7 ..."
-       }
-      ]
-     }
-    ]
-   },
-   "note": "-s simulates, no root needed. Neither one removes anything: removal is what full-upgrade (apt-get dist-upgrade) adds."
-  },
-  {
-   "title": "Prove it: flip one switch",
-   "say": "Turn that one switch off for `apt` and it gives exactly `apt-get`'s numbers. Turn it on for `apt-get` (or pass `--with-new-pkgs`) and it gives `apt`'s numbers.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "hl": [
-       "new"
-      ],
-      "flip": {
-       "new": {
-        "get": 1,
-        "apt": 0
-       }
-      }
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "apt -s -o APT::Get::Upgrade-Allow-New=0 upgrade | tail -1"
-       },
-       {
-        "out": "162 upgraded, 0 newly installed, 0 to remove and 30 not upgraded."
-       },
-       {
-        "cmd": "apt-get -s -o APT::Get::Upgrade-Allow-New=1 upgrade | tail -1"
-       },
-       {
-        "out": "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
-       },
-       {
-        "cmd": "apt-get -s --with-new-pkgs upgrade | tail -1"
-       },
-       {
-        "out": "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded."
-       }
-      ]
-     }
-    ]
-   },
-   "note": "The outlined switches are the ones -o flipped for that run."
-  },
-  {
-   "title": "show: same data, trimmed",
-   "say": "`apt show` hides checksums and the pool path and adds what a person wants before installing: download size and which source it comes from.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "hl": [
-       "show"
-      ]
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "apt show cowsay 2>/dev/null | wc -l"
-       },
-       {
-        "out": "21"
-       },
-       {
-        "cmd": "apt-cache show cowsay | wc -l"
-       },
-       {
-        "out": "27"
-       },
-       {
-        "cmd": "diff <(apt show cowsay | cut -d: -f1) <(apt-cache show cowsay | cut -d: -f1)"
-       },
-       {
-        "out": "< Download-Size   < APT-Sources   < Description"
-       },
-       {
-        "out": "> Architecture  > Filename  > Size  > MD5sum  > SHA1"
-       },
-       {
-        "out": "> SHA256  > SHA512  > Description-en  > Description-md5"
-       }
-      ]
-     }
-    ]
-   },
-   "note": "diff output squeezed onto 3 lines: < only in apt, > only in apt-cache."
-  },
-  {
-   "title": "Two quiet ones: cache and lock",
-   "say": "`apt` deletes the `.deb` files from `/var/cache/apt/archives` after a successful install; `apt-get` keeps them. `apt` also waits up to 120 s when another install holds the [[dpkg lock|Only one program can run dpkg at a time. unattended-upgrades often holds it right after boot.]] instead of failing at once.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "knobs",
-      "hl": [
-       "keep",
-       "lock"
-      ]
-     },
-     {
-      "kind": "terminal",
-      "lines": [
-       {
-        "cmd": "apt-config dump | grep -i -E 'Keep-Downloaded|Lock::Timeout'"
-       },
-       {
-        "out": "binary::apt::APT::Keep-Downloaded-Packages \"0\";"
-       },
-       {
-        "out": "binary::apt::DPkg::Lock::Timeout \"120\";"
-       },
-       {
-        "cmd": "ls /var/cache/apt/archives | head -2"
-       },
-       {
-        "out": "libnvidia-cfg1-580_580.173.02-0ubuntu0.24.04.1_amd64.deb"
-       },
-       {
-        "out": "libnvidia-cfg1-580_580.178.04-0ubuntu0.24.04.1_amd64.deb"
-       }
-      ]
-     }
-    ]
-   },
-   "note": "Only the Binary::apt scope sets these, so apt-get runs on the built-in defaults: keep the .debs, no lock wait."
-  },
-  {
-   "title": "Which one, when",
-   "say": "Type `apt` at the prompt. Write `apt-get` and `apt-cache` in scripts, Dockerfiles and CI, where output must not change between versions and a progress bar is noise.",
-   "show": {
-    "kind": "split",
-    "panes": [
-     {
-      "kind": "code",
-      "highlight": [
-       1,
-       9
-      ],
-      "code": "# at the prompt: apt\napt update\napt install cowsay\napt upgrade\napt full-upgrade\napt search cowsay; apt show cowsay\napt list --upgradable\n\n# in scripts: apt-get / apt-cache\napt-get update\napt-get install -y cowsay\napt-get upgrade --with-new-pkgs\napt-get dist-upgrade\napt-cache search cowsay; apt-cache show cowsay\n# apt-get list → E: Invalid operation list",
-      "tips": {
-       "12": "--with-new-pkgs makes it behave like apt upgrade. Plain apt-get upgrade holds those packages back.",
-       "13": "apt-get also accepts full-upgrade: both gave 192 upgraded, 57 newly installed here.",
-       "15": "Real error from apt-get 2.8.3: list exists only in apt."
-      }
-     },
-     {
-      "kind": "knobs",
-      "all": true
-     }
-    ]
-   }
-  }
- ]
-}
-</script>
-
-<script>
-const LESSON = JSON.parse(document.getElementById("lesson").textContent);
-const $ = id => document.getElementById(id);
-const el = (tag, cls, text) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
-};
-const svgEl = (tag, attrs) => {
-  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const k in attrs) e.setAttribute(k, attrs[k]);
-  return e;
-};
-// `inline code` and [[word|hover detail]] in prose, everything else as text
-const prose = (cls, s) => {
-  const p = el("p", cls);
-  String(s).split(/(`[^`]+`|\[\[[^\]]+\]\])/).forEach(part => {
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) p.append(el("code", null, part.slice(1, -1)));
-    else if (part.startsWith("[[") && part.endsWith("]]")) {
-      const [word, tip] = part.slice(2, -2).split("|");
-      const t = el("span", "tip", word); t.dataset.tip = tip || ""; p.append(t);
-    } else p.append(part);
-  });
-  return p;
-};
-
-let i = 0, playing = false, timer = null, pending = [];
-const later = (fn, ms) => pending.push(setTimeout(fn, ms));
-const clearPending = () => { pending.forEach(clearTimeout); pending = []; };
-
-function renderCode(s) {
-  const pre = el("pre");
-  const hl = new Set(s.highlight || []);
-  s.code.split("\n").forEach((t, n) => {
-    const ln = el("span", "ln" + (hl.has(n + 1) ? " hl" : ""), t);
-    if (s.tips && s.tips[n + 1]) ln.dataset.tip = s.tips[n + 1];
-    pre.append(ln);
-  });
-  return [pre, 0];
-}
-
-// LCS line diff -> [{op: "same"|"del"|"add", t}]
-function diffLines(a, b) {
-  const m = a.length, n = b.length, L = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
-  for (let x = m - 1; x >= 0; x--) for (let y = n - 1; y >= 0; y--)
-    L[x][y] = a[x] === b[y] ? L[x + 1][y + 1] + 1 : Math.max(L[x + 1][y], L[x][y + 1]);
-  const out = []; let x = 0, y = 0;
-  while (x < m && y < n) {
-    if (a[x] === b[y]) { out.push({op: "same", t: a[x]}); x++; y++; }
-    else if (L[x + 1][y] >= L[x][y + 1]) out.push({op: "del", t: a[x++]});
-    else out.push({op: "add", t: b[y++]});
-  }
-  while (x < m) out.push({op: "del", t: a[x++]});
-  while (y < n) out.push({op: "add", t: b[y++]});
-  return out;
-}
-
-function renderDiff(s) {
-  const wrap = el("div"), label = el("div", "diff-label", "before"), pre = el("pre");
-  wrap.append(label, pre);
-  const ops = diffLines(s.before.split("\n"), s.after.split("\n"));
-  const spans = ops.map(o => {
-    const sp = el("span", "ln", o.t);
-    if (o.op === "add") sp.style.display = "none";
-    pre.append(sp);
-    return sp;
-  });
-  later(() => {
-    label.textContent = "before → after";
-    ops.forEach((o, k) => { if (o.op === "del") spans[k].classList.add("del"); });
-  }, 900);
-  later(() => {
-    label.textContent = "after";
-    ops.forEach((o, k) => {
-      if (o.op === "del") spans[k].classList.add("gone");
-      if (o.op === "add") { spans[k].style.display = ""; spans[k].classList.add("add"); }
-    });
-  }, 2100);
-  return [wrap, 2600];
-}
-
-// keeps the last `max` rows (default 12), like a real terminal, so it never grows past the stage
-function renderTerminal(s) {
-  const box = el("div", "term"), caret = el("span", "caret"), max = s.max || 12;
-  box.append(caret);
-  const add = row => { box.insertBefore(row, caret); while (box.children.length > max + 1) box.firstChild.remove(); };
-  let t = 400;
-  s.lines.forEach(line => {
-    if (line.cmd != null) {
-      const row = el("div", "cmd");
-      later(() => add(row), t);
-      [...line.cmd].forEach(ch => { t += 45; later(() => row.textContent += ch, t); });
-      t += 350;
-    } else {
-      const row = el("div", "out", line.out);
-      later(() => add(row), t);
-      t += 250;
-    }
-  });
-  return [box, t];
-}
-
-function renderDiagram(s) {
-  const W = 170, H = 52, GX = 70, GY = 60, PAD = 10;
-  const cols = Math.max(...s.nodes.map(n => n.col)) + 1, rows = Math.max(...s.nodes.map(n => n.row)) + 1;
-  const vw = cols * W + (cols - 1) * GX + 2 * PAD, vh = rows * H + (rows - 1) * GY + 2 * PAD;
-  const svg = svgEl("svg", {class: "diagram", width: vw, viewBox: `0 0 ${vw} ${vh}`});
-  const defs = svgEl("defs", {}), mk = svgEl("marker", {id: "arr", viewBox: "0 0 10 10", refX: 9, refY: 5,
-    markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse"});
-  mk.append(svgEl("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(mk); svg.append(defs);
-  const pos = {};
-  s.nodes.forEach(n => pos[n.id] = {x: PAD + n.col * (W + GX), y: PAD + n.row * (H + GY)});
-  let t = 0;
-  s.nodes.forEach(n => {
-    const g = svgEl("g", {class: "node" + (n.hl ? " hl" : ""), style: `animation-delay:${t}ms;transform-origin:${pos[n.id].x + W / 2}px ${pos[n.id].y + H / 2}px`});
-    if (n.tip) g.dataset.tip = n.tip;
-    g.append(svgEl("rect", {x: pos[n.id].x, y: pos[n.id].y, width: W, height: H, rx: 10}));
-    const tx = svgEl("text", {x: pos[n.id].x + W / 2, y: pos[n.id].y + H / 2 + 5, "text-anchor": "middle"});
-    tx.textContent = n.label; g.append(tx); svg.append(g);
-    t += 250;
-  });
-  (s.edges || []).forEach(e => {
-    const a = pos[e.from], b = pos[e.to];
-    const ac = {x: a.x + W / 2, y: a.y + H / 2}, bc = {x: b.x + W / 2, y: b.y + H / 2};
-    // clip the line to the box edges so the arrowhead touches the border
-    const clip = (c, o) => {
-      const dx = o.x - c.x, dy = o.y - c.y;
-      const k = Math.min(dx ? (W / 2) / Math.abs(dx) : Infinity, dy ? (H / 2) / Math.abs(dy) : Infinity);
-      return {x: c.x + dx * k, y: c.y + dy * k};
-    };
-    const p = clip(ac, bc), q = clip(bc, ac);
-    const len = Math.hypot(q.x - p.x, q.y - p.y);
-    const line = svgEl("path", {class: "edge draw" + (e.hl ? " hl" : ""), d: `M${p.x},${p.y} L${q.x},${q.y}`,
-      "marker-end": "url(#arr)", style: `stroke-dasharray:${len};stroke-dashoffset:${len};animation-delay:${t}ms`});
-    svg.insertBefore(line, svg.querySelector(".node"));
-    if (e.label) {
-      const lb = svgEl("text", {class: "elabel", x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - 7,
-        "text-anchor": "middle", style: `animation-delay:${t + 400}ms`});
-      lb.textContent = e.label; svg.append(lb);
-    }
-    t += 500;
-  });
-  return [svg, t + 400];
-}
-
-function renderSplit(s) {
-  const box = el("div", "split");
-  let t = 0;
-  s.panes.forEach(p => { const [node, ms] = RENDER[p.kind](p); box.append(node); t = Math.max(t, ms); });
-  return [box, t];
-}
-
-// one engine, two front panels: each row is a Binary::apt default that differs
-const KNOB = [
-  {id: "color",    lbl: "Colored output",           key: "APT::Color", get: 0, apt: 1,
-   tip: "apt prints package names in green on a terminal. Set in Binary::apt::APT::Color \"1\"."},
-  {id: "progress", lbl: "Progress bar while installing", key: "DPkg::Progress-Fancy", get: 0, apt: 1,
-   tip: "The green 'Progress: [ 40%]' bar at the bottom of the screen during apt install."},
-  {id: "warn",     lbl: "Warns when piped",         key: "stderr WARNING", get: 0, apt: 1,
-   tip: "When stdout is not a terminal, apt prints 'WARNING: apt does not have a stable CLI interface' on stderr. apt-get and apt-cache never do."},
-  {id: "new",      lbl: "upgrade may add new pkgs", key: "APT::Get::Upgrade-Allow-New", get: 0, apt: 1,
-   tip: "apt upgrade installs new packages an upgrade needs (a new kernel, a renamed library). apt-get upgrade holds those upgrades back instead."},
-  {id: "show",     lbl: "Short show / search",      key: "APT::Cache::Show::Version 2", get: 0, apt: 1,
-   tip: "apt show drops checksums and file paths and adds Download-Size and APT-Sources."},
-  {id: "keep",     lbl: "Keeps downloaded .debs",   key: "APT::Keep-Downloaded-Packages", get: 1, apt: 0,
-   tip: "apt sets this to 0: after a successful install it deletes the .debs from /var/cache/apt/archives. apt-get leaves them."},
-  {id: "lock",     lbl: "Waits 120 s for dpkg lock", key: "DPkg::Lock::Timeout", get: 0, apt: 1,
-   tip: "If another install (unattended-upgrades) holds the lock, apt waits up to 120 s. No timeout is set for apt-get here."}
-];
-function renderKnobs(s) {
-  const RH = 46, Y0 = 52, XG = 468, XA = 578;
-  const svg = svgEl("svg", {class: "knobs", viewBox: `0 0 660 ${Y0 + KNOB.length * RH + 92}`});
-  const hdr = (x, t) => { const e = svgEl("text", {class: "hdr", x, y: 30, "text-anchor": "middle"}); e.textContent = t; svg.append(e); };
-  hdr(XG + 20, "apt-get"); hdr(XA + 20, "apt");
-  const hl = new Set(s.hl || []), flip = s.flip || {};
-  KNOB.forEach((k, n) => {
-    const y = Y0 + n * RH;
-    const g = svgEl("g", {class: "row" + (hl.has(k.id) ? " hl" : hl.size && !s.all ? " dim" : "")});
-    g.dataset.tip = k.tip;
-    g.append(svgEl("rect", {class: "bg", x: 4, y, width: 652, height: RH - 4, rx: 8}));
-    const l = svgEl("text", {class: "lbl", x: 14, y: y + 19}); l.textContent = k.lbl;
-    const kk = svgEl("text", {class: "key", x: 14, y: y + 37}); kk.textContent = k.key;
-    g.append(l, kk);
-    [["get", XG], ["apt", XA]].forEach(([who, x]) => {
-      const v = flip[k.id] && flip[k.id][who] != null ? flip[k.id][who] : k[who];
-      const sw = svgEl("g", {class: "sw " + (k[who] ? "on" : "off") + (flip[k.id] && flip[k.id][who] != null ? " flip" : "")});
-      sw.append(svgEl("rect", {x, y: y + 9, width: 52, height: 26, rx: 13}));
-      sw.append(svgEl("circle", {cx: x + 13, cy: y + 22, r: 10}));
-      g.append(sw);
-      if (v !== k[who]) later(() => sw.classList.replace(k[who] ? "on" : "off", v ? "on" : "off"), 700);
-    });
-    svg.append(g);
-  });
-  const ey = Y0 + KNOB.length * RH + 20;
-  [XG + 26, XA + 26].forEach(x => svg.insertBefore(svgEl("path", {class: "wire", d: `M${x},40 V${ey}`, "stroke-dasharray": "4 5", opacity: .5}), svg.querySelector(".row")));
-  const e = svgEl("g", {class: "engine"});
-  e.dataset.tip = "Both binaries link the same library and read the same /etc/apt config. Only the Binary::apt scope differs.";
-  e.append(svgEl("rect", {x: 4, y: ey, width: 652, height: 64, rx: 12}));
-  const t1 = svgEl("text", {x: 18, y: ey + 26}); t1.textContent = "same engine: libapt-pkg (solver, downloads, runs dpkg)";
-  const t2 = svgEl("text", {class: "key", x: 18, y: ey + 48}); t2.textContent = "apt = apt-get + apt-cache + Binary::apt::* defaults";
-  e.append(t1, t2); svg.append(e);
-  return [svg, 1200];
-}
-
-const RENDER = {knobs: renderKnobs, code: renderCode, diff: renderDiff, terminal: renderTerminal, diagram: renderDiagram, split: renderSplit};
-
-function show(n) {
-  clearPending(); clearTimeout(timer);
-  i = Math.max(0, Math.min(LESSON.steps.length - 1, n));
-  const s = LESSON.steps[i], stage = $("stage"), box = el("div", "step");
-  box.append(el("div", "num", `STEP ${i + 1} OF ${LESSON.steps.length}`), el("h2", null, s.title), prose("say", s.say));
-  let anim = 0;
-  if (s.show && RENDER[s.show.kind]) { const [node, ms] = RENDER[s.show.kind](s.show); box.append(node); anim = ms; }
-  if (s.note) box.append(prose("note", s.note));
-  stage.replaceChildren(box);
-  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
-  $("count").textContent = `${i + 1} / ${LESSON.steps.length}`;
-  $("prev").disabled = i === 0;
-  $("next").disabled = i === LESSON.steps.length - 1;
-  if (playing) schedule(anim + 2500 + 45 * (s.say || "").length);
-}
-
-function schedule(ms) {
-  const bar = $("bar");
-  bar.classList.remove("run"); bar.style.width = "0"; void bar.offsetWidth;
-  bar.classList.add("run"); bar.style.transitionDuration = ms + "ms"; bar.style.width = "100%";
-  timer = setTimeout(() => i < LESSON.steps.length - 1 ? show(i + 1) : setPlaying(false), ms);
-}
-
-function setPlaying(on) {
-  playing = on;
-  $("play").textContent = on ? "❚❚ Pause" : "▶ Play";
-  clearTimeout(timer);
-  const bar = $("bar"); bar.classList.remove("run"); bar.style.width = "0";
-  if (on) show(i === LESSON.steps.length - 1 ? 0 : i);
-}
-
-document.addEventListener("mouseover", e => {
-  const t = e.target.closest("[data-tip]"), tip = $("tip");
-  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
-  tip.textContent = t.dataset.tip; tip.hidden = false;
-  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
-  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
-  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
-});
-
-document.title = LESSON.title;
-$("title").textContent = LESSON.title;
-$("subtitle").textContent = LESSON.subtitle || "";
-LESSON.steps.forEach((s, k) => {
-  const d = el("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d);
-});
-$("prev").onclick = () => show(i - 1);
-$("next").onclick = () => show(i + 1);
-$("play").onclick = () => setPlaying(!playing);
-document.addEventListener("keydown", e => {
-  if (e.key === "ArrowRight") show(i + 1);
-  else if (e.key === "ArrowLeft") show(i - 1);
-  else if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
-});
-show(0);
-</script>
 </body>
 </html>
