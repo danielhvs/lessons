@@ -38,13 +38,16 @@
     border-radius: 4px; overflow: hidden; }
   #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
   #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-self: start; }
+  #top a { color: var(--b); font-size: 16px; }
   #bar a { color: var(--b); }
   #m { position: absolute; width: 0; height: 0; visibility: hidden; }
   #m text { white-space: pre; }
 </style>
 </head>
 <body>
-<div id="where"></div>
+<div id="top"><nav id="links"><a href="../">← all lessons</a><a href="index.html">lesson</a><a href="practice.html">interaction</a></nav><div id="where"></div><span></span></div>
 <svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
 <div id="caption"></div>
 <div id="terms"></div>
@@ -58,7 +61,6 @@
   <button class="spd on" data-s="1">1x</button>
   <button class="spd" data-s="2">2x</button>
   <div id="timeline"></div>
-  <a href="../">← all lessons</a>
 </div>
 <svg id="m"><text id="mt"></text></svg>
 <script>
