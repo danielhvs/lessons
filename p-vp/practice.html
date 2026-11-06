@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P/VP, interação</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #where { text-align: center; font-size: 22px; font-weight: 700; }
+  /* the viewBox is 800 wide so 30-unit labels stay >= 14px on a 390px phone */
+  #stage { flex: 1; min-height: 300px; width: 100%; display: block; touch-action: manipulation; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #talk { min-height: 104px; }
+  #caption, #ask { font-size: 20px; line-height: 1.35; padding: 6px 10px; border-radius: 4px;
+    background: var(--panel); min-height: 104px; }
+  #caption { border-left: 4px solid var(--d); }
+  #caption b { color: var(--d); }
+  #ask { border-left: 4px solid var(--a); display: none; }
+  #ask .q b { color: var(--a); }
+  #ask .ctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+  #ask button, #ask input { font: inherit; font-size: 20px; padding: 4px 12px; border-radius: 6px;
+    border: 2px solid var(--line); background: var(--bg); color: var(--fg); }
+  #ask button { cursor: pointer; }
+  #ask input { width: 110px; text-align: center; }
+  #ask .ok { border-color: var(--c); color: var(--c); }
+  #ask .bad { border-color: var(--r); color: var(--r); }
+  #ask .show { color: var(--muted); }
+  #hint { color: var(--r); font-size: 18px; margin-top: 4px; }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 160px; height: 22px; display: flex; gap: 3px; cursor: pointer; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a><a href="animate.html">animação</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 800 620" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="talk">
+  <div id="caption"></div>
+  <div id="ask"><div class="q"></div><div class="ctl"></div><div id="hint"></div></div>
+</div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)", e: "var(--e)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const n2 = v => v.toFixed(2).replace(".", ",");
+const r$ = v => "R$ " + n2(v);
+
+let out = [];
+const add = s => out.push(s);
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}">${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+const dot = (x, y, color, r = 10, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  if (op <= 0.001) return;
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  line(cx - w / 2, cy, cx + w / 2, cy, "f", 3, op);
+  text(cx, cy + size, denT, size, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 12) {
+  if (op <= 0 || h <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(rx, h / 2)}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label, color, 1]], size) + 30, h = size * 1.6;
+  box(x - w / 2, y - h / 2, w, h, color, op, .12);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  line(x0, y, x1, y, "m", 3);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    line(f(v), y - 10, f(v), y + 10, "m", 2);
+    text(f(v), y + 42, [[fmt(v), "m"]], 30, { anchor: "middle" });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  line(x, y, x, y - h, color, 4, op);
+  dot(x, y, color, 10, op);
+  text(x, y - h - 44, [[label, color, 1]], 34, { anchor: "middle", op });
+  text(x, y - h - 10, [[sub, "m"]], 30, { anchor: "middle", op });
+}
+
+// ---------- checkpoint answers drawn in the stage
+let cur = 0;
+const ans = [];
+// the user's answer flies from the "Sua vez" box to (x, y) at ck.show; a wrong one stays above, struck out
+function answerAt(x, y, size, t, c = "c") {
+  const ck = SCENES[cur].ck, a = ans[cur], show = ck.show ?? ck.at;
+  if (!a || t < show) return text(x, y, [["?", "m", 1]], size, { anchor: "middle" });
+  const right = "" + ck.answer, mine = a.val == null ? null : "" + a.val, p = P(t, show, show + .9);
+  if (mine !== null && p < 1) {
+    return text(L(400, x, p), L(640, y, p) - Math.sin(p * Math.PI) * 80, [[mine, a.ok ? c : "r", 1]], size, { anchor: "middle" });
+  }
+  text(x, y, [[right, c, 1]], size, { anchor: "middle", op: mine === null ? P(t, show, show + .6) : 1 });
+  if (!a.ok && mine !== null) {
+    const s = Math.max(30, size * .6), w = width([["você: " + mine]], s), yy = y - size * 1.05;
+    text(x, yy, [["você: " + mine, "r"]], s, { anchor: "middle" });
+    line(x - w / 2, yy - s * .32, x + w / 2, yy - s * .32, "r", 3);
+  }
+}
+
+const GLOSS = {
+  "P/VP": "preço ÷ valor patrimonial por ação: quantos reais a bolsa cobra por R$ 1 de patrimônio",
+  "balanço": "relatório contábil publicado a cada trimestre (ITR) e no fim do ano (DFP) com o que a empresa tem e deve",
+  "ativos": "tudo que a empresa tem: caixa, imóveis, máquinas, estoque, créditos",
+  "passivos": "tudo que a empresa deve: empréstimos, fornecedores, impostos a pagar",
+  "PL": "patrimônio líquido: ativos − passivos. O que sobraria aos sócios vendendo tudo pelo valor do balanço",
+  "VPA": "valor patrimonial por ação: PL ÷ número de ações",
+  "desconto": "P/VP abaixo de 1: você compra R$ 1 de patrimônio por menos de R$ 1",
+  "ágio": "P/VP acima de 1: você paga mais do que o balanço diz que cada ação tem",
+  "valor de mercado": "preço da ação × número de ações: quanto a bolsa diz que a empresa inteira vale",
+  "ROE": "Return on Equity: lucro do ano ÷ PL. ROE 20% = cada R$ 10 de PL gera R$ 2 de lucro no ano",
+  "P/L": "preço ÷ lucro por ação: quantos anos de lucro o preço paga",
+  "LPA": "lucro por ação: lucro do ano ÷ número de ações",
+  "prejuízo": "lucro negativo: a empresa gastou mais do que ganhou no ano",
+  "value trap": "armadilha de valor: parece barato pelo múltiplo, mas o patrimônio está encolhendo",
+  "FII": "fundo de investimento imobiliário: fundo negociado na bolsa que tem imóveis ou dívidas imobiliárias",
+  "cota": "a fração de um fundo que você compra na bolsa, como a ação de uma empresa",
+  "VP por cota": "PL do fundo ÷ número de cotas; sai do informe mensal",
+  "informe mensal": "documento que o fundo entrega todo mês à CVM com PL, número de cotas e VP por cota",
+  "tijolo": "FII que tem imóveis: prédios, galpões, shoppings. O valor vem de laudo",
+  "papel": "FII que tem dívidas imobiliárias (CRIs), reprecificadas com frequência",
+  "laudo": "avaliação de um imóvel feita por um avaliador, em geral refeita uma vez por ano",
+  "CRI": "certificado de recebíveis imobiliários: um título de dívida ligado a um imóvel",
+  "emissão": "quando o fundo cria e vende cotas novas para captar dinheiro",
+};
+
+const SCENES = [
+{ title: "O que a empresa tem", dur: 13, terms: ["balanço", "ativos", "passivos", "PL", "VPA"],
+  cap: [[0, "O <b>balanço</b> mostra o que a empresa tem (<b>ativos</b>): R$ 150 milhões."],
+        [3, "E o que ela deve (<b>passivos</b>): R$ 100 milhões. O que sobra é dos sócios: o <b>patrimônio líquido</b>, R$ 50 milhões."],
+        [8, "Divida pelo número de ações, 5 milhões: <b>VPA = R$ 10</b> de patrimônio por ação."]],
+  draw(t) {
+    const base = 590, sc = 2.6, x = 20;
+    const a = P(t, 0, 1.2);
+    box(x, base - 150 * sc * a, 180, 150 * sc * a, "e", 1, .2);
+    text(x + 90, base - 75 * sc, [["ativos"]], 32, { anchor: "middle", op: P(t, 1, 1.5) });
+    text(x + 90, base - 75 * sc + 40, [["R$ 150 mi", "e", 1]], 32, { anchor: "middle", op: P(t, 1, 1.5) });
+    const p = P(t, 3, 4.2), top = base - 150 * sc;
+    box(x + 195, top, 180, 100 * sc * p, "r", 1, .2);
+    text(x + 285, top + 50 * sc - 10, [["passivos"]], 32, { anchor: "middle", op: P(t, 4, 4.5) });
+    text(x + 285, top + 50 * sc + 30, [["R$ 100 mi", "r", 1]], 32, { anchor: "middle", op: P(t, 4, 4.5) });
+    const q = P(t, 5, 6);
+    box(x + 195, base - 50 * sc, 180, 50 * sc * q, "b", 1, .35);
+    text(x + 285, base - 25 * sc - 8, [["PL", "b", 1]], 32, { anchor: "middle", op: P(t, 5.8, 6.4) });
+    text(x + 285, base - 25 * sc + 30, [["R$ 50 mi", "b", 1]], 32, { anchor: "middle", op: P(t, 5.8, 6.4) });
+    row(605, 110, [["ativos", "e", 1], [" − "], ["passivos", "r", 1], [" = "], ["PL", "b", 1]], 30, { op: P(t, 6, 7) });
+    frac(650, 270, [["R$ 50 mi", "b", 1]], [["5 mi de ações"]], 32, P(t, 8, 8.8), "VPA =");
+    text(605, 450, [["VPA = R$ 10,00", "b", 1]], 44, { anchor: "middle", op: P(t, 9.5, 10.3) });
+  } },
+
+{ title: "Preço sobre patrimônio", dur: 15, terms: ["P/VP", "desconto", "ágio"],
+  cap: [[0, "A bolsa não olha só o balanço: o preço sobe e desce todo dia. <b>P/VP = preço ÷ VPA</b>."],
+        [3, "Ação a <b>R$ 8</b>: P/VP 0,8. Você leva R$ 1 de patrimônio por R$ 0,80: <b>desconto</b>."],
+        [7, "A <b>R$ 10</b>: P/VP 1. Paga exatamente o que o balanço diz."],
+        [10.5, "Agora a ação sobe para <b>R$ 15</b>."],
+        [12.3, "A <b>R$ 15</b>: P/VP 1,5. Paga R$ 1,50 por R$ 1 de patrimônio: <b>ágio</b>."]],
+  ck: { at: 12, show: 12.3, kind: "num", answer: "1,5",
+        q: "Ação a <b>R$ 15</b>, VPA R$ 10. Quanto é o P/VP?",
+        hint: "P/VP = preço ÷ VPA = 15 ÷ 10." },
+  draw(t) {
+    const pr = t < 7 ? 8 : t < 9 ? L(8, 10, P(t, 7, 9)) : t < 10.5 ? 10 : L(10, 15, P(t, 10.5, 12));
+    const y = 470, f = nline(40, 760, y, 5, 20, 1, v => v % 5 ? "" : "R$ " + v);
+    add(`<rect x="${f(5)}" y="${y - 12}" width="${f(10) - f(5)}" height="24" fill="${COL.c}" opacity=".18"/><rect x="${f(10)}" y="${y - 12}" width="${f(20) - f(10)}" height="24" fill="${COL.r}" opacity=".15"/>`);
+    pin(f(10), y, 230, "VPA R$ 10", "patrimônio por ação", "b");
+    pin(f(pr), y, 100, r$(pr), "preço na bolsa", "a", P(t, 0, .8));
+    const op = P(t, .5, 1.2);
+    frac(360, 80, [[n2(pr), "a", 1]], [["10,00", "b", 1]], 40, op, "P/VP =");
+    text(470, 94, [["="]], 44, { op });
+    if (t < 10.5) text(560, 94, [[(pr / 10).toFixed(1).replace(".", ",").replace(",0", ""), "d", 1]], 44, { anchor: "middle", op });
+    else answerAt(560, 94, 44, t, "d");
+    text(f(7.5), y + 100, [["desconto", "c", 1]], 32, { anchor: "middle", op: P(t, 3, 3.6) });
+    text(f(15), y + 100, [["ágio", "r", 1]], 32, { anchor: "middle", op: P(t, 12.5, 13.1) });
+  } },
+
+{ title: "A empresa inteira", dur: 11, terms: ["valor de mercado", "PL"],
+  cap: [[0, "Mesma conta pela empresa inteira: o <b>valor de mercado</b> é o preço da ação vezes o número de ações."],
+        [2.8, "R$ 15 × 5 milhões = R$ 75 milhões: a bolsa diz que a empresa inteira vale isso."],
+        [5, "Divida pelo PL: 75 ÷ 50 = <b>1,5</b>. O mesmo P/VP, porque os dois lados têm o mesmo número de ações."]],
+  ck: { at: 2.5, show: 2.8, kind: "num", answer: "75",
+        q: "Ação a <b>R$ 15</b>, 5 milhões de ações. Valor de mercado, em milhões de reais?",
+        hint: "Valor de mercado = preço × número de ações = 15 × 5." },
+  draw(t) {
+    const base = 590, sc = 4.2, show = this.ck.show;
+    const m = P(t, show + .9, show + 2.2);
+    box(40, base - 75 * sc * m, 170, 75 * sc * m, "a", 1, .25);
+    text(125, base - 75 * sc - 54, [["valor de", "a", 1]], 30, { anchor: "middle", op: P(t, 0, .8) });
+    text(125, base - 75 * sc - 18, [["mercado", "a", 1]], 30, { anchor: "middle", op: P(t, 0, .8) });
+    box(240, base - 50 * sc, 170, 50 * sc, "b", P(t, 0, .8), .35);
+    text(325, base - 50 * sc - 18, [["PL R$ 50 mi", "b", 1]], 30, { anchor: "middle", op: P(t, 0, .8) });
+    row(610, 130, [["R$ 15", "a", 1], [" × 5 mi ações"]], 30, { op: P(t, .5, 1.3) });
+    const o3 = P(t, .5, 1.3), c = row(610, 190, [["= R$ "], ["75", "a", 1], [" mi", "a", 1]], 34, { op: [o3, 0, o3] });
+    if (t >= 1.3) answerAt(c[1], 190, 34, t, "a");
+    frac(660, 360, [["R$ 75 mi", "a", 1]], [["R$ 50 mi", "b", 1]], 34, P(t, 5, 5.8), "P/VP =");
+    text(610, 530, [["= 1,5", "d", 1]], 56, { anchor: "middle", op: P(t, 6.5, 7.3) });
+  } },
+
+{ title: "Por que alguém paga ágio: o ROE", dur: 14, terms: ["ROE", "P/L", "LPA"],
+  cap: [[0, "Patrimônio parado não vale muito; patrimônio que dá lucro vale mais. O <b>ROE</b> mede isso: lucro ÷ PL."],
+        [4, "Existe uma identidade exata: <b>P/VP = P/L × ROE</b>. O LPA se cancela na conta."],
+        [7.5, "Duas empresas com o mesmo P/L de 7,5: a A tem ROE 20%, a B tem ROE 5%."],
+        [10, "Mesmo P/L, ROE 4 vezes menor: P/VP 4 vezes menor, <b>0,375</b>."]],
+  ck: { at: 9.6, show: 10, kind: "opt", answer: "0,375", opts: ["0,375", "1,5", "0,75", "3,75"],
+        q: "Empresa B: P/L 7,5 e ROE 5%. Quanto é o P/VP?",
+        hint: "P/VP = P/L × ROE = 7,5 × 0,05." },
+  draw(t) {
+    row(400, 90, [["P/VP", "d", 1], [" = "], ["P/L", "a", 1], [" × "], ["ROE", "c", 1]], 48, { op: P(t, 4, 5) });
+    text(400, 150, [["(P ÷ LPA) × (LPA ÷ VPA) = P ÷ VPA", "m"]], 30, { anchor: "middle", op: P(t, 5.5, 6.3) });
+    const show = this.ck.show, base = 590;
+    [[210, "empresa A", "20%", .2, 7.5, 8.3], [590, "empresa B", "5%", .05, 8.8, show]].forEach(([x, n, rs, roe, a, g], k) => {
+      const op = P(t, a, a + .8);
+      text(x, 250, [[n, "f", 1]], 34, { anchor: "middle", op });
+      text(x, 300, [["P/L 7,5 × ROE ", "m"], [rs, "c", 1]], 30, { anchor: "middle", op });
+      const h = 7.5 * roe * 150 * P(t, g, g + 1);
+      box(x - 80, base - h, 160, h, "d", op, .35, 8);
+      const ly = base - 7.5 * roe * 150 - 14;
+      if (k === 0) {
+        text(x - 8, ly, [["P/VP", "d", 1]], 34, { anchor: "end", op: P(t, 9.1, 9.5) });
+        text(x + 40, ly, [["1,5", "d", 1]], 34, { anchor: "middle", op: P(t, 9.1, 9.5) });
+      } else if (t >= this.ck.at) {
+        text(x - 8, ly, [["P/VP", "d", 1]], 34, { anchor: "end" });
+        answerAt(x + 55, ly, 34, t, "d");
+      }
+    });
+    line(80, base, 720, base, "m", 3, P(t, 7.5, 8.3));
+  } },
+
+{ title: "A armadilha do P/VP baixo", dur: 15, terms: ["prejuízo", "value trap", "P/VP"],
+  cap: [[0, "Empresa inventada que dá <b>prejuízo</b> de R$ 2 por ação por ano. O VPA começa em R$ 10 e a ação custa R$ 5: P/VP 0,5, parece barata."],
+        [5, "O prejuízo come o patrimônio: VPA 8, 6, 4... O preço cai junto e o P/VP continua 0,5."],
+        [9.3, "No ano 3, VPA R$ 4 e P/VP 0,5: a ação vale <b>R$ 2</b>."],
+        [11, "Quem comprou a R$ 5 por estar \"barato\" viu a ação ir a R$ 2. Isso é a <b>value trap</b>: olhe o P/VP junto com o ROE e o histórico de lucros."]],
+  ck: { at: 9, show: 9.3, kind: "num", answer: "2",
+        q: "Ano 3: o VPA caiu para <b>R$ 4</b> e o P/VP continua 0,5. Qual o preço da ação, em reais?",
+        hint: "Preço = P/VP × VPA = 0,5 × 4." },
+  draw(t) {
+    const base = 470, sc = 30, x0 = 130, sw = 180, show = this.ck.show;
+    dot(40, 50, "b", 10); text(60, 61, [["VPA (R$)", "b", 1]], 30);
+    dot(260, 50, "a", 10); text(280, 61, [["preço (R$)", "a", 1]], 30);
+    line(30, base, 770, base, "m", 3);
+    for (let k = 0; k <= 3; k++) {
+      const g = k === 0 ? P(t, 0, 1) : P(t, 5 + (k - 1) * 1.6, 5.8 + (k - 1) * 1.6), cx = x0 + sw * k;
+      if (g <= 0) continue;
+      const v = 10 - 2 * k, pr = v / 2, gp = k < 3 ? g : P(t, show + .9, show + 1.8);
+      box(cx - 75, base - v * sc, 70, v * sc, "b", g, .3, 8);
+      text(cx - 40, base - v * sc - 12, [["" + v, "b", 1]], 30, { anchor: "middle", op: g });
+      box(cx + 5, base - pr * sc * gp, 70, pr * sc * gp, "a", 1, .4, 8);
+      if (k < 3) text(cx + 40, base - pr * sc - 12, [["" + pr, "a", 1]], 30, { anchor: "middle", op: g });
+      else if (t >= this.ck.at) answerAt(cx + 40, base - pr * sc - 12, 30, t, "a");
+      text(cx, base + 38, [["ano " + k, "m"]], 30, { anchor: "middle", op: g });
+      text(cx, base + 78, [["P/VP 0,5", "d", 1]], 30, { anchor: "middle", op: k < 3 ? g : P(t, show + 1.5, show + 2) });
+    }
+    text(600, 130, [["você: R$ 5 → R$ 2", "r", 1]], 32, { anchor: "middle", op: P(t, 11, 11.8) });
+    text(600, 175, [["−60%", "r", 1]], 36, { anchor: "middle", op: P(t, 11.5, 12.2) });
+  } },
+
+{ title: "No fundo imobiliário", dur: 12, terms: ["FII", "cota", "VP por cota", "informe mensal"],
+  cap: [[0, "No <b>FII</b> a conta é a mesma, com cotas no lugar de ações. O fundo publica todo mês o PL e o número de cotas."],
+        [4, "PL de R$ 1 bilhão ÷ 10 milhões de cotas = <b>VP R$ 100</b> por cota."],
+        [8.6, "Cota a R$ 92 na bolsa: P/VP = 92 ÷ 100 = <b>0,92</b>, 8% de desconto."]],
+  ck: { at: 8.3, show: 8.6, kind: "num", answer: "0,92",
+        q: "VP R$ 100 por cota e a cota custa <b>R$ 92</b> na bolsa. Quanto é o P/VP?",
+        hint: "P/VP = preço da cota ÷ VP por cota = 92 ÷ 100." },
+  draw(t) {
+    [["imóveis ou CRIs", "e", 90], ["caixa e renda fixa", "c", 190], ["− o que o fundo deve", "r", 290]].forEach(([l, c, y], k) => {
+      const op = P(t, k * .6, k * .6 + .7);
+      box(20, y - 50, 340, 76, c, op, .2);
+      text(190, y, [[l, c, 1]], 30, { anchor: "middle", op });
+    });
+    arrow(375, 180, 470, 180, "m", P(t, 2.5, 3.2));
+    chip(610, 180, "PL R$ 1 bi", "b", 34, P(t, 3, 3.6));
+    row(400, 420, [["VP = "], ["R$ 1 bi", "b", 1], [" ÷ 10 mi cotas = "], ["R$ 100", "b", 1]], 32, { op: P(t, 4, 4.8) });
+    const op = P(t, 6, 6.8);
+    const c = row(400, 540, [["P/VP = "], ["92", "a", 1], [" ÷ "], ["100", "b", 1], [" = "], ["0,92", "d", 1]], 42, { op: [op, op, op, op, op, 0] });
+    if (op > 0) answerAt(c[5], 540, 42, t, "d");
+  } },
+
+{ title: "Tijolo e papel", dur: 12, terms: ["tijolo", "papel", "laudo", "CRI"],
+  cap: [[0, "O mesmo número conta histórias diferentes nos dois tipos de FII."],
+        [2, "<b>Tijolo</b>: o VP vem de laudo, que muda devagar. P/VP 0,85 pode ser imóvel com 15% de desconto... ou um laudo otimista."],
+        [6, "<b>Papel</b>: o VP é reprecificado com frequência, então a cota costuma ficar perto de 1. Desconto grande é a bolsa com medo de calote."]],
+  ck: { at: 6, kind: "tap", answer: 1, zones: [[10, 15, 380, 590], [410, 15, 380, 590]],
+        q: "Em qual dos dois tipos um P/VP bem abaixo de 1 costuma ser medo de calote? Toque na caixa.",
+        hint: "Qual dos dois tem o VP atualizado com frequência, perto do preço da bolsa?" },
+  draw(t) {
+    const at = this.ck.at, revealed = !!ans[cur];
+    [[200, "tijolo", "e", ["VP vem de laudo,", "atualiza devagar", "0,85: 15% de desconto", "...ou laudo otimista", "olhe: vacância,", "inquilinos, contratos"], 2],
+     [600, "papel", "a", ["VP reprecificado,", "atualiza rápido", "P/VP perto de 1", "desconto grande:", "medo de calote", "olhe: devedores,", "garantias, indexador"], at + .3]].forEach(([x, n, c, ls, a], k) => {
+      const op = P(t, 0, .7);
+      box(x - 185, 20, 370, 580, c, op, .08);
+      text(x, 80, [[n, c, 1]], 42, { anchor: "middle", op });
+      if (k === 1 && !revealed) return;
+      ls.forEach((s, j) => text(x, 160 + j * 62, [[s]], 30, { anchor: "middle", op: P(t, a + .4 + j * .5, a + .9 + j * .5) }));
+    });
+  } },
+
+{ title: "Emissão de cotas", dur: 15, terms: ["emissão", "VP por cota"],
+  cap: [[0, "Fundo com 10 milhões de cotas e VP R$ 100 emite mais 2 milhões. O preço da emissão decide quem ganha."],
+        [3, "Emitir a <b>R$ 90</b>, abaixo do VP: PL vai a 1.000 + 180 = R$ 1.180 mi, VP cai para <b>R$ 98,33</b>. O cotista antigo perde."],
+        [8, "Agora a emissão sai a <b>R$ 110</b>, acima do VP."],
+        [10.5, "A R$ 110: PL vai a R$ 1.220 mi, VP sobe para <b>R$ 101,67</b>. O cotista antigo ganha."],
+        [12.5, "Simplificado: ignora os custos da emissão, que reduzem o VP um pouco em qualquer caso."]],
+  ck: { at: 10.2, show: 10.5, kind: "opt", answer: "R$ 101,67", opts: ["R$ 98,33", "R$ 100,00", "R$ 101,67", "R$ 110,00"],
+        q: "Emissão a <b>R$ 110</b>: PL novo R$ 1.220 mi, 12 mi de cotas. Quanto fica o VP por cota?",
+        hint: "VP novo = PL novo ÷ cotas = 1.220 ÷ 12." },
+  draw(t) {
+    const show = this.ck.show;
+    const pr = t < 3 ? 100 : t < 5 ? L(100, 90, P(t, 3, 5)) : t < 8 ? 90 : t < 10 ? L(90, 110, P(t, 8, 10)) : 110;
+    const pl = 1000 + 2 * pr, vpL = pl / 12;
+    const hidden = t >= 8, vp = !hidden ? vpL : t < show ? 98 + 1 / 3 : L(98 + 1 / 3, 1220 / 12, P(t, show + .9, show + 1.9));
+    text(400, 60, [["preço da emissão: "], [r$(pr), "a", 1]], 36, { anchor: "middle" });
+    const plS = Math.round(pl).toLocaleString("pt-BR");
+    row(400, 130, [["PL novo = 1.000 + 2 × "], [n2(pr), "a", 1], [" = "], ["R$ " + plS + " mi", "b", 1]], 30);
+    const vc = vpL < 99.995 ? "r" : vpL > 100.005 ? "c" : "f";
+    const c = row(400, 190, [["VP novo = "], [plS, "b", 1], [" ÷ 12 mi = "], [r$(vpL), vc, 1]], 30, { op: [1, 1, 1, hidden ? 0 : 1] });
+    if (hidden && t >= this.ck.at) answerAt(c[3], 190, 30, t, "c");
+    const y = 500, f = nline(40, 760, y, 95, 105, 1);
+    pin(f(100), y, 170, "R$ 100", "VP antes", "b");
+    const pc = vp < 99.995 ? "r" : vp > 100.005 ? "c" : "f";
+    pin(f(vp), y, 70, r$(vp), "VP depois", pc, hidden && t < show + .9 ? 0 : 1);
+  } },
+
+{ title: "Novo exemplo: empresa C", dur: 12, terms: ["VPA", "P/VP", "ágio", "ROE", "LPA", "P/L"],
+  cap: [[0, "Empresa C, nova: PL de R$ 80 milhões, 4 milhões de ações, ação a R$ 26 na bolsa."],
+        [4.3, "P/VP <b>1,3</b>: ágio, R$ 1,30 por R$ 1 de patrimônio. Com ROE de 13%, a identidade fecha: P/L 10 × ROE 13% = 1,3."]],
+  ck: { at: 4, show: 4.3, kind: "num", answer: "1,3",
+        q: "VPA R$ 20 e a ação custa <b>R$ 26</b>. Quanto é o P/VP?",
+        hint: "P/VP = preço ÷ VPA = 26 ÷ 20." },
+  draw(t) {
+    const show = this.ck.show;
+    row(400, 70, [["VPA = "], ["R$ 80 mi", "b", 1], [" ÷ 4 mi ações = "], ["R$ 20", "b", 1]], 32, { op: P(t, .5, 1.5) });
+    row(400, 140, [["preço na bolsa: "], ["R$ 26", "a", 1]], 32, { op: P(t, 2, 2.8) });
+    const op = P(t, 2.8, 3.6);
+    const c = row(400, 260, [["P/VP = "], ["26", "a", 1], [" ÷ "], ["20", "b", 1], [" = "], ["1,3", "d", 1]], 48, { op: [op, op, op, op, op, 0] });
+    if (op > 0) answerAt(c[5], 260, 48, t, "d");
+    text(400, 360, [["ágio: R$ 1,30 por R$ 1 de patrimônio", "r", 1]], 30, { anchor: "middle", op: P(t, show + 1.3, show + 2) });
+    text(400, 450, [["ROE 13% → LPA = 0,13 × 20 = R$ 2,60", "c"]], 30, { anchor: "middle", op: P(t, show + 2.5, show + 3.2) });
+    text(400, 510, [["P/L = 26 ÷ 2,60 = 10", "a"]], 30, { anchor: "middle", op: P(t, show + 3.5, show + 4.2) });
+    text(400, 570, [["P/L × ROE = 10 × 0,13 = 1,3", "d", 1]], 30, { anchor: "middle", op: P(t, show + 4.5, show + 5.2) });
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const $ = id => document.getElementById(id);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const svg = $("stage"), cap = $("caption"), ask = $("ask"), terms = $("terms");
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "", tries = 0, tapWrong = null, lastWrong = null;
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+const ckTime = i => starts[i] + SCENES[i].ck.at;
+const ckOpen = () => { const i = sceneAt(T), ck = SCENES[i].ck; return !!ck && !ans[i] && T >= ckTime(i) - 1e-6; };
+// "1,5", "1.5" and "1,50" are the same number
+const asNum = v => parseFloat(String(v).replace(/R\$|\s/g, "").replace(",", "."));
+
+const tl = $("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function buildAsk(i) {
+  const ck = SCENES[i].ck;
+  tries = 0; tapWrong = null; lastWrong = null;
+  ask.querySelector(".q").innerHTML = `<b>Sua vez:</b> ${ck.q}`;
+  $("hint").textContent = "";
+  const ctl = ask.querySelector(".ctl");
+  ctl.innerHTML = "";
+  if (ck.kind === "num") {
+    ctl.innerHTML = '<input id="in" type="text" inputmode="decimal" autocomplete="off"><button id="check">Conferir</button>';
+    const inp = $("in");
+    inp.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") submit(inp.value.trim(), inp); });
+    $("check").onclick = () => submit(inp.value.trim(), inp);
+  } else if (ck.kind === "opt") {
+    ck.opts.forEach(o => {
+      const b = document.createElement("button");
+      b.textContent = o; b.onclick = () => submit(o, b);
+      ctl.appendChild(b);
+    });
+  } else {
+    ctl.insertAdjacentHTML("beforeend", '<span>Toque no desenho.</span>');
+  }
+  const show = document.createElement("button");
+  show.className = "show"; show.textContent = "Mostrar resposta";
+  show.onclick = () => resolve(lastWrong, false);
+  ctl.appendChild(show);
+}
+function submit(val, el) {
+  if (val === "") return;
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  const right = ck.kind === "num" ? Math.abs(asNum(val) - asNum(ck.answer)) < 1e-9 : String(val) === String(ck.answer);
+  if (right) {
+    if (el) el.classList.add("ok");
+    return setTimeout(() => resolve(val, true), 450);
+  }
+  tries++; lastWrong = val;
+  if (el) el.classList.add("bad");
+  if (ck.kind === "tap") { tapWrong = val; lastKey = ""; }
+  if (tries >= 2) return setTimeout(() => resolve(val, false), 450);
+  $("hint").textContent = "Quase. Dica: " + ck.hint;
+}
+function resolve(val, ok) {
+  const i = sceneAt(T);
+  if (ans[i]) return;
+  ans[i] = { val, ok };
+  lastKey = "";
+  setPlaying(true);
+}
+
+let askFor = -1;
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur), open = ckOpen();
+  if (open && askFor !== i) { buildAsk(i); askFor = i; }
+  if (!open) askFor = -1;
+  ask.style.display = open ? "block" : "none";
+  cap.style.display = open ? "none" : "block";
+  const key = i + ":" + t.toFixed(3) + ":" + open + ":" + tapWrong;
+  if (key === lastKey) return;
+  lastKey = key; out = []; cur = i;
+  s.draw(t);
+  if (s.ck && s.ck.kind === "tap" && t >= s.ck.at - 1e-6) {
+    const z = s.ck.zones, a = ans[i];
+    const ring = (k, c, dash = "") => add(`<rect x="${z[k][0] + 4}" y="${z[k][1] + 4}" width="${z[k][2] - 8}" height="${z[k][3] - 8}" rx="8" fill="none" stroke="${COL[c]}" stroke-width="5" stroke-dasharray="${dash}"/>`);
+    if (open) { z.forEach((_, k) => ring(k, "m", "8 8")); if (tapWrong !== null) ring(tapWrong, "r"); }
+    else if (a) { ring(s.ck.answer, "c"); if (!a.ok && a.val !== null && a.val !== s.ck.answer) ring(a.val, "r"); }
+  }
+  svg.innerHTML = out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = s.terms.map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  $("where").textContent = s.title;
+  $("prev").disabled = i === 0;
+  const last = i === SCENES.length - 1;
+  $("next").disabled = last ? !(HEADLESS && open) : (!HEADLESS && open);
+  $("play").disabled = open;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const i = sceneAt(T), s = SCENES[i];
+    const stop = s.ck && !ans[i] && T < ckTime(i) ? ckTime(i) : sceneEnd(i);
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= stop) { T = stop; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; $("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check): stop on each checkpoint with the box open, then on the revealed last frame
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  ans[i] = undefined; askFor = -1;
+  if (HEADLESS) T = SCENES[i].ck ? ckTime(i) : sceneEnd(i);
+  else { T = starts[i]; setPlaying(true); }
+  render();
+}
+$("play").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) return;
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+$("replay").onclick = () => go(sceneAt(T));
+$("restart").onclick = () => go(0);
+$("prev").onclick = () => go(sceneAt(T) - 1);
+$("next").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) {
+    if (!HEADLESS) return;
+    ans[i] = { val: SCENES[i].ck.answer, ok: true };
+    T = sceneEnd(i);
+    return render();
+  }
+  go(i + 1);
+};
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  const i = sceneAt(T);
+  if (SCENES[i].ck && !ans[i] && T > ckTime(i)) T = ckTime(i);
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+svg.addEventListener("pointerdown", e => {
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (!ckOpen() || ck.kind !== "tap") return;
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const k = ck.zones.findIndex(([x, y, w, h]) => p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h);
+  if (k >= 0) submit(k, null);
+});
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === " ") { e.preventDefault(); $("play").click(); }
+  if (e.key === "ArrowRight") $("next").click();
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
