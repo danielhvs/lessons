@@ -38,12 +38,14 @@
     border-radius: 4px; overflow: hidden; }
   #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
   #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
-  #bar a { color: var(--b); }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+  #links a { color: var(--b); }
   #m { position: absolute; width: 0; height: 0; visibility: hidden; }
   #m text { white-space: pre; }
 </style>
 </head>
 <body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a><a href="practice.html">interação</a></nav>
 <div id="where"></div>
 <svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
 <div id="caption"></div>
@@ -58,7 +60,6 @@
   <button class="spd on" data-s="1">1x</button>
   <button class="spd" data-s="2">2x</button>
   <div id="timeline"></div>
-  <a href="../">← todas as aulas</a>
 </div>
 <svg id="m"><text id="mt"></text></svg>
 <script>

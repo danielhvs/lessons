@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preço teto e preço teto projetivo</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+  }
+}
+* { box-sizing: border-box; }
+/* The page scrolls vertically only. The font sits on html so every rem grows with it. */
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .9rem; }
+.links a { color: var(--accent); }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+/* long lines wrap instead of scrolling sideways */
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .box { fill: var(--code-bg); stroke: var(--line); stroke-width: 2; }
+svg.diagram .box.hl { fill: var(--accent-soft); stroke: var(--accent); }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram marker path { fill: var(--muted); }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+
+:root { --o: #e8590c; --pu: #9c36b5; --g: #2b8a3e; }
+@media (prefers-color-scheme: dark) { :root { --o: #ff922b; --pu: #da77f2; --g: #51cf66; } }
+svg.diagram .m { fill: var(--muted); }
+svg.diagram .b { fill: var(--accent); font-weight: 700; }
+svg.diagram .o { fill: var(--o); font-weight: 700; }
+svg.diagram .p { fill: var(--pu); font-weight: 700; }
+svg.diagram .g { fill: var(--g); font-weight: 700; }
+svg.diagram .r { fill: var(--del); font-weight: 700; }
+svg.diagram .barf { fill: var(--o); fill-opacity: .55; }
+svg.diagram .axis { stroke: var(--muted); stroke-width: 2; }
+svg.diagram .ref { stroke: var(--pu); stroke-width: 3; stroke-dasharray: 10 7; }
+svg.diagram .curve { stroke: var(--accent); stroke-width: 4; fill: none; }
+svg.diagram .dotb { fill: var(--accent); }
+svg.diagram .dotg { fill: var(--g); }
+svg.diagram .dotr { fill: var(--del); }
+svg.diagram .dotp { fill: var(--pu); }
+table { border-collapse: collapse; margin: 0 0 10px; }
+td, th { border: 1px solid var(--line); padding: 4px 12px; text-align: right; }
+th { background: var(--code-bg); }
+.big { font-size: 1.15rem; }
+</style>
+</head>
+<body>
+
+<main>
+<nav class="links"><a href="../">← todas as aulas</a><a href="animate.html">animação</a><a href="practice.html">interação</a></nav>
+<h1>Preço teto e preço teto projetivo</h1>
+<p class="lead">Até quanto pagar por uma ação que paga proventos, olhando o passado (Bazin) ou a sua projeção.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p>A <b>ação X</b> custa R$ 30,00. Vale pagar isso? Sem uma régua, qualquer preço parece bom quando a ação sobe.
+  O <dfn>preço teto</dfn> é essa régua: o preço máximo que você aceita pagar. Abaixo do teto, compra; acima, espera.</p>
+  <p>A ação X é inventada para o exemplo: os números não são de uma empresa real.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: o teto de Bazin</h2>
+  <div class="split">
+    <div>
+      <p><dfn>Décio Bazin</dfn>, investidor brasileiro e autor de "Faça Fortuna com Ações", só comprava uma ação se ela pagasse
+      pelo menos <b>6% ao ano</b> em proventos. <dfn>Proventos</dfn> são todo o dinheiro que a empresa paga ao acionista:
+      <dfn>dividendos</dfn> (parte do lucro repartida) mais <dfn>JCP</dfn> (juros sobre capital próprio, outra forma de repartir o
+      lucro, que já chega com imposto de renda descontado).</p>
+      <p>Um ano sozinho engana, então a versão mais usada tira a <b>média dos últimos 5 anos</b>:</p>
+      <table><tr><th>2021</th><th>2022</th><th>2023</th><th>2024</th><th>2025</th></tr>
+      <tr><td>1,20</td><td>1,50</td><td>1,80</td><td>1,30</td><td>2,20</td></tr></table>
+      <div class="term"><span class="cmd">python3 -c "p = [1.20, 1.50, 1.80, 1.30, 2.20]; print(round(sum(p), 2), round(sum(p) / 5, 2))"</span>
+<span class="out">8.0 1.6</span></div>
+      <p class="big">Depois pergunte ao contrário: a que preço R$ 1,60 por ano rende 6%? Divida por 0,06 (6% escrito como número, 6 ÷ 100):</p>
+      <pre>teto Bazin = média de 5 anos ÷ 0,06
+           = 1,60 ÷ 0,06 = <mark>R$ 26,67</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "print(round(1.60 / 0.06, 2))"</span>
+<span class="out">26.67</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 560 290" role="img" aria-label="proventos de 5 anos e a média"><line class="axis" x1="20" x2="540" y1="250" y2="250"/><rect class="barf" x="40" y="142.0" width="70" height="108.0"/><text x="75.0" y="238.0" font-size="22" text-anchor="middle">1,20</text><text class="m" x="75.0" y="280.0" font-size="22" text-anchor="middle">2021</text><rect class="barf" x="140" y="115.0" width="70" height="135.0"/><text x="175.0" y="238.0" font-size="22" text-anchor="middle">1,50</text><text class="m" x="175.0" y="280.0" font-size="22" text-anchor="middle">2022</text><rect class="barf" x="240" y="88.0" width="70" height="162.0"/><text x="275.0" y="238.0" font-size="22" text-anchor="middle">1,80</text><text class="m" x="275.0" y="280.0" font-size="22" text-anchor="middle">2023</text><rect class="barf" x="340" y="133.0" width="70" height="117.0"/><text x="375.0" y="238.0" font-size="22" text-anchor="middle">1,30</text><text class="m" x="375.0" y="280.0" font-size="22" text-anchor="middle">2024</text><rect class="barf" x="440" y="52.0" width="70" height="198.0"/><text x="475.0" y="238.0" font-size="22" text-anchor="middle">2,20</text><text class="m" x="475.0" y="280.0" font-size="22" text-anchor="middle">2025</text><line class="ref" x1="20" x2="540" y1="106.0" y2="106.0"/><text class="p" x="540.0" y="96.0" font-size="22" text-anchor="end">média 1,60</text></svg><figcaption>Proventos por ano da ação X; a linha tracejada é a média de R$ 1,60.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Por que dividir por 6% dá o teto</h2>
+  <div class="split">
+    <div>
+      <p>O <dfn>DY</dfn> (dividend yield) é quanto a ação rende por ano em proventos: proventos de 1 ano ÷ preço, em %.
+      Com os mesmos R$ 1,60, quanto mais caro você paga, menor o DY.</p>
+      <pre>R$ 20,00: 1,60 ÷ 20 = 8%     abaixo do teto, compra
+R$ 26,67: 1,60 ÷ 26,67 = 6%  o teto
+R$ 30,00: 1,60 ÷ 30 = 5,33%  acima do teto, espera</pre>
+      <div class="term"><span class="cmd">python3 -c "print(round(1.60 / 20 * 100, 2), round(1.60 / 30 * 100, 2))"</span>
+<span class="out">8.0 5.33</span></div>
+      <p>O teto é o preço em que a curva cruza a linha de 6%. A R$ 30,00, a ação X está R$ 3,33 acima do teto: pelo passado, está cara.</p>
+      <div class="term"><span class="cmd">python3 -c "print(round(30 - 1.60 / 0.06, 2))"</span>
+<span class="out">3.33</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 560 370" role="img" aria-label="DY da média de R$ 1,60 para cada preço"><line class="axis" x1="70" x2="540" y1="300" y2="300"/><line class="axis" x1="70" x2="70" y1="300" y2="30"/><text class="m" x="70.0" y="326.0" font-size="20" text-anchor="middle">15</text><text class="m" x="148.3" y="326.0" font-size="20" text-anchor="middle">20</text><text class="m" x="226.7" y="326.0" font-size="20" text-anchor="middle">25</text><text class="m" x="305.0" y="326.0" font-size="20" text-anchor="middle">30</text><text class="m" x="383.3" y="326.0" font-size="20" text-anchor="middle">35</text><text class="m" x="461.7" y="326.0" font-size="20" text-anchor="middle">40</text><text class="m" x="540.0" y="326.0" font-size="20" text-anchor="middle">45</text><text class="m" x="62.0" y="217.0" font-size="20" text-anchor="end">4%</text><text class="m" x="62.0" y="127.0" font-size="20" text-anchor="end">8%</text><text class="m" x="62.0" y="37.0" font-size="20" text-anchor="end">12%</text><text class="m" x="305.0" y="352.0" font-size="20" text-anchor="middle">preço (R$)</text><polyline class="curve" points="70.0,60.0 77.8,67.7 85.7,75.0 93.5,81.8 101.3,88.2 109.2,94.3 117.0,100.0 124.8,105.4 132.7,110.5 140.5,115.4 148.3,120.0 156.2,124.4 164.0,128.6 171.8,132.6 179.7,136.4 187.5,140.0 195.3,143.5 203.2,146.8 211.0,150.0 218.8,153.1 226.7,156.0 234.5,158.8 242.3,161.5 250.2,164.2 258.0,166.7 265.8,169.1 273.7,171.4 281.5,173.7 289.3,175.9 297.2,178.0 305.0,180.0 312.8,182.0 320.7,183.9 328.5,185.7 336.3,187.5 344.2,189.2 352.0,190.9 359.8,192.5 367.7,194.1 375.5,195.7 383.3,197.1 391.2,198.6 399.0,200.0 406.8,201.4 414.7,202.7 422.5,204.0 430.3,205.3 438.2,206.5 446.0,207.7 453.8,208.9 461.7,210.0 469.5,211.1 477.3,212.2 485.2,213.3 493.0,214.3 500.8,215.3 508.7,216.3 516.5,217.2 524.3,218.2 532.2,219.1 540.0,220.0"/><line class="ref" x1="70" x2="540" y1="165.0" y2="165.0"/><text class="p" x="540.0" y="157.0" font-size="22" text-anchor="end">6%</text><circle class="dotg" cx="148.3" cy="120.0" r="8"/><text class="g" x="160.3" y="106.0" font-size="20" text-anchor="start">R$ 20: 8%</text><circle class="dotp" cx="252.8" cy="165.0" r="8"/><text class="p" x="264.8" y="151.0" font-size="20" text-anchor="start">teto R$ 26,67</text><circle class="dotr" cx="305.0" cy="180.0" r="8"/><text class="r" x="317.0" y="166.0" font-size="20" text-anchor="start">R$ 30: 5,33%</text></svg><figcaption>DY da média de R$ 1,60 para cada preço; a linha roxa é o mínimo de 6%.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Crescendo: o preço teto projetivo</h2>
+  <div class="split">
+    <div>
+      <p>O passado não sabe que a empresa vai crescer. O <dfn>preço teto projetivo</dfn> troca a média passada pelo provento que
+      você <b>espera</b> no próximo ano. Para isso, estime:</p>
+      <ol>
+        <li>O <dfn>LPA</dfn> (lucro por ação): lucro líquido do ano ÷ número de ações. Aqui, R$ 4,00.</li>
+        <li>O <dfn>payout</dfn>: a parte do lucro que a empresa distribui como proventos. Aqui, 60%.</li>
+      </ol>
+      <pre>provento projetado = LPA × payout = 4,00 × 0,60 = R$ 2,40
+teto projetivo = 2,40 ÷ 0,06 = <mark>R$ 40,00</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "print(round(4.00 * 0.60, 2), round(4.00 * 0.60 / 0.06, 2))"</span>
+<span class="out">2.4 40.0</span></div>
+      <p>Na mesma régua, os dois métodos discordam: pelo passado R$ 30,00 é caro; pela projeção, está R$ 10,00 abaixo do teto.
+      O que decide é se você acredita no lucro de R$ 4,00.</p>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 560 250" role="img" aria-label="preço de hoje entre o teto Bazin e o teto projetivo"><line class="axis" x1="40" x2="520" y1="150" y2="150"/><line class="axis" x1="40.0" x2="40.0" y1="142" y2="158"/><text class="m" x="40.0" y="184.0" font-size="20" text-anchor="middle">20</text><line class="axis" x1="136.0" x2="136.0" y1="142" y2="158"/><text class="m" x="136.0" y="184.0" font-size="20" text-anchor="middle">25</text><line class="axis" x1="232.0" x2="232.0" y1="142" y2="158"/><text class="m" x="232.0" y="184.0" font-size="20" text-anchor="middle">30</text><line class="axis" x1="328.0" x2="328.0" y1="142" y2="158"/><text class="m" x="328.0" y="184.0" font-size="20" text-anchor="middle">35</text><line class="axis" x1="424.0" x2="424.0" y1="142" y2="158"/><text class="m" x="424.0" y="184.0" font-size="20" text-anchor="middle">40</text><line class="axis" x1="520.0" x2="520.0" y1="142" y2="158"/><text class="m" x="520.0" y="184.0" font-size="20" text-anchor="middle">45</text><line class="axis" x1="168.0" x2="168.0" y1="78" y2="150"/><circle class="dotp" cx="168.0" cy="150" r="9"/><text class="p" x="168.0" y="70.0" font-size="20" text-anchor="middle">teto Bazin 26,67</text><line class="axis" x1="232.0" x2="232.0" y1="128" y2="150"/><circle class="dotb" cx="232.0" cy="150" r="9"/><text class="b" x="232.0" y="120.0" font-size="20" text-anchor="middle">hoje 30,00</text><line class="axis" x1="424.0" x2="424.0" y1="78" y2="150"/><circle class="dotg" cx="424.0" cy="150" r="9"/><text class="g" x="424.0" y="70.0" font-size="20" text-anchor="middle">teto projetivo 40,00</text><text class="r" x="199.4" y="230.0" font-size="20" text-anchor="middle">+3,33 acima</text><text class="g" x="328.0" y="230.0" font-size="20" text-anchor="middle">10,00 de folga</text></svg><figcaption>O preço de hoje entre os dois tetos.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Se a projeção errar</h2>
+  <p>O teto projetivo é tão bom quanto a estimativa de lucro. Com payout de 60%, cada R$ 1,00 de LPA move o teto em
+  R$ 10,00 (0,60 ÷ 0,06): um erro pequeno no lucro vira um erro grande no teto.</p>
+  <table><tr><th>LPA</th><th>provento (× 0,60)</th><th>teto (÷ 0,06)</th><th>R$ 30,00 está...</th></tr>
+  <tr><td>2,50</td><td>1,50</td><td>25,00</td><td>caro</td></tr>
+  <tr><td>4,00</td><td>2,40</td><td>40,00</td><td>barato</td></tr>
+  <tr><td>5,00</td><td>3,00</td><td>50,00</td><td>barato</td></tr></table>
+  <div class="term"><span class="cmd">python3 -c "print([round(lpa * 0.60 / 0.06, 2) for lpa in (2.50, 4.00, 5.00)])"</span>
+<span class="out">[25.0, 40.0, 50.0]</span></div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Erros comuns</h2>
+  <p class="mistake"><b>Usar só o último ano:</b> 2025 pagou R$ 2,20, e 2,20 ÷ 0,06 daria R$ 36,67, um teto inflado por um ano bom.
+  Correção: a média de 5 anos.</p>
+  <p class="mistake"><b>Comprar exatamente no teto:</b> o teto é o máximo, não o alvo. Compre abaixo, com <dfn>folga</dfn>
+  (margem de segurança) para aguentar um erro na conta.</p>
+  <p class="mistake"><b>Confiar no projetivo sem checar a estimativa:</b> com LPA de R$ 2,50 em vez de R$ 4,00, o teto cai de R$ 40,00 para R$ 25,00.</p>
+  <p class="mistake"><b>Achar que 6% serve sempre:</b> 6% era o mínimo de Bazin. Quando a <dfn>Selic</dfn> (a taxa básica de juros,
+  perto da qual rende a <dfn>renda fixa</dfn>) está alta, muita gente exige uma taxa maior, o que baixa o teto.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Preço teto = provento por ano ÷ taxa mínima (Bazin: 0,06).</li>
+    <li>Teto Bazin: média dos proventos dos últimos 5 anos ÷ 0,06. Ação X: 1,60 ÷ 0,06 = R$ 26,67.</li>
+    <li>Teto projetivo: (LPA × payout) ÷ 0,06. Ação X: 2,40 ÷ 0,06 = R$ 40,00.</li>
+    <li>Bazin olha para trás; o projetivo depende do lucro estimado vir mesmo.</li>
+    <li>Compre abaixo do teto, com folga para errar.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
