@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fractions, practice</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  #top a { color: var(--b); font-size: 16px; justify-self: start; }
+  #where { text-align: center; font-size: 22px; font-weight: 700; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; touch-action: manipulation; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #talk { min-height: 104px; }
+  #caption, #ask { font-size: 20px; line-height: 1.35; padding: 6px 10px; border-radius: 4px;
+    background: var(--panel); min-height: 104px; }
+  #caption { border-left: 4px solid var(--d); }
+  #caption b { color: var(--d); }
+  #ask { border-left: 4px solid var(--a); display: none; }
+  #ask .q b { color: var(--a); }
+  #ask .ctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+  #ask button, #ask input { font: inherit; font-size: 20px; padding: 4px 12px; border-radius: 6px;
+    border: 2px solid var(--line); background: var(--bg); color: var(--fg); }
+  #ask button { cursor: pointer; }
+  #ask input { width: 90px; text-align: center; }
+  #ask .ok { border-color: var(--c); color: var(--c); }
+  #ask .bad { border-color: var(--r); color: var(--r); }
+  #ask .show { color: var(--muted); }
+  #hint { color: var(--r); font-size: 18px; margin-top: 4px; }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 160px; height: 22px; display: flex; gap: 3px; cursor: pointer; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="top"><a href="../">← all lessons</a><div id="where"></div><span></span></div>
+<svg id="stage" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="talk">
+  <div id="caption"></div>
+  <div id="ask"><div class="q"></div><div class="ctl"></div><div id="hint"></div></div>
+</div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="next" title="next scene (→)">▶▶</button>
+  <button id="replay" title="replay this scene">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+
+let out = [];
+const add = s => out.push(s);
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}">${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function frac(cx, cy, n, d, size, c, op = 1) {
+  if (op <= 0.001) return;
+  const w = Math.max(width([[n]], size), width([[d]], size)) + 20;
+  if (n !== null) text(cx, cy - size * 0.3, [[n, c, 1]], size, { anchor: "middle", op });
+  line(cx - w / 2, cy, cx + w / 2, cy, "f", 3, op);
+  text(cx, cy + size, [[d, c, 1]], size, { anchor: "middle", op });
+}
+// one whole as a bar cut into n equal pieces; the first k shaded; a strong line every `glue` pieces
+function fbar(x, y, w, h, n, k, color, op = 1, glue = 1) {
+  if (op <= 0) return;
+  const pw = w / n;
+  for (let i = 0; i < n; i++) {
+    const s = clamp(k - i);
+    add(`<rect x="${x + i * pw}" y="${y}" width="${pw}" height="${h}" fill="${s > 0 ? COL[color] : COL.p}" fill-opacity="${s > 0 ? .25 + .45 * s : 1}" opacity="${op}"/>`);
+  }
+  for (let i = 1; i < n; i++) {
+    const strong = i % glue === 0;
+    line(x + i * pw, y, x + i * pw, y + h, "f", strong ? 3 : 1.5, op * (strong ? 1 : .35));
+  }
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+}
+const piece = (x, y, w, h, color) => add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${COL[color]}" fill-opacity=".6"/>`);
+
+// ---------- checkpoint answers drawn in the stage
+let cur = 0;
+const ans = [];
+// the user's answer flies from the "your turn" box to (x, y) at ck.show; a wrong one stays above, struck out
+function answerAt(x, y, size, t, c = "c") {
+  const ck = SCENES[cur].ck, a = ans[cur], show = ck.show ?? ck.at;
+  if (!a || t < show) return text(x, y, [["?", "m", 1]], size, { anchor: "middle" });
+  const right = "" + ck.answer, mine = a.val == null ? null : "" + a.val, p = P(t, show, show + .9);
+  if (mine !== null && p < 1) {
+    return text(L(500, x, p), L(690, y, p) - Math.sin(p * Math.PI) * 80, [[mine, a.ok ? c : "r", 1]], size, { anchor: "middle" });
+  }
+  text(x, y, [[right, c, 1]], size, { anchor: "middle", op: mine === null ? P(t, show, show + .6) : 1 });
+  if (!a.ok && mine !== null) {
+    const s = Math.max(34, size * .6), w = width([["you: " + mine]], s), yy = y - size * 1.05;
+    text(x, yy, [["you: " + mine, "r"]], s, { anchor: "middle" });
+    line(x - w / 2, yy - s * .32, x + w / 2, yy - s * .32, "r", 3);
+  }
+}
+
+const GLOSS = {
+  "fraction": "a number written top / bottom: pieces taken out of one whole cut into equal pieces",
+  "numerator": "the top number: how many pieces you take",
+  "denominator": "the bottom number: how many equal pieces one whole is cut into",
+  "equivalent fractions": "different names for the same amount, like 1/2, 2/4 and 3/6",
+  "simplify": "rewrite a fraction with the smallest numbers that keep the same amount",
+  "GCD": "greatest common divisor: the biggest number that divides both top and bottom (GCD of 6 and 8 is 2)",
+  "common denominator": "a bottom number both fractions can be rewritten with, so the pieces are the same size",
+  "LCM": "least common multiple: the smallest number both bottoms divide into (LCM of 2 and 3 is 6)",
+};
+
+const SCENES = [
+{ title: "A fraction is pieces of one whole", dur: 8, terms: ["fraction", "numerator", "denominator"],
+  cap: [[0, "Take one whole bar and cut it into <b>4</b> equal pieces: the bottom number."],
+        [3.5, "Take <b>3</b> of them: the top number. That amount is <b>3/4</b>."]],
+  draw(t) {
+    fbar(100, 110, 800, 140, t < 1 ? 1 : 4, 3 * P(t, 3.5, 5.5), "b", P(t, 0, .8));
+    for (let i = 0; i < 4; i++) text(200 + i * 200, 300, [["1/4", "m"]], 34, { anchor: "middle", op: P(t, 1.5, 2.2) });
+    frac(300, 470, "3", "4", 90, "b", P(t, 4, 4.8));
+    text(460, 450, [["top = pieces you take", "b"]], 36, { op: P(t, 4.8, 5.5) });
+    text(460, 560, [["bottom = pieces in a whole", "m"]], 36, { op: P(t, 1.5, 2.2) });
+  } },
+
+{ title: "Same amount, different names", dur: 11, terms: ["equivalent fractions"],
+  cap: [[0, "Shade half a bar: <b>1/2</b>."],
+        [2, "Cut every piece in 2: <b>2/4</b>. More, smaller pieces; the shaded amount does not move."],
+        [5.5, "Cut every piece of 1/2 in 3 instead: <b>3/6</b>. Rule: multiply top and bottom by the same number."]],
+  ck: { at: 5.5, show: 8, kind: "num", answer: 3,
+        q: "Each of the 2 halves is cut into 3. How many sixths are shaded?",
+        hint: "One half was 1 piece. Cut it into 3 and count the shaded ones." },
+  draw(t) {
+    [[1, 2, 0], [2, 4, 2]].forEach(([k, n, a], r) => {
+      const op = P(t, a, a + .8), y = 50 + r * 175;
+      fbar(80, y, 620, 110, n, k, "b", op);
+      frac(850, y + 45, "" + k, "" + n, 50, "b", op);
+    });
+    const op = P(t, 4.5, 5.3), at = this.ck.at;
+    fbar(80, 400, 620, 110, 6, 3 * P(t, at + .3, at + 2), "b", op, 3);
+    frac(850, 445, null, "6", 50, "b", op);
+    if (op > 0) answerAt(850, 445 - 15, 50, t, "b");
+    line(390, 35, 390, 530, "r", 4, P(t, 1, 1.8), "12 8");
+  } },
+
+{ title: "Simplify: glue pieces back together", dur: 9, terms: ["simplify", "GCD"],
+  cap: [[0, "<b>6/8</b>: 6 of 8 pieces."],
+        [2.5, "Glue every 2 pieces into one: 4 pieces, 3 of them taken."],
+        [6, "Divide top and bottom by 2, the biggest number that divides both: same amount, smaller numbers."]],
+  ck: { at: 2.5, show: 5.5, kind: "opt", answer: "3/4", opts: ["3/4", "6/4", "3/8", "2/3"],
+        q: "Glue every 2 pieces into one. Which fraction is the same amount as 6/8?",
+        hint: "Gluing pairs halves both numbers: 6 ÷ 2 on top, 8 ÷ 2 on the bottom." },
+  draw(t) {
+    const at = this.ck.at, g = P(t, at + .5, at + 2.5);
+    fbar(100, 90, 800, 140, 8, 6, "b");
+    if (g > 0) for (let i = 1; i < 8; i += 2) line(100 + i * 100, 92, 100 + i * 100, 228, "p", 6, g);
+    text(330, 450, [["6/8", "b", 1]], 80, { anchor: "middle" });
+    text(500, 450, [["="]], 80, { anchor: "middle" });
+    answerAt(670, 450, 80, t);
+    text(500, 600, [["÷ 2 on top and bottom", "a", 1]], 38, { anchor: "middle", op: P(t, 6, 6.8) });
+  } },
+
+{ title: "Which is bigger?", dur: 11, terms: ["common denominator"],
+  cap: [[0, "<b>2/3</b> or <b>3/5</b>? The pieces are different sizes, so the tops cannot be compared directly."],
+        [2.5, "Cut both into 15ths, because 3 × 5 = 15: 2/3 = 10/15 and 3/5 = 9/15."],
+        [7.5, "10 beats 9, by <b>1/15</b>."]],
+  ck: { at: 2.5, show: 7.5, kind: "opt", answer: "2/3", opts: ["2/3", "3/5", "the same"],
+        q: "Which is bigger, 2/3 or 3/5?",
+        hint: "Picture both bars cut into 15ths: how many 15ths is each one?" },
+  draw(t) {
+    const cut = t >= this.ck.at + .6;
+    fbar(80, 70, 640, 110, cut ? 15 : 3, cut ? 10 : 2, "b", P(t, 0, .8), cut ? 5 : 1);
+    fbar(80, 280, 640, 110, cut ? 15 : 5, cut ? 9 : 3, "a", P(t, .5, 1.3), cut ? 3 : 1);
+    frac(860, 115, cut ? "10" : "2", cut ? "15" : "3", 50, "b", P(t, 0, .8));
+    frac(860, 325, cut ? "9" : "3", cut ? "15" : "5", 50, "a", P(t, .5, 1.3));
+    const d = P(t, 6, 7);
+    if (d > 0) add(`<rect x="${80 + 640 * 9 / 15}" y="60" width="${640 / 15}" height="340" fill="${COL.r}" fill-opacity=".2" stroke="${COL.r}" stroke-width="3" opacity="${d}"/>`);
+    text(480, 600, [["bigger:"]], 56, { anchor: "end" });
+    answerAt(590, 600, 56, t, "d");
+  } },
+
+{ title: "Adding with the same size pieces", dur: 8, terms: ["numerator", "denominator"],
+  cap: [[0, "<b>1/5 + 2/5</b>: both are fifths, so the pieces are the same size."],
+        [2, "Slide the 2 pieces into the first bar and count: <b>3/5</b>. The bottom stays, because the piece size did not change."]],
+  ck: { at: 2, kind: "tap", answer: 2, zones: [0, 1, 2, 3, 4].map(i => [100 + i * 160, 100, 160, 130]),
+        q: "1/5 + 2/5: tap the piece of the top bar where the sum ends.",
+        hint: "Start after the 1 blue piece and count 2 more." },
+  draw(t) {
+    const at = this.ck.at, m = ans[cur] ? P(t, at + .5, at + 2.5) : 0;
+    fbar(100, 100, 800, 130, 5, 1, "b");
+    fbar(100, 340, 800, 130, 5, m > 0 ? 0 : 2, "a");
+    if (m > 0) for (let i = 0; i < 2; i++) piece(L(100 + i * 160, 100 + (1 + i) * 160, m), L(340, 100, m), 160, 130, "a");
+    row(500, 610, [["1/5", "b", 1], [" + "], ["2/5", "a", 1], [" = "], ["3/5", "d", 1]], 56,
+        { op: [1, 1, 1, P(t, at + 2.5, at + 3.2), P(t, at + 2.5, at + 3.2)] });
+  } },
+
+{ title: "Adding with different size pieces", dur: 12, terms: ["common denominator", "LCM"],
+  cap: [[0, "<b>1/2 + 1/3</b>: halves and thirds are different sizes, so they cannot be counted together yet."],
+        [3, "Cut both into sixths, because 6 is the smallest number 2 and 3 both divide: 1/2 = 3/6, 1/3 = 2/6."],
+        [7, "Same size now: slide and count."]],
+  ck: { at: 3, show: 7.5, kind: "num", answer: 5,
+        q: "1/2 + 1/3, both cut into sixths: how many sixths in total?",
+        hint: "1/2 = 3/6 and 1/3 = 2/6." },
+  draw(t) {
+    const cut = t >= this.ck.at + .5, m = P(t, 5, 7), pw = 800 / 6;
+    fbar(100, 80, 800, 120, cut ? 6 : 2, cut ? 3 : 1, "b", 1, cut ? 3 : 1);
+    fbar(100, 300, 800, 120, cut ? 6 : 3, cut ? (m > 0 ? 0 : 2) : 1, "a", 1, cut ? 2 : 1);
+    if (m > 0) for (let i = 0; i < 2; i++) piece(L(100 + i * pw, 100 + (3 + i) * pw, m), L(300, 80, m), pw, 120, "a");
+    const c = row(500, 600, [[cut ? "3/6" : "1/2", "b", 1], [" + "], [cut ? "2/6" : "1/3", "a", 1], [" = "], ["  "], ["/6", "d", 1]], 56);
+    answerAt(c[4], 600, 56, t, "d");
+  } },
+
+{ title: "Multiplying: a fraction of a fraction", dur: 12, terms: ["simplify"],
+  cap: [[0, "<b>2/3 × 3/4</b> means 2/3 <i>of</i> 3/4. Shade 3/4 of the square: 3 of its 4 columns."],
+        [3.5, "Take 2 of the 3 rows, only inside the blue part: the purple cells are in both."],
+        [8, "<b>2 × 3 = 6</b> cells out of <b>3 × 4 = 12</b>: 6/12, which simplifies to <b>1/2</b>."]],
+  ck: { at: 3.5, show: 6.5, kind: "num", answer: 6,
+        q: "Take 2 of the 3 rows of the blue part. How many cells end up in both?",
+        hint: "The blue part is 3 columns wide: 2 rows of 3 columns." },
+  draw(t) {
+    const X = 90, Y = 90, W = 440, H = 420, cw = W / 4, ch = H / 3, at = this.ck.at;
+    const c = P(t, 1, 3), r = ans[cur] ? P(t, at + .5, at + 2.5) : 0;
+    for (let col = 0; col < 4; col++) for (let rw = 0; rw < 3; rw++) {
+      const inC = col < 3 && c > 0 && col < 3 * c + .001, inR = rw < 2 && r > 0 && rw < 2 * r + .001;
+      const color = inC && inR ? "d" : inC ? "b" : null;
+      add(`<rect x="${X + col * cw}" y="${Y + rw * ch}" width="${cw}" height="${ch}" fill="${color ? COL[color] : COL.p}" fill-opacity="${color ? (color === "d" ? .7 : .3) : 1}" stroke="${COL.f}" stroke-width="1.5" stroke-opacity=".4"/>`);
+    }
+    add(`<rect x="${X}" y="${Y}" width="${W}" height="${H}" fill="none" stroke="${COL.f}" stroke-width="3"/>`);
+    text(X + W * 3 / 8, Y - 18, [["3/4", "b", 1]], 38, { anchor: "middle", op: c });
+    text(X - 12, Y + H / 3 + 12, [["2/3", "d", 1]], 36, { anchor: "end", op: r });
+    row(780, 220, [["2/3", "d", 1], [" × "], ["3/4", "b", 1]], 52);
+    const k = row(780, 340, [["= "], ["  "], ["/12", "d", 1]], 52);
+    answerAt(k[1], 340, 52, t, "d");
+    text(780, 460, [["= 1/2", "d", 1]], 52, { anchor: "middle", op: P(t, 8.5, 9.3) });
+  } },
+
+{ title: "New example: 2/5 + 1/4", dur: 12, terms: ["common denominator", "LCM"],
+  cap: [[0, "<b>2/5 + 1/4</b>: fifths and quarters, different sizes again."],
+        [2.5, "20 is the smallest number 5 and 4 both divide: 2/5 = 8/20 and 1/4 = 5/20."],
+        [8.5, "8 + 5 = <b>13</b>, so 2/5 + 1/4 = <b>13/20</b>."]],
+  ck: { at: 2.5, show: 8.5, kind: "num", answer: 13,
+        q: "2/5 + 1/4 = ?/20. Type the top number.",
+        hint: "Rewrite each as 20ths: 2/5 = 8/20, and 1/4 = ?/20." },
+  draw(t) {
+    const cut = t >= this.ck.at + .5, m = P(t, 6, 8), pw = 40;
+    fbar(100, 80, 800, 120, cut ? 20 : 5, cut ? 8 : 2, "b", 1, cut ? 4 : 1);
+    fbar(100, 300, 800, 120, cut ? 20 : 4, cut ? (m > 0 ? 0 : 5) : 1, "a", 1, cut ? 5 : 1);
+    if (m > 0) for (let i = 0; i < 5; i++) piece(L(100 + i * pw, 100 + (8 + i) * pw, m), L(300, 80, m), pw, 120, "a");
+    const c = row(500, 600, [[cut ? "8/20" : "2/5", "b", 1], [" + "], [cut ? "5/20" : "1/4", "a", 1], [" = "], ["   "], ["/20", "d", 1]], 56);
+    answerAt(c[4], 600, 56, t, "d");
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const $ = id => document.getElementById(id);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const svg = $("stage"), cap = $("caption"), ask = $("ask"), terms = $("terms");
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "", tries = 0, tapWrong = null, lastWrong = null;
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+const ckTime = i => starts[i] + SCENES[i].ck.at;
+const ckOpen = () => { const i = sceneAt(T), ck = SCENES[i].ck; return !!ck && !ans[i] && T >= ckTime(i) - 1e-6; };
+
+const tl = $("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function buildAsk(i) {
+  const ck = SCENES[i].ck;
+  tries = 0; tapWrong = null; lastWrong = null;
+  ask.querySelector(".q").innerHTML = `<b>Your turn:</b> ${ck.q}`;
+  $("hint").textContent = "";
+  const ctl = ask.querySelector(".ctl");
+  ctl.innerHTML = "";
+  if (ck.kind === "num") {
+    ctl.innerHTML = '<input id="in" type="text" inputmode="numeric" autocomplete="off"><button id="check">Check</button>';
+    const inp = $("in");
+    inp.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") submit(inp.value.trim(), inp); });
+    $("check").onclick = () => submit(inp.value.trim(), inp);
+  } else if (ck.kind === "opt") {
+    ck.opts.forEach(o => {
+      const b = document.createElement("button");
+      b.textContent = o; b.onclick = () => submit(o, b);
+      ctl.appendChild(b);
+    });
+  } else {
+    ctl.insertAdjacentHTML("beforeend", '<span>Tap the drawing.</span>');
+  }
+  const show = document.createElement("button");
+  show.className = "show"; show.textContent = "Show answer";
+  show.onclick = () => resolve(lastWrong, false);
+  ctl.appendChild(show);
+}
+function submit(val, el) {
+  if (val === "") return;
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (String(val) === String(ck.answer)) {
+    if (el) el.classList.add("ok");
+    return setTimeout(() => resolve(val, true), 450);
+  }
+  tries++; lastWrong = val;
+  if (el) el.classList.add("bad");
+  if (ck.kind === "tap") { tapWrong = val; lastKey = ""; }
+  if (tries >= 2) return setTimeout(() => resolve(val, false), 450);
+  $("hint").textContent = "Not quite. Hint: " + ck.hint;
+}
+function resolve(val, ok) {
+  const i = sceneAt(T);
+  if (ans[i]) return;
+  ans[i] = { val, ok };
+  lastKey = "";
+  setPlaying(true);
+}
+
+let askFor = -1;
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur), open = ckOpen();
+  if (open && askFor !== i) { buildAsk(i); askFor = i; }
+  if (!open) askFor = -1;
+  ask.style.display = open ? "block" : "none";
+  cap.style.display = open ? "none" : "block";
+  const key = i + ":" + t.toFixed(3) + ":" + open + ":" + tapWrong;
+  if (key === lastKey) return;
+  lastKey = key; out = []; cur = i;
+  s.draw(t);
+  if (s.ck && s.ck.kind === "tap" && t >= s.ck.at - 1e-6) {
+    const z = s.ck.zones, a = ans[i];
+    const ring = (k, c, dash = "") => add(`<rect x="${z[k][0] + 4}" y="${z[k][1] + 4}" width="${z[k][2] - 8}" height="${z[k][3] - 8}" rx="8" fill="none" stroke="${COL[c]}" stroke-width="5" stroke-dasharray="${dash}"/>`);
+    if (open) { z.forEach((_, k) => ring(k, "m", "8 8")); if (tapWrong !== null) ring(tapWrong, "r"); }
+    else if (a) { ring(s.ck.answer, "c"); if (!a.ok && a.val !== null && a.val !== s.ck.answer) ring(a.val, "r"); }
+  }
+  svg.innerHTML = out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = s.terms.map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  $("where").textContent = s.title;
+  $("prev").disabled = i === 0;
+  const last = i === SCENES.length - 1;
+  $("next").disabled = last ? !(HEADLESS && open) : (!HEADLESS && open);
+  $("play").disabled = open;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const i = sceneAt(T), s = SCENES[i];
+    const stop = s.ck && !ans[i] && T < ckTime(i) ? ckTime(i) : sceneEnd(i);
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= stop) { T = stop; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; $("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check): stop on each checkpoint with the box open, then on the revealed last frame
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  ans[i] = undefined; askFor = -1;
+  if (HEADLESS) T = SCENES[i].ck ? ckTime(i) : sceneEnd(i);
+  else { T = starts[i]; setPlaying(true); }
+  render();
+}
+$("play").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) return;
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+$("replay").onclick = () => go(sceneAt(T));
+$("restart").onclick = () => go(0);
+$("prev").onclick = () => go(sceneAt(T) - 1);
+$("next").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) {
+    if (!HEADLESS) return;
+    ans[i] = { val: SCENES[i].ck.answer, ok: true };
+    T = sceneEnd(i);
+    return render();
+  }
+  go(i + 1);
+};
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  const i = sceneAt(T);
+  if (SCENES[i].ck && !ans[i] && T > ckTime(i)) T = ckTime(i);
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+svg.addEventListener("pointerdown", e => {
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (!ckOpen() || ck.kind !== "tap") return;
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const k = ck.zones.findIndex(([x, y, w, h]) => p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h);
+  if (k >= 0) submit(k, null);
+});
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === " ") { e.preventDefault(); $("play").click(); }
+  if (e.key === "ArrowRight") $("next").click();
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
