@@ -359,7 +359,7 @@ function render() {
   const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
   if (terms.innerHTML !== tm) terms.innerHTML = tm;
   fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
-  document.getElementById("where").textContent = `${i + 1}/${SCENES.length} · ${s.title}`;
+  document.getElementById("where").textContent = s.title;
   document.getElementById("prev").disabled = i === 0;
   document.getElementById("next").disabled = i === SCENES.length - 1;
 }
