@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dpkg vs apt, animated</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="next" title="next scene (→)">▶▶</button>
+  <button id="replay" title="replay this scene">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <a href="../">← all lessons</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "apt": "Debian/Ubuntu's high-level package tool: finds packages in the repos, solves dependencies, downloads, then calls dpkg",
+  "dpkg": "the low-level package tool: installs, configures and removes one .deb file at a time, never downloads",
+  "package": "a bundle of a program's files plus metadata, installed as one unit",
+  "dependencies": "other packages a package needs, listed in its Depends: field",
+  "repos": "repositories: servers that host packages and an index of them; apt reads that index",
+  ".deb": "a Debian package file: an archive with the program's files and a control file",
+  "control file": "the package's label: name, version, Depends:, description",
+  "unpack": "copy the package's files into place on disk",
+  "configure": "run the package's setup scripts after unpacking; needs every dependency installed first",
+  "iU": "dpkg status: unpacked but not configured, stuck waiting on something",
+  "ii": "dpkg status: installed and configured, healthy",
+  "rc": "dpkg status: removed, but its config files are still on disk",
+  "--configure -a": "dpkg --configure -a: configure every package still waiting",
+  "-s": "simulate: show what apt would do without doing it, no root needed",
+  "local-deb": "apt's mark for a package taken from a .deb file you gave it instead of the repos",
+  "apt -f install": "--fix-broken: install the dependencies stuck packages wait for, then configure them",
+  "dpkg -S / -L": "-S: which package owns this file. -L: which files this package put down",
+  "apt-cache policy": "installed version vs the version apt would install from the repos",
+};
+const TERMS = [["apt", "dpkg", "dependencies", "repos"], [".deb", "control file", "dependencies"], ["unpack", "configure", "iU"], ["--configure -a", "ii", "iU"],
+  ["-s", "unpack", "configure"], ["local-deb", "apt -f install"], ["dependencies", "-s"], ["dpkg -S / -L", "apt-cache policy"], ["ii", "iU", "rc", "apt -f install"]];
+
+const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" style="fill:${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
+function term(x, y, w, lines, t, size = 24) {
+  const h = 30 + lines.length * (size + 14);
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL.l}" stroke-width="2"/>`);
+  lines.forEach(([a, s, c], k) => mono(x + 18, y + 38 + k * (size + 14), s, size, c || "f", P(t, a, a + .4)));
+}
+function pkg(x, y, name, color, op = 1, status = "") {
+  if (op <= 0) return;
+  box(x, y, 300, 80, color, op, .2);
+  mono(x + 150, y + 50, name, 26, color, op, "middle", 1);
+  if (status) mono(x + 320, y + 50, status, 30, status === "ii" ? "c" : status === "iU" ? "r" : "m", op, "start", 1);
+}
+
+const SCENES = [
+{ title: "Not rivals: apt calls dpkg", dur: 11,
+  cap: [[0, "Two layers of the same machine. <b>apt</b> sits on top: finds packages, works out their dependencies, downloads them."],
+        [4.5, "Then it hands each file to <b>dpkg</b>, which does the actual install."],
+        [8, "apt's own config names the dpkg binary it runs for every install and removal."]],
+  draw(t) {
+    box(200, 110, 1200, 170, "b", P(t, 0, .8), .12);
+    text(260, 170, [["apt", "b", 1]], 48, { op: P(t, 0, .8) });
+    ["find", "solve dependencies", "download"].forEach((s, k) => { chip(560 + k * 300, 220, s, "b", 28, P(t, 1 + k * .8, 1.6 + k * .8)); });
+    arrow(800, 290, 800, 380, "m", P(t, 4.5, 5.3));
+    box(200, 390, 1200, 140, "a", P(t, 4.8, 5.6), .12);
+    text(260, 450, [["dpkg", "a", 1]], 48, { op: P(t, 4.8, 5.6) });
+    ["unpack", "configure", "remove"].forEach((s, k) => chip(560 + k * 300, 480, s, "a", 28, P(t, 5.6 + k * .5, 6.1 + k * .5)));
+    term(200, 590, 1200, [[8, "$ apt-config dump | grep Dir::Bin::dpkg"], [8.6, "Dir::Bin::dpkg \"/usr/bin/dpkg\";", "a"]], t);
+  } },
+
+{ title: "A .deb is a box with a label", dur: 11,
+  cap: [[0, "A <b>.deb</b> holds the program's files plus a control file, its label."],
+        [4, "The line that matters is <b>Depends:</b>. fortune-mod needs libc6 and librecode0."],
+        [8, "On this machine libc6 is installed, librecode0 is not. Keep watching librecode0."]],
+  draw(t) {
+    box(120, 160, 420, 360, "a", P(t, 0, .8), .12);
+    mono(330, 140, "fortune-mod.deb", 28, "a", P(t, 0, .8), "middle", 1);
+    box(150, 200, 360, 130, "f", P(t, .8, 1.4), .05, 8);
+    mono(330, 275, "files", 28, "f", P(t, .8, 1.4), "middle");
+    box(150, 360, 360, 130, "d", P(t, 1.4, 2), .12, 8);
+    mono(330, 435, "control", 28, "d", P(t, 1.4, 2), "middle", 1);
+    term(620, 160, 900, [[2, "$ dpkg-deb --info fortune-mod_...deb"], [2.5, " Version: 1:1.99.1-7.3build1"], [3, " Depends: libc6 (>= 2.34), librecode0 (>= 3.6)", "d"], [3.5, " Recommends: fortunes-min | fortune-cookie-db"]], t, 24);
+    pkg(700, 500, "libc6", "c", P(t, 8, 8.6), "ii");
+    pkg(1120, 500, "librecode0", "r", P(t, 8.4, 9), "missing");
+  } },
+
+{ title: "dpkg alone: unpacks, then stops", dur: 12,
+  cap: [[0, "<b>sudo dpkg -i fortune-mod...deb</b>. dpkg unpacks the files..."],
+        [4, "...sees librecode0 is missing, and refuses to configure. dpkg never downloads anything."],
+        [8.5, "The package is left <b>iU</b>: unpacked, not configured."]],
+  draw(t) {
+    term(80, 100, 1440, [[.3, "$ sudo dpkg -i fortune-mod_1%3a1.99.1-7.3build1_amd64.deb"], [1.5, "Unpacking fortune-mod (1:1.99.1-7.3build1) ..."], [4, "dpkg: dependency problems prevent configuration of fortune-mod:", "r"], [4.5, " fortune-mod depends on librecode0 (>= 3.6); however:"], [5, "  Package librecode0 is not installed.", "r"], [5.5, " dependency problems - leaving unconfigured", "r"], [8.5, "$ dpkg -l fortune-mod | tail -1"], [9, "iU  fortune-mod  1:1.99.1-7.3build1  amd64", "r"]], t, 24);
+    pkg(500, 560, "fortune-mod", "a", P(t, 9, 9.6), "iU");
+  } },
+
+{ title: "Fixing it by hand", dur: 13,
+  cap: [[0, "With dpkg only, you fetch the dependency yourself and install it."],
+        [4.5, "librecode0 becomes <b>ii</b>, but fortune-mod stays iU: installing the dependency does not fix it on its own."],
+        [8.5, "Then tell dpkg to configure whatever is still waiting: <b>--configure -a</b>. You did the dependency solving in your head."]],
+  draw(t) {
+    term(80, 90, 1100, [[.3, "$ sudo dpkg -i librecode0_3.6-26_amd64.deb"], [1.2, "Setting up librecode0:amd64 (3.6-26) ...", "c"], [8.5, "$ sudo dpkg --configure -a"], [9.3, "Setting up fortune-mod (1:1.99.1-7.3build1) ...", "c"]], t, 24);
+    const fixed = t >= 9.8;
+    pkg(300, 400, "librecode0", "c", P(t, 1.5, 2.2), "ii");
+    pkg(300, 520, "fortune-mod", "a", 1, fixed ? "ii" : "iU");
+  } },
+
+{ title: "apt: the same install, one command", dur: 13,
+  cap: [[0, "<b>apt install fortune-mod</b> finds all three packages it needs and downloads them."],
+        [4.5, "Then it runs dpkg on them, dependencies first. <b>Inst</b> = dpkg unpacks, <b>Conf</b> = dpkg configures."],
+        [9, "librecode0 comes first because fortune-mod needs it. (-s only simulates, so this ran without root.)"]],
+  draw(t) {
+    term(80, 90, 1440, [[.3, "$ apt-get -s install fortune-mod"], [1, "The following NEW packages will be installed:"], [1.5, "  fortune-mod fortunes-min librecode0", "b"],
+      [4.5, "Inst librecode0 (3.6-26 Ubuntu:24.04/noble [amd64])", "c"], [5.1, "Inst fortune-mod (1:1.99.1-7.3build1 Ubuntu:24.04/noble [amd64])"], [5.7, "Inst fortunes-min (1:1.99.1-7.3build1 Ubuntu:24.04/noble [all])"],
+      [6.5, "Conf librecode0 (3.6-26 Ubuntu:24.04/noble [amd64])", "c"], [7.1, "Conf fortune-mod (1:1.99.1-7.3build1 Ubuntu:24.04/noble [amd64])"], [7.7, "Conf fortunes-min (1:1.99.1-7.3build1 Ubuntu:24.04/noble [all])"]], t, 24);
+    text(800, 600, [["one command: download, order, unpack, configure", "d", 1]], 36, { anchor: "middle", op: P(t, 9, 9.8) });
+  } },
+
+{ title: "Got a .deb file? Still use apt", dur: 11,
+  cap: [[0, "Give apt the path with <b>./</b> so it reads it as a file. It installs your .deb and still fetches the dependencies from the repos."],
+        [5, "<b>local-deb</b> marks the package taken from your file. Already stuck at iU? <b>sudo apt -f install</b> fetches what is missing and finishes the job."]],
+  draw(t) {
+    term(80, 90, 1440, [[.3, "$ apt-get -s install ./fortune-mod_1%3a1.99.1-7.3build1_amd64.deb"], [1.2, "  fortune-mod fortunes-min librecode0", "b"], [2, "Inst librecode0 (3.6-26 Ubuntu:24.04/noble [amd64])", "c"], [2.6, "Inst fortune-mod (1:1.99.1-7.3build1 Ubuntu:24.04/noble, local-deb [amd64])", "a"], [3.2, "Inst fortunes-min (1:1.99.1-7.3build1 Ubuntu:24.04/noble [all])"]], t, 24);
+    term(80, 430, 900, [[6, "$ sudo apt -f install"], [6.6, "# installs librecode0, configures fortune-mod", "m"]], t, 24);
+    pkg(1050, 450, "fortune-mod", "a", P(t, 6, 6.5), t >= 7.5 ? "ii" : "iU");
+  } },
+
+{ title: "Removing: dpkg refuses, apt cascades", dur: 13,
+  cap: [[0, "dpkg will not remove a package something else depends on."],
+        [5, "apt lists every package that has to go with it and asks before acting. On this machine, removing one small perl library takes <b>ubuntu-minimal</b> with it."],
+        [10.5, "Read that list before saying yes."]],
+  draw(t) {
+    term(80, 90, 1440, [[.3, "$ sudo dpkg -r librecode0"], [1, "dpkg: dependency problems prevent removal of librecode0:amd64:", "r"], [1.5, " fortune-mod depends on librecode0 (>= 3.6)."], [2, " dependency problems - not removing", "r"]], t, 24);
+    term(80, 330, 1440, [[5, "$ apt-get -s remove libtext-charwidth-perl"], [5.6, "The following packages will be REMOVED:", "r"], [6.2, "  debconf-i18n libtext-charwidth-perl libtext-wrapi18n-perl ubuntu-minimal", "r"], [7, "0 upgraded, 0 newly installed, 4 to remove and 192 not upgraded."]], t, 24);
+    text(800, 640, [["1 asked → 4 removed", "r", 1]], 44, { anchor: "middle", op: P(t, 8.5, 9.3) });
+  } },
+
+{ title: "Asking questions: two databases", dur: 11,
+  cap: [[0, "<b>dpkg</b> answers about what is installed on this machine, from its own database."],
+        [5, "<b>apt</b> answers about what the repos offer, from its index: which version is installed and which one apt would install."]],
+  draw(t) {
+    [[420, "dpkg", "a", "this machine", ["dpkg -l &lt;pkg&gt;   status", "dpkg -L &lt;pkg&gt;   its files", "dpkg -S &lt;file&gt;  who owns it"], 0],
+     [1180, "apt", "b", "the repos", ["apt-cache policy &lt;pkg&gt;", "apt show &lt;pkg&gt;", "apt search &lt;word&gt;"], 5]].forEach(([x, n, c, sub, ls, a]) => {
+      const op = P(t, a, a + .8);
+      box(x - 350, 110, 700, 520, c, op, .08);
+      text(x, 180, [[n, c, 1]], 48, { anchor: "middle", op });
+      text(x, 225, [[sub, "m"]], 28, { anchor: "middle", op });
+      ls.forEach((s, k) => mono(x - 310, 320 + k * 90, s, 28, "f", P(t, a + .8 + k * .6, a + 1.3 + k * .6)));
+    });
+  } },
+
+{ title: "Summary", dur: 9,
+  cap: [[0, "Change things with apt. Use dpkg alone only when you know every dependency is already there."]],
+  draw(t) {
+    const o = i => P(t, i * .6, i * .6 + .8);
+    [["sudo apt install fortune-mod", "b"], ["sudo apt install ./some.deb", "b"], ["sudo apt remove fortune-mod", "b"], ["sudo apt -f install      # finish a stuck iU", "c"], ["dpkg -l / -L / -S        # ask about this machine", "a"]].forEach(([s, c], k) =>
+      mono(220, 130 + k * 80, s, 34, c, o(k)));
+    text(220, 580, [["status: ", "m"], ["ii", "c", 1], [" healthy  ·  "], ["iU", "r", 1], [" unpacked only  ·  "], ["rc", "m", 1], [" removed, config kept"]], 32, { op: o(5) });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

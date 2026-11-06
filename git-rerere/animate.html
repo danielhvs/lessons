@@ -180,7 +180,7 @@ const GLOSS = {
 const TERMS = [["merge conflict", "branch", "rebase"], ["rerere", "git config --global", "rr-cache"], ["fingerprint", "SHA-1", "preimage", "conflict markers"],
   ["postimage", "rr-cache"], ["UU", "postimage"], ["autoUpdate", "staged"], ["rebase", "ours / theirs", "fingerprint"], ["rerere forget", "preimage"], ["rr-cache", "rerere gc"]];
 
-const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" fill="${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
+const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" style="fill:${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
 // terminal panel; lines = [[appearAt, text, color]]
 function term(x, y, w, lines, t, title = "terminal") {
   const h = 60 + lines.length * 40;
