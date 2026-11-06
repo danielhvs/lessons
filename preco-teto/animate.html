@@ -24,6 +24,8 @@
   #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
     border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
   #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
   #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
   #bar button { font: inherit; background: var(--panel); color: var(--fg);
     border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
@@ -43,6 +45,7 @@
 <body>
 <svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
 <div id="caption"></div>
+<div id="terms"></div>
 <div id="bar">
   <button id="restart" title="recomeçar">⏮</button>
   <button id="prev" title="cena anterior (←)">◀◀</button>
@@ -149,6 +152,8 @@ function pin(x, y, h, label, sub, color, op = 1) {
 }
 
 // ---------- scenes: draw(t) renders the frame at local time t, so scrubbing is exact
+const GLOSS = {"preço teto": "o preço máximo que você aceita pagar por uma ação; acima dele, não compra", "ação X": "empresa inventada para o exemplo; os números não são de uma ação real", "Bazin": "Décio Bazin, investidor brasileiro, autor de \"Faça Fortuna com Ações\"; só comprava ações que pagassem 6% ou mais ao ano em proventos", "proventos": "todo dinheiro que a empresa paga ao acionista: dividendos + JCP", "dividendos": "parte do lucro que a empresa reparte entre os acionistas", "JCP": "juros sobre capital próprio: outra forma de repartir o lucro; chega com imposto de renda já descontado na fonte", "DY": "dividend yield: proventos de 1 ano ÷ preço da ação, em %. Quanto a ação rende por ano em proventos", "DY mínimo": "o rendimento em proventos que você exige; Bazin usava 6%", "0,06": "6% escrito como número: 6 ÷ 100", "teto Bazin": "preço teto calculado com a média dos proventos dos últimos 5 anos ÷ 0,06", "projetivo": "que usa uma estimativa do futuro, não o que já foi pago", "LPA": "lucro por ação: lucro líquido do ano ÷ número de ações da empresa", "payout": "% do lucro que a empresa distribui como proventos; o resto ela reinveste", "teto projetivo": "provento projetado (LPA × payout) ÷ 0,06", "Selic": "taxa básica de juros do Brasil, definida pelo Banco Central; a renda fixa rende perto dela", "renda fixa": "investimentos com regra de rendimento definida na compra (Tesouro, CDB...)", "folga": "margem de segurança: comprar bem abaixo do teto para aguentar um erro na conta"};
+const TERMS = [["preço teto", "ação X"], ["Bazin", "proventos", "dividendos", "JCP"], ["DY", "DY mínimo", "0,06"], ["DY", "preço teto"], ["teto Bazin"], ["projetivo", "LPA", "payout"], ["teto Bazin", "teto projetivo"], ["LPA", "payout"], ["Selic", "renda fixa", "folga"]];
 const SCENES = [
 { title: "Até quanto pagar?", dur: 8,
   cap: [[0, "A ação X custa <b>R$ 30,00</b>. Vale pagar isso?"],
@@ -326,6 +331,7 @@ const SCENES = [
 const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
 const starts = []; let total = 0;
 SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
 const svg = document.getElementById("stage"), cap = document.getElementById("caption");
 const DEFS = "";
 let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
@@ -349,6 +355,8 @@ function render() {
   svg.innerHTML = DEFS + out.join("");
   const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
   if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
   fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
   document.getElementById("where").textContent = `${i + 1}/${SCENES.length} · ${s.title}`;
   document.getElementById("prev").disabled = i === 0;
