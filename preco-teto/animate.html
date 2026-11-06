@@ -37,13 +37,14 @@
   #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
     border-radius: 4px; overflow: hidden; }
   #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
-  #where { min-width: 13em; color: var(--muted); }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
   #bar a { color: var(--b); }
   #m { position: absolute; width: 0; height: 0; visibility: hidden; }
   #m text { white-space: pre; }
 </style>
 </head>
 <body>
+<div id="where"></div>
 <svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
 <div id="caption"></div>
 <div id="terms"></div>
@@ -57,7 +58,6 @@
   <button class="spd on" data-s="1">1x</button>
   <button class="spd" data-s="2">2x</button>
   <div id="timeline"></div>
-  <span id="where"></span>
  
 </div>
 <svg id="m"><text id="mt"></text></svg>
