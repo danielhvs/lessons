@@ -9,338 +9,292 @@
   --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
   --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
   --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
-  --code-bg: #f1efe8; --cell: #e7e4da; --gold: #d99a1e;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
     --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
     --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
-    --code-bg: #24262d; --cell: #2c2f37; --gold: #f2b84b;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
   }
 }
 * { box-sizing: border-box; }
-html, body { height: 100%; overflow: hidden; }
-body {
-  margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
-  font: clamp(15px, 1.1vmin + 7px, 18px)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+/* The page scrolls vertically only. The font sits on html so every rem grows with it. */
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.home { color: var(--accent); font-size: .9rem; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+/* long lines wrap instead of scrolling sideways */
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
 }
-main { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 1600px;
-  margin: 0 auto; padding: clamp(10px, 2vh, 20px) clamp(16px, 3vw, 48px); }
-header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-header h1 { font-size: 1.4rem; margin: 0; }
-header p { margin: 0; color: var(--muted); }
-header a { color: var(--accent); margin-left: auto; }
-.dots { display: flex; gap: 6px; margin: clamp(8px, 1.6vh, 16px) 0; flex-wrap: wrap; }
-.dot { width: 28px; height: 6px; border-radius: 3px; border: 0; padding: 0;
-  background: var(--line); cursor: pointer; transition: background .3s; }
-.dot.done { background: var(--accent-soft); }
-.dot.on { background: var(--accent); }
-.stage { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  padding: clamp(14px, 2.4vh, 24px); flex: 1; min-height: 0; overflow: hidden; }
-.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 24px; align-items: start; }
-.step { animation: enter .45s ease both; transform-origin: top left; }
-@keyframes enter { from { opacity: 0; transform: translateY(14px); } }
-.num { color: var(--accent); font-weight: 600; font-size: .85rem; letter-spacing: .04em; }
-.step h2 { margin: 2px 0 6px; font-size: 1.3rem; }
-.say { margin: 0 0 clamp(10px, 1.8vh, 18px); max-width: 90ch; }
-.say code, .note code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
-.note { color: var(--muted); font-size: .92rem; margin-top: 12px; max-width: 90ch; }
-.tip { border-bottom: 1px dotted var(--accent); cursor: help; }
-#tip { position: fixed; z-index: 10; max-width: min(56ch, 90vw); padding: 8px 12px; border-radius: 8px;
-  background: var(--ink); color: var(--bg); font: 14px/1.45 system-ui, sans-serif; pointer-events: none; }
-pre { margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 0;
-  font: clamp(12.5px, .9vmin + 6px, 15px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace; }
-.ln { display: block; padding: 0 16px 0 calc(16px + 2em); text-indent: -2em; white-space: pre-wrap; overflow-wrap: anywhere;
-  border-left: 3px solid transparent; transition: background .4s, border-color .4s; }
-.ln.hl { background: var(--accent-soft); border-left-color: var(--accent); }
-.ln.res { font-weight: 700; }
-
-/* the 10x10 grid: 100 squares = the price, gold squares = the yearly payout */
-.grids { display: flex; gap: 24px; flex-wrap: wrap; }
-.grid figcaption { font-weight: 600; margin-bottom: 4px; }
-.grid .unit { color: var(--muted); font-size: .85rem; margin-top: 4px; }
-.grid svg { width: clamp(150px, 33vh, 270px); height: auto; display: block; }
-.grid rect { fill: var(--cell); transition: fill .35s; }
-.grid rect.on { fill: var(--gold); }
-.grid .pct { font-size: 1.6rem; font-weight: 700; color: var(--gold); }
-.sliders { display: grid; gap: 8px; margin-top: 14px; }
-.sl { display: grid; grid-template-columns: 11em 1fr 7em; align-items: center; gap: 10px; }
-.sl input { width: 100%; accent-color: var(--accent); }
-.sl output { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
-.ask { margin-top: 14px; padding: 10px 14px; border: 1px dashed var(--accent); border-radius: 10px; }
-.ask button, nav button { font: inherit; font-size: .95rem; padding: 7px 14px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-.ask button { margin-top: 6px; background: var(--accent); border-color: var(--accent); color: #fff; }
-.ask button:disabled { opacity: .5; cursor: default; }
-.big { margin-top: 14px; font-size: 1.8rem; font-weight: 700; }
-.big small { display: block; font-size: .85rem; font-weight: 400; color: var(--muted); }
-nav { position: relative; flex: none; background: var(--panel); border-top: 1px solid var(--line);
-  padding: clamp(8px, 1.4vh, 12px) 16px; display: flex; gap: 10px; justify-content: center; align-items: center; }
-nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-nav button:disabled { opacity: .4; cursor: default; }
-nav .count { color: var(--muted); font-size: .9rem; min-width: 52px; text-align: center; }
-@media (prefers-reduced-motion: reduce) { *, *::before { animation-duration: .01s !important; transition: none !important; } }
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .box { fill: var(--code-bg); stroke: var(--line); stroke-width: 2; }
+svg.diagram .box.hl { fill: var(--accent-soft); stroke: var(--accent); }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram marker path { fill: var(--muted); }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.links a { color: var(--accent); font-size: .9rem; }
+:root { --prov: #e8590c; --price: #1c7ed6; --dy: #9c36b5; --trap: #d6336c; }
+@media (prefers-color-scheme: dark) { :root { --prov: #ff922b; --price: #4dabf7; --dy: #da77f2; --trap: #f06595; } }
+.prov { color: var(--prov); font-weight: 600; } .price { color: var(--price); font-weight: 600; } .dy { color: var(--dy); font-weight: 600; }
+svg.diagram .fprov { fill: var(--prov); } svg.diagram .fprice { fill: var(--price); } svg.diagram .fdy { fill: var(--dy); } svg.diagram .ftrap { fill: var(--trap); }
+svg.diagram text.fprov, svg.diagram text.fprice, svg.diagram text.fdy, svg.diagram text.ftrap { font-weight: 700; }
+svg.diagram text.mut { fill: var(--muted); }
+svg.diagram .axis { stroke: var(--muted); stroke-width: 2; }
+svg.diagram .grid { stroke: var(--line); stroke-width: 1; }
+table { border-collapse: collapse; margin: 0 0 10px; }
+th, td { padding: 4px 14px; border-bottom: 1px solid var(--line); text-align: right; }
+th:first-child, td:first-child { text-align: left; }
 </style>
 </head>
 <body>
 <main>
-  <header><h1>Dividend yield (DY)</h1><p>quanto um ativo te paga por ano, em % do preço</p><a href="animate.html">versão animada →</a></header>
-  <div class="dots" id="dots"></div>
-  <section class="stage" id="stage" aria-live="polite"></section>
+<nav class="links"><a href="../">← todas as aulas</a><a href="animate.html">animação</a><a href="practice.html">interação</a></nav>
+<h1>Dividend yield (DY)</h1>
+<p class="lead">Quanto uma ação te pagou no último ano, em porcentagem do preço dela, para comparar ações de preços diferentes.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p>Uma empresa avisa que pagou <span class="prov">R$ 3,00</span> por ação no último ano. Isso é muito ou pouco? Depende do preço: R$ 3,00 sobre uma ação de R$ 20,00 rende bem mais que R$ 3,00 sobre uma de R$ 50,00. Sem dividir pelo preço, o valor em reais não diz quanto o seu dinheiro rende.</p>
+  <p>Uma <dfn>ação</dfn> é um pedaço de uma empresa, comprado e vendido na bolsa de valores. Quem tem ações é <dfn>acionista</dfn> e recebe <dfn>proventos</dfn>: o dinheiro que a empresa distribui do lucro. No Brasil eles vêm de duas formas: <dfn>dividendos</dfn> (parte do lucro paga em dinheiro) e <dfn>JCP</dfn>, juros sobre capital próprio (outra forma de repassar lucro ao acionista). Os dois entram na conta do DY.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: uma ação, um ano</h2>
+  <p>Você tem <b>1 ação</b> que custa hoje <span class="price">R$ 20,00</span>. Nos últimos 12 meses ela pagou quatro proventos. O <dfn>dividend yield</dfn> (DY, "rendimento em dividendos") divide a soma pelo preço:</p>
+  <pre>DY = <span class="prov">proventos dos últimos 12 meses</span> ÷ <span class="price">preço atual</span></pre>
+  <div class="split">
+    <div>
+      <div class="term"><span class="cmd">python3 -c "print(0.50 + 0.50 + 0.40 + 0.60)"</span>
+<span class="out">2.0</span>
+<span class="cmd">python3 -c "print(2.00 / 20.00)"</span>
+<span class="out"><mark>0.1</mark></span></div>
+      <p>2,00 ÷ 20,00 = 0,10, ou seja, <span class="dy">DY = 10%</span>: em um ano a ação devolveu em proventos 10% do que custa hoje.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 480 250" role="img" aria-label="proventos de cada mês">
+        <text x="20" y="28" font-size="20">proventos por ação, últimos 12 meses</text>
+        <line class="axis" x1="20" x2="460" y1="215" y2="215"/>
+        <rect x="96.7" y="115.0" width="30" height="100.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="111.7" y="107.0" font-size="18" text-anchor="middle" class="fprov">0,50</text>
+        <text x="111.7" y="239" font-size="18" text-anchor="middle" class="mut">mar</text>
+        <rect x="206.7" y="115.0" width="30" height="100.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="221.7" y="107.0" font-size="18" text-anchor="middle" class="fprov">0,50</text>
+        <text x="221.7" y="239" font-size="18" text-anchor="middle" class="mut">jun</text>
+        <rect x="316.7" y="135.0" width="30" height="80.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="331.7" y="127.0" font-size="18" text-anchor="middle" class="fprov">0,40</text>
+        <text x="331.7" y="239" font-size="18" text-anchor="middle" class="mut">set</text>
+        <rect x="426.7" y="95.0" width="30" height="120.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="441.7" y="87.0" font-size="18" text-anchor="middle" class="fprov">0,60</text>
+        <text x="441.7" y="239" font-size="18" text-anchor="middle" class="mut">dez</text>
+      </svg>
+      <figcaption>0,50 + 0,50 + 0,40 + 0,60 = <span class="prov">R$ 2,00</span> em 12 meses.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>No seu bolso: R$ 1.000 investidos</h2>
+  <div class="split">
+    <div>
+      <p>Com R$ 1.000 você compra 1.000 ÷ 20 = 50 ações. Cada uma paga R$ 2,00 no ano.</p>
+      <div class="term"><span class="cmd">python3 -c "print(1000 / 20, 50 * 2.00, 100 / 1000)"</span>
+<span class="out">50.0 100.0 <mark>0.1</mark></span></div>
+      <p>R$ 100 de proventos sobre R$ 1.000 investidos: os mesmos <span class="dy">10%</span>. O DY não depende de quantas ações você tem; é o rendimento em proventos de cada real investido.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 480 280" role="img" aria-label="50 ações pagando R$ 2 cada">
+        <text x="10" y="26" font-size="20">50 ações, cada uma paga R$ 2,00</text>
+        <rect x="10" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="30" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="56" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="76" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="102" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="122" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="148" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="168" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="194" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="214" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="240" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="260" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="286" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="306" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="332" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="352" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="378" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="398" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="424" y="40" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="444" y="67" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="10" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="30" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="56" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="76" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="102" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="122" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="148" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="168" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="194" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="214" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="240" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="260" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="286" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="306" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="332" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="352" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="378" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="398" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="424" y="86" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="444" y="113" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="10" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="30" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="56" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="76" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="102" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="122" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="148" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="168" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="194" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="214" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="240" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="260" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="286" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="306" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="332" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="352" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="378" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="398" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="424" y="132" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="444" y="159" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="10" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="30" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="56" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="76" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="102" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="122" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="148" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="168" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="194" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="214" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="240" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="260" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="286" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="306" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="332" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="352" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="378" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="398" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="424" y="178" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="444" y="205" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="10" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="30" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="56" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="76" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="102" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="122" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="148" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="168" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="194" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="214" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="240" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="260" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="286" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="306" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="332" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="352" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="378" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="398" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+        <rect x="424" y="224" width="40" height="40" rx="6" class="fprov" fill-opacity=".3"/><text x="444" y="251" font-size="18" text-anchor="middle" class="fprov">+2</text>
+      </svg>
+      <figcaption>50 × R$ 2,00 = <span class="prov">R$ 100</span> por ano.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>O preço mexe no DY</h2>
+  <div class="split">
+    <div>
+      <p>Os proventos ficam em <span class="prov">R$ 2,00</span>. Só o preço muda:</p>
+      <table>
+        <tr><th>preço</th><th>conta</th><th>DY</th></tr>
+        <tr><td class="price">R$ 16,00</td><td>2 ÷ 16 = 0,125</td><td class="dy">12,5%</td></tr>
+        <tr><td class="price">R$ 20,00</td><td>2 ÷ 20 = 0,10</td><td class="dy">10%</td></tr>
+        <tr><td class="price">R$ 25,00</td><td>2 ÷ 25 = 0,08</td><td class="dy">8%</td></tr>
+      </table>
+      <div class="term"><span class="cmd">python3 -c "print(2/16, 2/20, 2/25)"</span>
+<span class="out">0.125 0.1 0.08</span></div>
+      <p>Preço e DY andam em sentidos opostos. Quem compra mais barato recebe mais proventos por real investido.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 480 300" role="img" aria-label="o DY cai quando o preço sobe">
+        <line class="grid" x1="60" x2="460" y1="30" y2="30"/><line class="grid" x1="60" x2="460" y1="85" y2="85"/><line class="grid" x1="60" x2="460" y1="140" y2="140"/><line class="grid" x1="60" x2="460" y1="195" y2="195"/>
+        <line class="axis" x1="60" x2="460" y1="250" y2="250"/><line class="axis" x1="60" x2="60" y1="250" y2="30"/>
+        <text x="52" y="36" font-size="18" text-anchor="end" class="mut">20%</text><text x="52" y="91" font-size="18" text-anchor="end" class="mut">15%</text><text x="52" y="146" font-size="18" text-anchor="end" class="mut">10%</text><text x="52" y="201" font-size="18" text-anchor="end" class="mut">5%</text>
+        <text x="60" y="274" font-size="18" text-anchor="middle" class="mut">R$ 10</text><text x="193.3" y="274" font-size="18" text-anchor="middle" class="mut">R$ 20</text><text x="326.7" y="274" font-size="18" text-anchor="middle" class="mut">R$ 30</text><text x="460" y="274" font-size="18" text-anchor="end" class="mut">R$ 40</text>
+        <text x="260" y="296" font-size="18" text-anchor="middle" class="fprice">preço</text>
+        <text x="70" y="22" font-size="18" class="fdy">DY</text>
+        <polyline points="60.0,30.0 66.7,40.5 73.3,50.0 80.0,58.7 86.7,66.7 93.3,74.0 100.0,80.8 106.7,87.0 113.3,92.9 120.0,98.3 126.7,103.3 133.3,108.1 140.0,112.5 146.7,116.7 153.3,120.6 160.0,124.3 166.7,127.8 173.3,131.1 180.0,134.2 186.7,137.2 193.3,140.0 200.0,142.7 206.7,145.2 213.3,147.7 220.0,150.0 226.7,152.2 233.3,154.3 240.0,156.4 246.7,158.3 253.3,160.2 260.0,162.0 266.7,163.7 273.3,165.4 280.0,167.0 286.7,168.5 293.3,170.0 300.0,171.4 306.7,172.8 313.3,174.1 320.0,175.4 326.7,176.7 333.3,177.9 340.0,179.0 346.7,180.2 353.3,181.2 360.0,182.3 366.7,183.3 373.3,184.3 380.0,185.3 386.7,186.2 393.3,187.1 400.0,188.0 406.7,188.9 413.3,189.7 420.0,190.5 426.7,191.3 433.3,192.1 440.0,192.9 446.7,193.6 453.3,194.3 460.0,195.0" fill="none" stroke="var(--dy)" stroke-width="3" opacity=".6"/>
+        <circle cx="140" cy="112.5" r="7" class="fdy"/><text x="150" y="104" font-size="18" class="fdy">R$ 16: 12,5%</text>
+        <circle cx="193.3" cy="140" r="7" class="fdy"/><text x="203" y="134" font-size="18" class="fdy">R$ 20: 10%</text>
+        <circle cx="260" cy="162" r="7" class="fdy"/><text x="270" y="156" font-size="18" class="fdy">R$ 25: 8%</text>
+      </svg>
+      <figcaption>DY = 2 ÷ preço, com os proventos fixos em R$ 2,00.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Comparar empresas</h2>
+  <div class="split">
+    <div>
+      <p>A ação B paga mais por ação, mas custa bem mais:</p>
+      <table>
+        <tr><th>ação</th><th>preço</th><th>proventos 12m</th><th>DY</th></tr>
+        <tr><td>A</td><td class="price">R$ 20,00</td><td class="prov">R$ 2,00</td><td class="dy">10%</td></tr>
+        <tr><td>B</td><td class="price">R$ 50,00</td><td class="prov">R$ 3,00</td><td class="dy">6%</td></tr>
+      </table>
+      <div class="term"><span class="cmd">python3 -c "print(2/20, 3/50)"</span>
+<span class="out">0.1 <mark>0.06</mark></span></div>
+      <p>Com R$ 1.000 em A você recebe R$ 100 por ano; em B, R$ 60 (20 ações × R$ 3,00). O DY põe empresas de preços diferentes na mesma régua.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 480 150" role="img" aria-label="DY de A e de B">
+        <text x="30" y="52" font-size="22" text-anchor="end">A</text>
+        <rect x="45" y="25" width="300" height="40" rx="6" class="fdy" fill-opacity=".6"/>
+        <text x="355" y="53" font-size="20" class="fdy">10%</text>
+        <text x="30" y="117" font-size="22" text-anchor="end">B</text>
+        <rect x="45" y="90" width="180" height="40" rx="6" class="fdy" fill-opacity=".6"/>
+        <text x="235" y="118" font-size="20" class="fdy">6%</text>
+      </svg>
+      <figcaption>Proventos por real investido: A rende mais, mesmo pagando menos por ação.</figcaption>
+    </figure>
+  </div>
+  <p>Mais um: uma ação de <span class="price">R$ 40,00</span> que pagou 0,60 + 0,70 + 0,60 + 0,70 = <span class="prov">R$ 2,60</span> em 12 meses.</p>
+  <div class="term"><span class="cmd">python3 -c "print(2.60 / 40)"</span>
+<span class="out"><mark>0.065</mark></span></div>
+  <p>DY de <span class="dy">6,5%</span>, abaixo dos 10% da ação A.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Erros comuns</h2>
+  <div class="split">
+    <div>
+      <p class="mistake">Comprar por causa de um provento que não se repete. Em agosto a empresa vendeu um prédio e pagou R$ 3,00 extras: os 12 meses somam R$ 5,00 e o DY vira 5 ÷ 20 = 25%. No ano seguinte voltam só os R$ 2,00 normais: 10%. Correção: olhe os proventos de vários anos e descarte os extras.</p>
+      <div class="term"><span class="cmd">python3 -c "print(5/20, 2/20)"</span>
+<span class="out"><mark>0.25</mark> 0.1</span></div>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 480 290" role="img" aria-label="provento extra em agosto">
+        <line class="axis" x1="20" x2="460" y1="255" y2="255"/>
+        <rect x="96.7" y="220.0" width="30" height="35.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="111.7" y="212.0" font-size="18" text-anchor="middle" class="fprov">0,50</text>
+        <text x="111.7" y="279" font-size="18" text-anchor="middle" class="mut">mar</text>
+        <rect x="206.7" y="220.0" width="30" height="35.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="221.7" y="212.0" font-size="18" text-anchor="middle" class="fprov">0,50</text>
+        <text x="221.7" y="279" font-size="18" text-anchor="middle" class="mut">jun</text>
+        <rect x="316.7" y="227.0" width="30" height="28.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="331.7" y="219.0" font-size="18" text-anchor="middle" class="fprov">0,40</text>
+        <text x="331.7" y="279" font-size="18" text-anchor="middle" class="mut">set</text>
+        <rect x="426.7" y="213.0" width="30" height="42.0" rx="4" class="fprov" fill-opacity=".75"/>
+        <text x="441.7" y="205.0" font-size="18" text-anchor="middle" class="fprov">0,60</text>
+        <text x="441.7" y="279" font-size="18" text-anchor="middle" class="mut">dez</text>
+        <rect x="280.0" y="45.0" width="30" height="210.0" rx="4" class="ftrap" fill-opacity=".75"/>
+        <text x="295.0" y="37.0" font-size="18" text-anchor="middle" class="ftrap">3,00</text>
+        <text x="295.0" y="279" font-size="18" text-anchor="middle" class="mut">ago</text>
+      </svg>
+      <figcaption>A barra vermelha, o extra de agosto, acontece uma vez só.</figcaption>
+    </figure>
+  </div>
+  <p class="mistake">Comprar porque o DY ficou alto depois de o preço despencar. A ação caiu de R$ 20,00 para R$ 8,00 numa crise e os proventos dos últimos 12 meses ainda são R$ 2,00: DY = 2 ÷ 8 = 25%. O número subiu porque o preço caiu, não porque a empresa pagou mais. Sem lucro, ela corta os proventos para R$ 0,40, e quem comprou pelos 25% recebe 0,40 ÷ 8 = 5%. Correção: confira se o lucro sustenta o pagamento; DY muito acima dos concorrentes costuma ser o mercado prevendo um corte.</p>
+  <div class="term"><span class="cmd">python3 -c "print(2/8, 0.40/8)"</span>
+<span class="out">0.25 <mark>0.05</mark></span></div>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>DY = proventos dos últimos 12 meses ÷ preço atual. R$ 2,00 ÷ R$ 20,00 = 10%.</li>
+    <li>Proventos são dividendos mais JCP; os dois entram na conta.</li>
+    <li>Preço caiu, DY sobe; preço subiu, DY cai.</li>
+    <li>O DY olha para trás: confira se os proventos se repetem por vários anos.</li>
+    <li>Compare com empresas do mesmo <dfn>setor</dfn> (empresas do mesmo ramo, como bancos ou energia) e com a <dfn>renda fixa</dfn> (investimentos com rendimento combinado na compra, como Tesouro Direto e CDB).</li>
+  </ol>
+</section>
 </main>
-<nav>
-  <button id="prev">← Anterior</button>
-  <button id="next" class="primary">Próximo →</button>
-  <span class="count" id="count"></span>
-</nav>
-<div id="tip" hidden></div>
-
-<script>
-const $ = id => document.getElementById(id);
-const el = (tag, cls, text) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
-};
-const svgEl = (tag, attrs) => {
-  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const k in attrs) e.setAttribute(k, attrs[k]);
-  return e;
-};
-const prose = (cls, s) => {
-  const p = el("p", cls);
-  String(s).split(/(`[^`]+`|\[\[[^\]]+\]\])/).forEach(part => {
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) p.append(el("code", null, part.slice(1, -1)));
-    else if (part.startsWith("[[") && part.endsWith("]]")) {
-      const [word, tip] = part.slice(2, -2).split("|");
-      const t = el("span", "tip", word); t.dataset.tip = tip || ""; p.append(t);
-    } else p.append(part);
-  });
-  return p;
-};
-
-const brl = v => "R$ " + v.toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-const brl0 = v => "R$ " + Math.round(v).toLocaleString("pt-BR");
-const pct = v => (v * 100).toLocaleString("pt-BR", {minimumFractionDigits: 1, maximumFractionDigits: 1}) + "%";
-
-function makeGrid(title) {
-  const fig = el("figure", "grid"); fig.style.margin = 0;
-  const cap = el("figcaption", null, title), svg = svgEl("svg", {viewBox: "0 0 260 260"});
-  const cells = [];
-  for (let k = 0; k < 100; k++) {
-    const r = svgEl("rect", {x: (k % 10) * 26 + 1, y: Math.floor(k / 10) * 26 + 1, width: 22, height: 22, rx: 4});
-    r.style.transitionDelay = (k % 25) * 12 + "ms";
-    cells.push(r); svg.append(r);
-  }
-  const p = el("div", "pct"), unit = el("div", "unit");
-  fig.append(cap, svg, p, unit);
-  return {node: fig, set(ratio, unitText) {
-    const n = Math.round(Math.min(1, ratio) * 100);
-    cells.forEach((c, k) => c.classList.toggle("on", k < n));
-    p.textContent = pct(ratio) + " ao ano";
-    unit.textContent = unitText;
-  }};
-}
-
-// A step: sliders (vars) drive grids, formula lines and an optional big number.
-// `ask` pauses on a question; its button animates vars to new values.
-function calcStep(cfg) {
-  return box => {
-    const s = {};
-    for (const k in cfg.vars) s[k] = cfg.vars[k].v;
-    const wrap = el("div", "split"), left = el("div"), right = el("div");
-    if (cfg.before) left.append(prose("say", cfg.before));
-    const gridsBox = el("div", "grids");
-    const grids = cfg.grids.map(g => { const G = makeGrid(g.title); gridsBox.append(G.node); return {g, G}; });
-    left.append(gridsBox);
-    const pre = el("pre"), lines = cfg.lines.map(l => { const sp = el("span", "ln" + (l.res ? " res" : "")); pre.append(sp); return {l, sp}; });
-    right.append(pre);
-    const sl = el("div", "sliders"), outs = {}, inputs = {};
-    for (const k in cfg.vars) {
-      const v = cfg.vars[k];
-      if (v.fixed) continue;
-      const row = el("label", "sl"), inp = el("input"), out = el("output");
-      Object.assign(inp, {type: "range", min: v.min, max: v.max, step: v.step, value: v.v});
-      inp.oninput = () => { s[k] = +inp.value; update(k); };
-      row.append(el("span", null, v.label), inp, out);
-      sl.append(row); outs[k] = out; inputs[k] = inp;
-    }
-    right.append(sl);
-    let big;
-    if (cfg.big) { big = el("div", "big"); right.append(big); }
-    if (cfg.ask) {
-      const ask = el("div", "ask"), btn = el("button", null, cfg.ask.btn), ans = prose("", "");
-      ask.append(prose("", cfg.ask.q), btn, ans);
-      btn.onclick = () => {
-        btn.disabled = true;
-        const from = {...s}, t0 = performance.now();
-        const tick = now => {
-          const f = Math.min(1, (now - t0) / 1200), e = f * (2 - f);
-          for (const k in cfg.ask.set) { s[k] = from[k] + (cfg.ask.set[k] - from[k]) * e; if (inputs[k]) inputs[k].value = s[k]; }
-          update(Object.keys(cfg.ask.set)[0]);
-          if (f < 1) requestAnimationFrame(tick); else ans.replaceWith(prose("note", cfg.ask.a));
-        };
-        requestAnimationFrame(tick);
-      };
-      right.append(ask);
-    }
-    wrap.append(left, right); box.append(wrap);
-    function update(changed) {
-      for (const k in outs) outs[k].textContent = cfg.vars[k].fmt(s[k]);
-      grids.forEach(({g, G}) => G.set(g.ratio(s), g.unit(s)));
-      lines.forEach(({l, sp}) => { sp.textContent = l.t(s); sp.classList.toggle("hl", !!changed && (l.deps || []).includes(changed)); });
-      if (big) { big.textContent = cfg.big(s); big.append(el("small", null, cfg.bigLabel)); }
-    }
-    update();
-  };
-}
-
-const STEPS = [
-  {title: "Yield = quanto rende ÷ quanto custa",
-   say: "Yield (rendimento) é o que um ativo te paga em um ano dividido pelo preço dele. Exemplo sem bolsa: um apartamento que custa R$ 400.000 e é alugado por R$ 1.000 por mês. Mexa nos sliders.",
-   body: calcStep({
-     vars: {
-       aluguel: {label: "aluguel por mês", v: 1000, min: 500, max: 4000, step: 50, fmt: brl0},
-       imovel: {label: "preço do imóvel", v: 400000, min: 150000, max: 800000, step: 10000, fmt: brl0}},
-     grids: [{title: "100 quadrados = o preço do imóvel", ratio: s => s.aluguel * 12 / s.imovel,
-              unit: s => "cada quadrado = " + brl0(s.imovel / 100) + " (1% do preço)"}],
-     lines: [
-       {t: s => "aluguel no ano = " + brl0(s.aluguel) + " × 12 = " + brl0(s.aluguel * 12), deps: ["aluguel"]},
-       {t: s => "preço          = " + brl0(s.imovel), deps: ["imovel"]},
-       {t: s => "yield          = " + brl0(s.aluguel * 12) + " ÷ " + brl0(s.imovel) + " = " + pct(s.aluguel * 12 / s.imovel), res: true, deps: ["aluguel", "imovel"]}]
-   }),
-   note: "Os quadrados dourados são quantos \"pedaços do preço\" voltam para você por ano. 3 dourados = 3% ao ano."},
-
-  {title: "Dividend yield: o mesmo, para ações",
-   say: "Na ação, o \"aluguel\" são os [[proventos|Dinheiro que a empresa distribui aos acionistas: dividendos e JCP (juros sobre capital próprio). Os dois entram na conta do DY.]] por ação dos últimos 12 meses. O preço é a cotação de hoje. DY = proventos 12 meses ÷ preço.",
-   body: calcStep({
-     vars: {
-       div: {label: "proventos (12 meses)", v: 1.6, min: 0.2, max: 4, step: 0.05, fmt: brl},
-       price: {label: "preço da ação", v: 20, min: 5, max: 60, step: 0.5, fmt: brl}},
-     grids: [{title: "100 quadrados = o preço de 1 ação", ratio: s => s.div / s.price,
-              unit: s => "cada quadrado = " + brl(s.price / 100)}],
-     lines: [
-       {t: s => "proventos 12m = " + brl(s.div) + " por ação", deps: ["div"]},
-       {t: s => "preço hoje    = " + brl(s.price), deps: ["price"]},
-       {t: s => "DY            = " + brl(s.div) + " ÷ " + brl(s.price) + " = " + pct(s.div / s.price), res: true, deps: ["div", "price"]},
-       {t: s => "com 100 ações: " + brl(s.div * 100) + " por ano", deps: ["div"]}]
-   }),
-   note: "Exemplo fictício: empresa X a R$ 20,00 que pagou R$ 1,60 no último ano tem DY de 8%. Sites como Status Invest e Investidor10 mostram o DY de cada ação já calculado."},
-
-  {title: "Preço cai, DY sobe",
-   say: "O dividendo é o mesmo, mas o preço mudou. O DY anda ao contrário do preço.",
-   body: calcStep({
-     vars: {
-       div: {label: "proventos (12 meses)", v: 1.6, fixed: true, fmt: brl},
-       price: {label: "preço da ação", v: 20, min: 8, max: 40, step: 0.5, fmt: brl}},
-     grids: [{title: "100 quadrados = o preço de 1 ação", ratio: s => s.div / s.price,
-              unit: s => "cada quadrado = " + brl(s.price / 100)}],
-     lines: [
-       {t: s => "proventos 12m = " + brl(s.div) + " (não mudou)"},
-       {t: s => "preço hoje    = " + brl(s.price), deps: ["price"]},
-       {t: s => "DY            = " + pct(s.div / s.price), res: true, deps: ["price"]}],
-     ask: {q: "A ação cai de R$ 20 para R$ 16 e o provento continua R$ 1,60. Para quanto vai o DY?",
-           btn: "Revelar", set: {price: 16},
-           a: "10%. Cada quadrado ficou menor (R$ 0,16), então os mesmos R$ 1,60 enchem mais quadrados. Por isso o método Barsi compra na queda: mesmo dividendo, yield maior para quem compra agora."}
-   })},
-
-  {title: "Yield on cost: o DY do preço que VOCÊ pagou",
-   say: "O DY do site usa o preço de hoje. O [[yield on cost (YOC)|YOC = proventos 12 meses ÷ seu preço médio de compra. Mede quanto o SEU dinheiro está rendendo.]] usa o seu preço de compra. Você comprou a R$ 16; anos depois a ação vale R$ 30 e o provento cresceu.",
-   body: calcStep({
-     vars: {
-       paid: {label: "você pagou", v: 16, fixed: true, fmt: brl},
-       price: {label: "preço hoje", v: 30, min: 10, max: 50, step: 0.5, fmt: brl},
-       div: {label: "proventos hoje", v: 2.4, min: 0.8, max: 5, step: 0.05, fmt: brl}},
-     grids: [
-       {title: "Quem compra hoje (DY)", ratio: s => s.div / s.price, unit: s => "quadrado = " + brl(s.price / 100)},
-       {title: "Você (yield on cost)", ratio: s => s.div / s.paid, unit: s => "quadrado = " + brl(s.paid / 100)}],
-     lines: [
-       {t: s => "proventos 12m = " + brl(s.div), deps: ["div"]},
-       {t: s => "DY  = " + brl(s.div) + " ÷ " + brl(s.price) + " = " + pct(s.div / s.price), res: true, deps: ["div", "price"]},
-       {t: s => "YOC = " + brl(s.div) + " ÷ R$ 16,00 = " + pct(s.div / s.paid), res: true, deps: ["div"]}]
-   }),
-   note: "O YOC sobe sozinho quando a empresa aumenta os proventos. É a meta do método Barsi: comprar barato, segurar, e ver o YOC crescer ano a ano."},
-
-  {title: "Armadilha: DY alto demais",
-   say: "O DY olha para trás: usa os proventos dos últimos 12 meses. Uma empresa em crise pode mostrar um DY lindo.",
-   body: calcStep({
-     before: "A ação caiu de R$ 20 para R$ 10 porque o lucro despencou. O provento dos últimos 12 meses ainda é R$ 1,60 (pago quando a empresa ia bem).",
-     vars: {
-       div: {label: "proventos (12 meses)", v: 1.6, min: 0.2, max: 2, step: 0.05, fmt: brl},
-       price: {label: "preço da ação", v: 10, fixed: true, fmt: brl}},
-     grids: [{title: "100 quadrados = o preço de 1 ação", ratio: s => s.div / s.price,
-              unit: s => "cada quadrado = " + brl(s.price / 100)}],
-     lines: [
-       {t: s => "preço hoje    = R$ 10,00 (caiu 50%)"},
-       {t: s => "proventos 12m = " + brl(s.div), deps: ["div"]},
-       {t: s => "DY            = " + pct(s.div / s.price), res: true, deps: ["div"]}],
-     ask: {q: "16% de DY. Parece ótimo. O que acontece no ano seguinte, com o lucro menor?",
-           btn: "Passar 1 ano", set: {div: 0.4},
-           a: "A empresa corta o provento para R$ 0,40 e o DY desaba para 4%. Antes de comprar por DY alto, olhe o histórico de 5+ anos de proventos e se o lucro sustenta o pagamento."}
-   })},
-
-  {title: "Quanto preciso investir para ter R$ X por mês?",
-   say: "Inverta a conta: capital = renda que você quer no ano ÷ DY. Mexa nos dois sliders.",
-   body: calcStep({
-     vars: {
-       renda: {label: "renda por mês", v: 1000, min: 200, max: 10000, step: 100, fmt: brl0},
-       dy: {label: "DY médio da carteira", v: 0.08, min: 0.03, max: 0.14, step: 0.005, fmt: pct}},
-     grids: [{title: "100 quadrados = seu capital", ratio: s => s.dy,
-              unit: s => "cada quadrado = " + brl0(s.renda * 12 / s.dy / 100)}],
-     lines: [
-       {t: s => "renda no ano = " + brl0(s.renda) + " × 12 = " + brl0(s.renda * 12), deps: ["renda"]},
-       {t: s => "DY           = " + pct(s.dy), deps: ["dy"]},
-       {t: s => "capital      = " + brl0(s.renda * 12) + " ÷ " + pct(s.dy), res: true, deps: ["renda", "dy"]}],
-     big: s => brl0(s.renda * 12 / s.dy), bigLabel: "de capital investido"
-   }),
-   note: "Com DY de 8%, cada R$ 1.000 por mês pede R$ 150.000 investidos. Proventos de ações não são fixos: isso é uma média, não uma garantia."}
-];
-
-let i = 0;
-function show(n) {
-  i = Math.max(0, Math.min(STEPS.length - 1, n));
-  const s = STEPS[i], box = el("div", "step");
-  box.append(el("div", "num", `PASSO ${i + 1} DE ${STEPS.length}`), el("h2", null, s.title), prose("say", s.say));
-  s.body(box);
-  if (s.note) box.append(prose("note", s.note));
-  $("stage").replaceChildren(box);
-  fitObserver.disconnect(); fitObserver.observe(box);
-  [...$("dots").children].forEach((d, k) => d.className = "dot" + (k < i ? " done" : k === i ? " on" : ""));
-  $("count").textContent = `${i + 1} / ${STEPS.length}`;
-  $("prev").disabled = i === 0;
-  $("next").disabled = i === STEPS.length - 1;
-}
-function fit() {
-  const stage = $("stage"), box = stage.firstElementChild;
-  if (!box) return;
-  const cs = getComputedStyle(stage);
-  const h = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  const k = Math.min(1, h / box.scrollHeight, w / box.scrollWidth);
-  box.style.scale = k < 1 ? k : "";
-  if (k < 1) box.dataset.fit = k.toFixed(3); else delete box.dataset.fit;
-}
-const fitObserver = new ResizeObserver(fit);
-addEventListener("resize", fit);
-document.addEventListener("mouseover", e => {
-  const t = e.target.closest("[data-tip]"), tip = $("tip");
-  if (!t || !t.dataset.tip) { tip.hidden = true; return; }
-  tip.textContent = t.dataset.tip; tip.hidden = false;
-  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
-  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + "px";
-  tip.style.top = (r.bottom + h + 8 < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
-});
-STEPS.forEach((s, k) => { const d = el("button", "dot"); d.title = s.title; d.onclick = () => show(k); $("dots").append(d); });
-$("prev").onclick = () => show(i - 1);
-$("next").onclick = () => show(i + 1);
-document.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT") return;
-  if (e.key === "ArrowRight") show(i + 1);
-  else if (e.key === "ArrowLeft") show(i - 1);
-});
-show(0);
-</script>
 </body>
 </html>

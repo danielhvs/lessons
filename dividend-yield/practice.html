@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dividend yield, interação</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #where { text-align: center; font-size: 22px; font-weight: 700; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; touch-action: manipulation; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #talk { min-height: 104px; }
+  #caption, #ask { font-size: 20px; line-height: 1.35; padding: 6px 10px; border-radius: 4px;
+    background: var(--panel); min-height: 104px; }
+  #caption { border-left: 4px solid var(--d); }
+  #caption b { color: var(--d); }
+  #ask { border-left: 4px solid var(--a); display: none; }
+  #ask .q b { color: var(--a); }
+  #ask .ctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+  #ask button, #ask input { font: inherit; font-size: 20px; padding: 4px 12px; border-radius: 6px;
+    border: 2px solid var(--line); background: var(--bg); color: var(--fg); }
+  #ask button { cursor: pointer; }
+  #ask input { width: 110px; text-align: center; }
+  #ask .ok { border-color: var(--c); color: var(--c); }
+  #ask .bad { border-color: var(--r); color: var(--r); }
+  #ask .show { color: var(--muted); }
+  #hint { color: var(--r); font-size: 18px; margin-top: 4px; }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 160px; height: 22px; display: flex; gap: 3px; cursor: pointer; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a><a href="animate.html">animação</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="talk">
+  <div id="caption"></div>
+  <div id="ask"><div class="q"></div><div class="ctl"></div><div id="hint"></div></div>
+</div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+
+let out = [];
+const add = s => out.push(s);
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}">${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  if (op <= 0.001) return;
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  line(cx - w / 2, cy, cx + w / 2, cy, "f", 3, op);
+  text(cx, cy + size, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label, color, 1]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function card(x, y, w, h, lines, color, op = 1) {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="16" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  lines.forEach(([dy, tok, size]) => text(x + w / 2, y + dy, tok, size, { anchor: "middle", op }));
+}
+
+// ---------- money and percent, pt-BR
+const dec = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + dec(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const REG = { 2: .5, 5: .5, 8: .4, 11: .6 };  // month index -> provento por ação
+
+// 12 monthly slots from x0 to x0+w; bars grow up from base; only paying months get a label
+function months(x0, base, w, scale, vals, grow, o = {}) {
+  const sw = w / 12, op0 = o.op ?? 1;
+  line(x0, base, x0 + w, base, "m", 2.5, op0);
+  for (let i = 0; i < 12; i++) line(x0 + sw * (i + .5), base, x0 + sw * (i + .5), base + 8, "m", 2, op0);
+  const tops = {};
+  Object.entries(vals).forEach(([k, v]) => {
+    const i = +k, g = grow(i), h = v * scale * g, cx = x0 + sw * (i + .5);
+    const col = (o.colors && o.colors[i]) || "a", op = ((o.ops && o.ops[i]) ?? 1) * op0;
+    tops[i] = [cx, base - v * scale];
+    text(cx, base + 40, [[MESES[i], "m"]], 30, { anchor: "middle", op: op0 });
+    if (g <= 0 || op <= 0) return;
+    add(`<rect x="${cx - sw * .36}" y="${base - h}" width="${sw * .72}" height="${h}" rx="5" fill="${COL[col]}" fill-opacity=".75" opacity="${op}"/>`);
+    text(cx, base - h - 12, [[dec(v), col, 1]], 30, { anchor: "middle", op: g * op });
+  });
+  return tops;
+}
+
+// ---------- checkpoint answers drawn in the stage
+let cur = 0;
+const ans = [];
+// the user's answer flies from the "Sua vez" box to (x, y) at ck.show; a wrong one stays above, struck out
+function answerAt(x, y, size, t, c = "c") {
+  const ck = SCENES[cur].ck, a = ans[cur], show = ck.show ?? ck.at;
+  const fmt = v => (ck.pre || "") + v + (ck.unit || "");
+  if (!a || t < show) return text(x, y, [["?", "m", 1]], size, { anchor: "middle" });
+  const right = fmt(ck.answer), mine = a.val == null ? null : fmt(a.val), p = P(t, show, show + .9);
+  if (mine !== null && p < 1) {
+    return text(L(500, x, p), L(690, y, p) - Math.sin(p * Math.PI) * 80, [[mine, a.ok ? c : "r", 1]], size, { anchor: "middle" });
+  }
+  text(x, y, [[right, c, 1]], size, { anchor: "middle", op: mine === null ? P(t, show, show + .6) : 1 });
+  if (!a.ok && mine !== null) {
+    const s = Math.max(34, size * .6), w = width([["você: " + mine]], s), yy = y - size * 1.05;
+    text(x, yy, [["você: " + mine, "r"]], s, { anchor: "middle" });
+    line(x - w / 2, yy - s * .32, x + w / 2, yy - s * .32, "r", 3);
+  }
+}
+
+const GLOSS = {
+  "ação": "um pedaço de uma empresa, comprado e vendido na bolsa de valores",
+  "proventos": "dinheiro que a empresa distribui a quem tem a ação: dividendos e JCP",
+  "JCP": "juros sobre capital próprio: outra forma de a empresa repassar parte do lucro ao acionista; entra na conta do DY",
+  "DY": "dividend yield, rendimento em proventos: proventos pagos nos últimos 12 meses ÷ preço atual da ação",
+  "12m": "os últimos 12 meses, contados de hoje para trás",
+  "setor": "grupo de empresas do mesmo ramo, como bancos ou energia elétrica",
+  "renda fixa": "investimento com a regra de rendimento combinada na compra, como Tesouro Direto e CDB",
+};
+
+const SCENES = [
+{ title: "Uma ação, um ano", dur: 11, terms: ["ação", "proventos", "JCP"],
+  cap: [[0, "Você compra <b>1 ação</b> por <b>R$ 20,00</b>."],
+        [2, "Ao longo de 12 meses a empresa divide parte do lucro com os acionistas: são os <b>proventos</b>."],
+        [7, "Somando o que caiu na conta nos últimos 12 meses: <b>R$ 2,00</b> por ação."]],
+  draw(t) {
+    card(20, 150, 250, 230, [[70, [["1 ação"]], 40], [150, [["R$ 20,00", "b", 1]], 46], [205, [["preço", "m"]], 32]], "b", P(t, 0, 1));
+    const tops = months(310, 470, 670, 250, REG, i => P(t, 2.2 + i * .25, 3.2 + i * .25), { op: P(t, 1.5, 2.3) });
+    let sum = 0;
+    [2, 5, 8, 11].forEach((i, k) => {
+      const p = clamp((t - 7 - k * .5) / 1);
+      fly(tops[i][0], tops[i][1] - 12, 640, 610, ease(p), dec(REG[i]), "a", 34);
+      if (p >= 1) sum += REG[i];
+    });
+    text(500, 630, [["proventos em 12 meses: "], [brl(sum), "a", 1]], 40, { anchor: "middle", op: P(t, 6.5, 7) });
+  } },
+
+{ title: "A conta", dur: 10, terms: ["DY", "12m"],
+  cap: [[0, "<b>Dividend yield</b> (DY) é quanto a ação pagou em 12 meses, dividido pelo preço dela hoje."],
+        [3, "Troque as palavras pelos números."],
+        [6.4, "2 dividido por 20 dá <b>0,10</b>: a ação devolveu <b>10%</b> do preço em proventos no último ano."]],
+  ck: { at: 5.2, show: 6.4, kind: "num", answer: "10", unit: "%",
+        q: "Quanto é 2,00 ÷ 20,00, em porcentagem? Digite só o número.",
+        hint: "2 ÷ 20 = 0,10. Para virar porcentagem, multiplique por 100." },
+  draw(t) {
+    chip(250, 70, "proventos 12m = R$ 2,00", "a", 30);
+    chip(760, 70, "preço = R$ 20,00", "b", 30);
+    frac(560, 230, [["proventos 12m", "a", 1]], [["preço", "b", 1]], 46, P(t, 0, 1), "DY =");
+    const cy = 470, s = 56, at = this.ck.at;
+    frac(300, cy, [["2,00", "a", 1]], [["20,00", "b", 1]], s, P(t, 3, 3.3), "DY =");
+    fly(250, 80, 300, cy - s * .3, clamp((t - 3.3) / 1.1), "2,00", "a", 46);
+    fly(760, 80, 300, cy + s, clamp((t - 4) / 1.1), "20,00", "b", 46);
+    text(400, cy + 20, [["= 0,10"]], s, { op: P(t, at + .3, at + 1.1) });
+    text(640, cy + 20, [["="]], s, { op: P(t, 5, 5.2) });
+    if (t >= 5) answerAt(790, cy + 20, 80, t, "d");
+    text(790, cy + 110, [["ao ano", "m"]], 32, { anchor: "middle", op: P(t, this.ck.show + .9, this.ck.show + 1.4) });
+  } },
+
+{ title: "No seu bolso", dur: 12, terms: ["ação", "DY"],
+  cap: [[0, "Com <b>R$ 1.000</b> você compra 1.000 ÷ 20 = <b>50 ações</b>."],
+        [4, "Cada uma paga R$ 2,00 no ano."],
+        [9.5, "R$ 100 sobre R$ 1.000 investidos: os mesmos <b>10%</b>. DY é o rendimento em proventos do dinheiro que você pôs."]],
+  ck: { at: 4.6, show: 4.9, kind: "num", answer: "100", pre: "R$ ",
+        q: "50 ações, cada uma paga R$ 2,00 no ano. Quantos reais caem na conta?",
+        hint: "Multiplique o número de ações pelo provento de cada uma." },
+  draw(t) {
+    row(500, 70, [["R$ 1.000 ÷ "], ["R$ 20,00", "b", 1], [" = 50 ações"]], 40, { op: P(t, 0, 1) });
+    const S = 60, at = this.ck.at;
+    for (let k = 0; k < 50; k++) {
+      const x = 20 + (k % 10) * (S + 8), y = 120 + Math.floor(k / 10) * (S + 8);
+      const ap = P(t, 1 + k * .05, 1.5 + k * .05), pay = clamp((t - at - 1.4 - k * .06) / .4);
+      if (ap <= 0) continue;
+      add(`<rect x="${x}" y="${y}" width="${S}" height="${S}" rx="8" fill="${pay > 0 ? COL.a : COL.b}" fill-opacity="${pay > 0 ? .25 + .5 * (1 - pay) : .2}" stroke="${COL.b}" stroke-width="2" opacity="${ap}"/>`);
+      if (pay > 0) text(x + S / 2, y + S / 2 + 12, [["+2", "a", 1]], 34, { anchor: "middle", op: pay });
+    }
+    text(850, 170, [["proventos no ano"]], 32, { anchor: "middle", op: P(t, 4, 4.5) });
+    if (t >= 4) answerAt(850, 290, 60, t, "a");
+    text(850, 350, [["50 × R$ 2,00", "m"]], 32, { anchor: "middle", op: P(t, at + 1.4, at + 1.9) });
+    frac(330, 570, [["R$ 100", "a", 1]], [["R$ 1.000"]], 44, P(t, 9.5, 10.2));
+    text(470, 585, [["= 10%", "d", 1]], 54, { op: P(t, 10.2, 10.9) });
+  } },
+
+{ title: "O preço mexe no DY", dur: 15, terms: ["DY", "proventos"],
+  cap: [[0, "Os proventos ficam em R$ 2,00. Só o preço da ação vai mudar."],
+        [2.5, "O preço caiu para <b>R$ 16,00</b>: os mesmos R$ 2,00 agora são <b>12,5%</b> do preço."],
+        [7, "Subiu para <b>R$ 25,00</b>: os R$ 2,00 viram <b>8%</b>."],
+        [11.5, "Preço e DY andam em sentidos opostos. Quem compra mais barato recebe mais por real investido."]],
+  ck: { at: 2.5, show: 4.8, kind: "opt", answer: "12,5%", opts: ["8%", "10%", "12,5%", "16%"],
+        q: "O preço cai de R$ 20,00 para <b>R$ 16,00</b> e os proventos ficam em R$ 2,00. Qual o novo DY?",
+        hint: "O preço é a parte de baixo da fração: 2,00 ÷ 16,00." },
+  draw(t) {
+    const gx = p => L(110, 560, (p - 10) / 30), gy = d => L(560, 90, d / .2), at = this.ck.at;
+    [10, 20, 30, 40].forEach(p => line(gx(p), gy(0), gx(p), gy(.2), "l", 1));
+    [.05, .1, .15, .2].forEach(d => line(gx(10), gy(d), gx(40), gy(d), "l", 1));
+    line(gx(10), gy(0), gx(40), gy(0), "m", 2.5);
+    line(gx(10), gy(0), gx(10), gy(.2), "m", 2.5);
+    [10, 20, 30, 40].forEach(p => text(gx(p), gy(0) + 40, [["R$ " + p, "m"]], 32, { anchor: "middle" }));
+    [.05, .1, .15, .2].forEach(d => text(gx(10) - 12, gy(d) + 10, [[pct(d), "m"]], 32, { anchor: "end" }));
+    text(gx(25), gy(0) + 86, [["preço", "b", 1]], 34, { anchor: "middle" });
+    text(gx(10) + 12, gy(.2) - 22, [["DY", "d", 1]], 34);
+    const pts = [];
+    for (let i = 0; i <= 120; i++) { const p = 10 + 30 * i / 120; pts.push(`${gx(p).toFixed(1)},${gy(2 / p).toFixed(1)}`); }
+    add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL.d}" stroke-width="4" opacity=".55"/>`);
+    const p = t < at + .3 ? 20 : t < 7 ? L(20, 16, P(t, at + .3, at + 2.3)) : t < 12 ? L(16, 25, P(t, 7, 9.5)) : L(25, 20, P(t, 12, 14));
+    const d = 2 / p, x = gx(p), y = gy(d);
+    line(x, y, x, gy(0), "b", 2.5, 1, "8 6");
+    line(gx(10), y, x, y, "d", 2.5, 1, "8 6");
+    dot(x, y, "d", 13);
+    text(790, 150, [["preço: "], [brl(p), "b", 1]], 34, { anchor: "middle" });
+    text(790, 215, [["proventos 12m: "], ["R$ 2,00", "a", 1]], 32, { anchor: "middle" });
+    frac(830, 360, [["2,00", "a", 1]], [[dec(p), "b", 1]], 46, 1, "DY =");
+    if (t < at || t >= 7) text(790, 540, [["= " + pct(d), "d", 1]], 64, { anchor: "middle" });
+    else answerAt(790, 540, 64, t, "d");
+  } },
+
+{ title: "Comparar empresas", dur: 13, terms: ["DY"],
+  cap: [[0, "Duas ações. A <b>B</b> paga mais por ação: R$ 3,00 contra R$ 2,00."],
+        [5, "Mas cada ação B custa R$ 50,00."],
+        [6.6, "Por real investido, A rende <b>10%</b> e B rende <b>6%</b>. O DY compara empresas de preços diferentes na mesma régua."]],
+  ck: { at: 6, kind: "tap", answer: 0, zones: [190, 280].map(y => [30, y - 48, 940, 72]),
+        q: "Com R$ 1.000, qual ação te paga mais proventos por ano? Toque na linha dela.",
+        hint: "Quantas ações cada uma compra com R$ 1.000? 1.000 ÷ 20 e 1.000 ÷ 50." },
+  draw(t) {
+    const cols = [90, 300, 560, 840], hy = 100, ry = [190, 280], at = this.ck.at;
+    [["ação"], ["preço", "b"], ["proventos 12m", "a"], ["DY", "d"]].forEach(([h, c], i) => text(cols[i], hy, [[h, c || "f", 1]], 32, { anchor: "middle", op: P(t, 0, .8) }));
+    line(30, hy + 22, 970, hy + 22, "l", 2, P(t, 0, .8));
+    [["A", 20, 2], ["B", 50, 3]].forEach(([n, pr, pv], r) => {
+      text(cols[0], ry[r], [[n, "f", 1]], 40, { anchor: "middle", op: P(t, .5 + r * .3, 1.1 + r * .3) });
+      text(cols[1], ry[r], [[brl(pr), "b"]], 40, { anchor: "middle", op: P(t, r ? 5 : 1, r ? 5.6 : 1.6) });
+      text(cols[2], ry[r], [[brl(pv), "a", r === 1 && t > 2.5 && t < 5 ? 1 : 0]], 40, { anchor: "middle", op: P(t, 1.8 + r * .4, 2.4 + r * .4) });
+      const a = at + .6 + r * .8;
+      fly(cols[2], ry[r] - 14, cols[3], ry[r] - 14, clamp((t - a) / .8), brl(pv), "a", 34);
+      text(cols[3], ry[r], [[pct(pv / pr), "d", 1]], 44, { anchor: "middle", op: P(t, a + .7, a + 1) });
+      const bw = (pv / pr) * 4000 * P(t, at + 2.4 + r * .3, at + 3.6 + r * .3);
+      text(120, 425 + r * 100, [[n, "f", 1]], 40, { anchor: "end", op: P(t, at + 2.2, at + 2.6) });
+      if (bw > 0) add(`<rect x="150" y="${385 + r * 100}" width="${bw}" height="60" rx="8" fill="${COL.d}" fill-opacity=".6"/>`);
+      text(170 + bw, 427 + r * 100, [[pct(pv / pr), "d", 1]], 36, { op: P(t, at + 3.6 + r * .3, at + 4 + r * .3) });
+    });
+    text(500, 640, [["R$ 1.000 em A: R$ 100/ano  ·  R$ 1.000 em B: R$ 60/ano", "m"]], 30, { anchor: "middle", op: P(t, at + 4.2, at + 5) });
+  } },
+
+{ title: "Armadilha: provento de uma vez só", dur: 13, terms: ["proventos", "12m"],
+  cap: [[0, "Em agosto a empresa vendeu um prédio e distribuiu um provento extra de <b>R$ 3,00</b>."],
+        [3.5, "Somando 12 meses: R$ 5,00. DY = 5 ÷ 20 = <b>25%</b>. Parece ótimo."],
+        [7.5, "Mas o prédio só se vende uma vez. No ano seguinte voltam só os R$ 2,00 normais: DY de <b>10%</b>."],
+        [11, "O DY olha para trás. Confira se os proventos se repetem ano após ano."]],
+  ck: { at: 7.5, show: 8.7, kind: "num", answer: "10", unit: "%",
+        q: "O prédio só se vende uma vez. No ano seguinte voltam só os R$ 2,00 normais, com o preço em R$ 20,00. Qual o DY, em %?",
+        hint: "Tire o extra: 2,00 ÷ 20,00." },
+  draw(t) {
+    const at = this.ck.at, extraOp = 1 - .8 * P(t, at + .2, at + 1.2);
+    months(20, 560, 640, 120, { ...REG, 7: 3 }, i => i === 7 ? P(t, .5, 1.8) : 1, { colors: { 7: "r" }, ops: { 7: extraOp } });
+    text(20 + 640 / 12 * 7.5, 150, [["extra", "r", 1]], 32, { anchor: "middle", op: P(t, 1.5, 2) * extraOp });
+    const sum = t < at + .2 ? 5 : L(5, 2, P(t, at + .2, at + 1.2)), bad = t < at;
+    text(830, 170, [["proventos 12m"]], 32, { anchor: "middle" });
+    text(830, 240, [[brl(sum), "a", 1]], 52, { anchor: "middle", op: P(t, 3.5, 4.2) });
+    frac(850, 360, [[dec(sum), "a", 1]], [["20,00", "b", 1]], 42, P(t, 4.2, 5), "DY =");
+    if (bad) text(830, 540, [[pct(sum / 20), "r", 1]], 72, { anchor: "middle", op: P(t, 5, 5.8) });
+    else answerAt(830, 540, 72, t, "d");
+    text(830, 600, [[bad ? "este ano" : "ano seguinte", "m"]], 30, { anchor: "middle", op: P(t, 5, 5.8) });
+  } },
+
+{ title: "Armadilha: preço despencando", dur: 14, terms: ["DY", "proventos"],
+  cap: [[0, "Outra empresa, R$ 2,00 de proventos no último ano. Ela entrou em crise e a ação caiu de R$ 20,00 para <b>R$ 8,00</b>."],
+        [5.3, "DY = 2 ÷ 8 = <b>25%</b>. O número subiu porque o preço caiu, não porque ela pagou mais."],
+        [9, "Sem lucro, ela corta os proventos para R$ 0,40. Quem comprou pelos 25% recebe <b>5%</b>."],
+        [12.5, "DY muito acima dos concorrentes costuma ser o mercado prevendo um corte."]],
+  ck: { at: 5, show: 5.3, kind: "num", answer: "25", unit: "%",
+        q: "Proventos de R$ 2,00 nos últimos 12 meses, preço agora <b>R$ 8,00</b>. Qual o DY, em %?",
+        hint: "2,00 ÷ 8,00: quantas vezes 8 cabe em 2? Depois multiplique por 100." },
+  draw(t) {
+    const gx = m => L(120, 580, m / 12), gy = v => L(560, 100, v / 25);
+    const price = m => 20 - 12 * ease(m / 12) + 1.2 * Math.sin(m * 2.3) * (1 - m / 12) * (m > 0);
+    [5, 10, 15, 20, 25].forEach(v => line(gx(0), gy(v), gx(12), gy(v), "l", 1));
+    line(gx(0), gy(0), gx(12), gy(0), "m", 2.5);
+    [5, 10, 15, 20, 25].forEach(v => text(gx(0) - 12, gy(v) + 10, [["R$ " + v, "m"]], 30, { anchor: "end" }));
+    [0, 3, 6, 9].forEach(i => text(gx(i + .5), gy(0) + 40, [[MESES[i], "m"]], 30, { anchor: "middle" }));
+    const prog = P(t, .5, 4.5), pts = [];
+    for (let i = 0; i <= 120 * prog; i++) { const m = 12 * i / 120; pts.push(`${gx(m).toFixed(1)},${gy(price(m)).toFixed(1)}`); }
+    if (pts.length > 1) add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL.b}" stroke-width="5" stroke-linecap="round"/>`);
+    const m = 12 * prog, px = gx(m), py = gy(price(m));
+    dot(px, py, "b", 12);
+    text(m > 4 ? px - 18 : px + 18, py - 24, [[brl(price(m)), "b", 1]], 32, { anchor: m > 4 ? "end" : "start" });
+    const cut = t >= 9, pv = cut ? .4 : 2;
+    text(810, 170, [["proventos 12m: "], [brl(pv), cut ? "r" : "a", 1]], 32, { anchor: "middle", op: P(t, 4.4, 5) });
+    text(810, 215, [[cut ? "próximos 12 meses" : "últimos 12 meses", "m"]], 30, { anchor: "middle", op: P(t, 4.4, 5) });
+    frac(840, 330, [[dec(pv), cut ? "r" : "a", 1]], [["8,00", "b", 1]], 46, P(t, 4.4, 5), "DY =");
+    if (cut) text(810, 530, [[pct(pv / 8), "r", 1]], 80, { anchor: "middle" });
+    else if (t >= 5) answerAt(810, 530, 80, t, "d");
+  } },
+
+{ title: "Resumo", dur: 8, terms: ["setor", "renda fixa"],
+  cap: [[0, "DY mede quanto a ação pagou no último ano por real de preço. Use como ponto de partida, nunca sozinho."]],
+  draw(t) {
+    const o = i => P(t, i * .7, i * .7 + .8);
+    frac(560, 130, [["proventos dos últimos 12 meses", "a", 1]], [["preço atual", "b", 1]], 40, o(0), "DY =");
+    row(500, 290, [["R$ 2,00 ÷ R$ 20,00 = "], ["10%", "d", 1]], 40, { op: o(1) });
+    [["olha para trás: o passado não garante o próximo ano", "a"],
+     ["preço caiu → DY sobe; preço subiu → DY cai", "b"],
+     ["compare com empresas do mesmo setor e com a renda fixa", "d"],
+     ["confira se os proventos se repetem por vários anos", "r"]].forEach(([s, c], i) => {
+      dot(45, 390 + i * 76, c, 12, o(2 + i * .6));
+      text(75, 401 + i * 76, [[s]], 30, { op: o(2 + i * .6) });
+    });
+  } },
+
+{ title: "Novo exemplo: ação de R$ 40,00", dur: 9, terms: ["DY", "12m"],
+  cap: [[0, "Uma ação nova: custa <b>R$ 40,00</b> e pagou quatro proventos nos últimos 12 meses."],
+        [3.6, "2,60 ÷ 40,00 = 0,065: DY de <b>6,5%</b> ao ano, abaixo dos 10% do primeiro exemplo."]],
+  ck: { at: 3.4, show: 5, kind: "num", answer: "6,5", unit: "%",
+        q: "Preço R$ 40,00, proventos 12m R$ 2,60. Qual o DY, em %?",
+        hint: "2,60 ÷ 40,00 = 0,065. Multiplique por 100." },
+  draw(t) {
+    const NEW = { 2: .6, 5: .7, 8: .6, 11: .7 }, at = this.ck.at;
+    card(20, 120, 250, 230, [[70, [["1 ação"]], 40], [150, [["R$ 40,00", "b", 1]], 46], [205, [["preço", "m"]], 32]], "b", P(t, 0, .8));
+    months(310, 430, 670, 250, NEW, i => P(t, .5 + i * .12, 1.3 + i * .12), { op: P(t, .3, .8) });
+    text(500, 525, [["proventos em 12 meses: "], ["R$ 2,60", "a", 1]], 36, { anchor: "middle", op: P(t, 2.4, 3) });
+    frac(260, 610, [["2,60", "a", 1]], [["40,00", "b", 1]], 44, P(t, at + .2, at + .8), "DY =");
+    text(370, 625, [["= 0,065"]], 44, { op: P(t, at + .8, at + 1.4) });
+    text(620, 625, [["="]], 44, { op: P(t, at + .8, at + 1.4) });
+    if (t >= at) answerAt(790, 625, 64, t, "d");
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const $ = id => document.getElementById(id);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const svg = $("stage"), cap = $("caption"), ask = $("ask"), terms = $("terms");
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "", tries = 0, tapWrong = null, lastWrong = null;
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+const ckTime = i => starts[i] + SCENES[i].ck.at;
+const ckOpen = () => { const i = sceneAt(T), ck = SCENES[i].ck; return !!ck && !ans[i] && T >= ckTime(i) - 1e-6; };
+// "10", "10%", "10,0" and "R$ 100" all count; the stored answer keeps what the user typed, minus units
+const clean = s => String(s).replace(/R\$|%|\s/gi, "");
+const same = (v, ck) => ck.kind === "num"
+  ? Math.abs(parseFloat(clean(v).replace(",", ".")) - parseFloat(clean(ck.answer).replace(",", "."))) < 1e-9
+  : String(v) === String(ck.answer);
+
+const tl = $("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function buildAsk(i) {
+  const ck = SCENES[i].ck;
+  tries = 0; tapWrong = null; lastWrong = null;
+  ask.querySelector(".q").innerHTML = `<b>Sua vez:</b> ${ck.q}`;
+  $("hint").textContent = "";
+  const ctl = ask.querySelector(".ctl");
+  ctl.innerHTML = "";
+  if (ck.kind === "num") {
+    ctl.innerHTML = '<input id="in" type="text" inputmode="decimal" autocomplete="off"><button id="check">Conferir</button>';
+    const inp = $("in");
+    inp.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") submit(clean(inp.value), inp); });
+    $("check").onclick = () => submit(clean(inp.value), inp);
+  } else if (ck.kind === "opt") {
+    ck.opts.forEach(o => {
+      const b = document.createElement("button");
+      b.textContent = o; b.onclick = () => submit(o, b);
+      ctl.appendChild(b);
+    });
+  } else {
+    ctl.insertAdjacentHTML("beforeend", '<span>Toque no desenho.</span>');
+  }
+  const show = document.createElement("button");
+  show.className = "show"; show.textContent = "Mostrar resposta";
+  show.onclick = () => resolve(lastWrong, false);
+  ctl.appendChild(show);
+}
+function submit(val, el) {
+  if (val === "") return;
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (same(val, ck)) {
+    if (el) el.classList.add("ok");
+    return setTimeout(() => resolve(val, true), 450);
+  }
+  tries++; lastWrong = val;
+  if (el) el.classList.add("bad");
+  if (ck.kind === "tap") { tapWrong = val; lastKey = ""; }
+  if (tries >= 2) return setTimeout(() => resolve(val, false), 450);
+  $("hint").textContent = "Quase. Dica: " + ck.hint;
+}
+function resolve(val, ok) {
+  const i = sceneAt(T);
+  if (ans[i]) return;
+  ans[i] = { val, ok };
+  lastKey = "";
+  setPlaying(true);
+}
+
+let askFor = -1;
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur), open = ckOpen();
+  if (open && askFor !== i) { buildAsk(i); askFor = i; }
+  if (!open) askFor = -1;
+  ask.style.display = open ? "block" : "none";
+  cap.style.display = open ? "none" : "block";
+  const key = i + ":" + t.toFixed(3) + ":" + open + ":" + tapWrong;
+  if (key === lastKey) return;
+  lastKey = key; out = []; cur = i;
+  s.draw(t);
+  if (s.ck && s.ck.kind === "tap" && t >= s.ck.at - 1e-6) {
+    const z = s.ck.zones, a = ans[i];
+    const ring = (k, c, dash = "") => add(`<rect x="${z[k][0] + 4}" y="${z[k][1] + 4}" width="${z[k][2] - 8}" height="${z[k][3] - 8}" rx="8" fill="none" stroke="${COL[c]}" stroke-width="5" stroke-dasharray="${dash}"/>`);
+    if (open) { z.forEach((_, k) => ring(k, "m", "8 8")); if (tapWrong !== null) ring(tapWrong, "r"); }
+    else if (a) { ring(s.ck.answer, "c"); if (!a.ok && a.val !== null && a.val !== s.ck.answer) ring(a.val, "r"); }
+  }
+  svg.innerHTML = out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = s.terms.map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  $("where").textContent = s.title;
+  $("prev").disabled = i === 0;
+  const last = i === SCENES.length - 1;
+  $("next").disabled = last ? !(HEADLESS && open) : (!HEADLESS && open);
+  $("play").disabled = open;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const i = sceneAt(T), s = SCENES[i];
+    const stop = s.ck && !ans[i] && T < ckTime(i) ? ckTime(i) : sceneEnd(i);
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= stop) { T = stop; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; $("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check): stop on each checkpoint with the box open, then on the revealed last frame
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  ans[i] = undefined; askFor = -1;
+  if (HEADLESS) T = SCENES[i].ck ? ckTime(i) : sceneEnd(i);
+  else { T = starts[i]; setPlaying(true); }
+  render();
+}
+$("play").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) return;
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+$("replay").onclick = () => go(sceneAt(T));
+$("restart").onclick = () => go(0);
+$("prev").onclick = () => go(sceneAt(T) - 1);
+$("next").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) {
+    if (!HEADLESS) return;
+    ans[i] = { val: SCENES[i].ck.answer, ok: true };
+    T = sceneEnd(i);
+    return render();
+  }
+  go(i + 1);
+};
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  const i = sceneAt(T);
+  if (SCENES[i].ck && !ans[i] && T > ckTime(i)) T = ckTime(i);
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+svg.addEventListener("pointerdown", e => {
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (!ckOpen() || ck.kind !== "tap") return;
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const k = ck.zones.findIndex(([x, y, w, h]) => p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h);
+  if (k >= 0) submit(k, null);
+});
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === " ") { e.preventDefault(); $("play").click(); }
+  if (e.key === "ArrowRight") $("next").click();
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
