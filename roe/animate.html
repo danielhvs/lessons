@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROE, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <a href="../">← todas as aulas</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "ROE": "Return on Equity, retorno sobre o patrimônio: lucro líquido ÷ patrimônio líquido. Quanto lucro sai de cada R$ 1 dos sócios",
+  "PL": "patrimônio líquido: ativos menos dívidas. O dinheiro que é dos sócios dentro da empresa; sai do balanço",
+  "lucro líquido": "o que sobra no ano depois de custos, despesas, juros e impostos; sai da DRE",
+  "DRE": "demonstração do resultado do exercício: o relatório que mostra receita, custos e lucro do ano",
+  "payout": "% do lucro pago aos acionistas como dividendos e JCP; o resto fica na empresa",
+  "dividendos": "parte do lucro que a empresa reparte entre os acionistas",
+  "JCP": "juros sobre capital próprio: outra forma de repartir o lucro, com imposto retido na fonte",
+  "DuPont": "análise que quebra o ROE em margem × giro × alavancagem; nasceu na empresa DuPont no começo do século 20",
+  "margem": "lucro ÷ receita: quanto de cada R$ 1 vendido vira lucro",
+  "giro": "receita ÷ ativo: quantos reais a empresa vende por R$ 1 de ativo",
+  "alavancagem": "ativo ÷ PL: quanto do ativo é bancado com dívida em vez do dinheiro dos sócios",
+  "ativo": "tudo que a empresa tem: caixa, imóveis, máquinas, estoque, créditos",
+  "receita": "o total vendido no ano, antes de tirar custos",
+  "ROA": "Return on Assets: lucro líquido ÷ ativo total. Lucro sobre tudo que a empresa tem, venha de sócio ou de dívida",
+  "dívida": "dinheiro emprestado que a empresa tem de devolver com juros",
+  "P/VP": "preço ÷ valor patrimonial: quanto a bolsa paga por R$ 1 de PL. P/VP 3 = paga R$ 3 por R$ 1",
+  "P/L": "preço ÷ lucro por ação: quantos anos de lucro o preço da ação paga",
+  "renda fixa": "investimentos com regra de rendimento definida na compra (Tesouro, CDB...)",
+};
+const TERMS = [["ROE", "PL", "lucro líquido"], ["payout", "dividendos", "JCP"], ["DuPont", "margem", "giro", "alavancagem"],
+  ["margem", "giro", "alavancagem"], ["ativo", "dívida", "ROA"], ["P/VP", "P/L"], ["ROE", "renda fixa"]];
+const pctBR = (v, d = 1) => (Math.round(v * 100 * 10 ** d) / 10 ** d).toString().replace(".", ",") + "%";
+const reais = v => "R$ " + (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
+
+const SCENES = [
+{ title: "A conta", dur: 11,
+  cap: [[0, "Os sócios colocaram <b>R$ 100</b> na empresa. Esse dinheiro dos sócios é o <b>patrimônio líquido</b> (PL)."],
+        [3.5, "No ano, a empresa trabalhou com esse dinheiro e sobrou <b>R$ 15</b> de lucro líquido."],
+        [6.5, "<b>ROE</b> = lucro ÷ PL = 15 ÷ 100 = <b>15%</b>. Cada R$ 1 dos sócios rendeu R$ 0,15 no ano."]],
+  draw(t) {
+    const p = P(t, 0, 1.2);
+    box(160, 640 - 400 * p, 260, 400 * p, "b", p > 0 ? 1 : 0, .25);
+    text(290, 460, [["PL", "b", 1]], 48, { anchor: "middle", op: P(t, .8, 1.4) });
+    text(290, 520, [["R$ 100", "b", 1]], 44, { anchor: "middle", op: P(t, .8, 1.4) });
+    text(290, 690, [["dinheiro dos sócios", "m"]], 26, { anchor: "middle", op: p });
+    const q = P(t, 3.5, 4.5);
+    box(520, 640 - 60 * q, 160, 60 * q, "c", q > 0 ? 1 : 0, .35);
+    text(600, 560, [["lucro R$ 15", "c", 1]], 34, { anchor: "middle", op: P(t, 4.2, 4.8) });
+    frac(1150, 330, [["lucro líquido", "c", 1]], [["PL", "b", 1]], 52, P(t, 6.5, 7.3), "ROE =");
+    frac(1080, 560, [["15", "c", 1]], [["100", "b", 1]], 60, P(t, 7.6, 7.9), "ROE =");
+    fly(600, 545, 1080, 540, clamp((t - 7.9) / 1), "15", "c", 44);
+    fly(290, 505, 1080, 620, clamp((t - 8.4) / 1), "100", "b", 44);
+    text(1330, 580, [["= 15%", "d", 1]], 70, { op: P(t, 9.4, 10.2) });
+  } },
+
+{ title: "O lucro que fica vira patrimônio", dur: 14,
+  cap: [[0, "A empresa paga <b>40%</b> do lucro aos acionistas (o <b>payout</b>) e guarda 60%: R$ 9 dos R$ 15."],
+        [4, "Os R$ 9 guardados somam ao PL: R$ 109. No ano seguinte o mesmo ROE de 15% trabalha sobre mais dinheiro."],
+        [8.5, "O PL cresce <b>ROE × (1 − payout) = 15% × 0,6 = 9% ao ano</b>. Em 5 anos, R$ 100 viram R$ 153,86."],
+        [12, "Isso supõe ROE constante e nenhuma ação nova emitida."]],
+  draw(t) {
+    const pls = [100]; for (let k = 0; k < 5; k++) pls.push(pls[k] * 1.09);
+    const base = 660, sc = 2.6, x0 = 140, sw = 150;
+    add(`<line x1="${x0 - 20}" x2="${x0 + sw * 6}" y1="${base}" y2="${base}" stroke="${COL.m}" stroke-width="3"/>`);
+    pls.forEach((v, k) => {
+      const g = k === 0 ? 1 : P(t, 4 + (k - 1) * .9, 4.8 + (k - 1) * .9);
+      const cx = x0 + sw * (k + .5), h = v * sc * g;
+      if (g > 0) {
+        add(`<rect x="${cx - 50}" y="${base - h}" width="100" height="${h}" rx="6" fill="${COL.b}" fill-opacity=".6"/>`);
+        if (k > 0) { const prev = pls[k - 1] * sc; add(`<rect x="${cx - 50}" y="${base - h}" width="100" height="${Math.max(0, h - prev)}" rx="6" fill="${COL.c}" fill-opacity=".8"/>`); }
+        text(cx, base - h - 14, [[reais(v).replace(",00", ""), "b", 1]], 24, { anchor: "middle", op: g });
+      }
+      text(cx, base + 34, [["ano " + k, "m"]], 24, { anchor: "middle" });
+    });
+    const s = P(t, .5, 1.5);
+    box(1130, 140, 360, 70, "c", s, .25); text(1310, 187, [["lucro do ano: R$ 15", "c", 1]], 32, { anchor: "middle", op: s });
+    arrow(1220, 215, 1180, 300, "a", P(t, 1.8, 2.6)); arrow(1400, 215, 1440, 300, "b", P(t, 1.8, 2.6));
+    text(1170, 340, [["40% = R$ 6", "a", 1]], 32, { anchor: "middle", op: P(t, 2.4, 3) });
+    text(1170, 380, [["vai para o bolso", "m"]], 24, { anchor: "middle", op: P(t, 2.4, 3) });
+    text(1450, 340, [["60% = R$ 9", "c", 1]], 32, { anchor: "middle", op: P(t, 2.8, 3.4) });
+    text(1450, 380, [["fica no PL", "m"]], 24, { anchor: "middle", op: P(t, 2.8, 3.4) });
+    text(1310, 520, [["15% × (1 − 0,4)"]], 40, { anchor: "middle", op: P(t, 8.5, 9.2) });
+    text(1310, 590, [["= 9% ao ano", "d", 1]], 52, { anchor: "middle", op: P(t, 9.2, 10) });
+  } },
+
+{ title: "As três alavancas", dur: 14,
+  cap: [[0, "A análise <b>DuPont</b> quebra o ROE em três números. A mesma empresa: receita R$ 200, ativo R$ 150, PL R$ 100, lucro R$ 15."],
+        [4, "<b>Margem</b> = lucro ÷ receita = 15 ÷ 200 = 7,5%. <b>Giro</b> = receita ÷ ativo = 200 ÷ 150 = 1,33. <b>Alavancagem</b> = ativo ÷ PL = 150 ÷ 100 = 1,5."],
+        [9.5, "Multiplique: receita e ativo se cancelam e sobra lucro ÷ PL. 7,5% × 1,33 × 1,5 = <b>15%</b>, o mesmo ROE."]],
+  draw(t) {
+    [["receita R$ 200", "a", 280], ["ativo R$ 150", "e", 620], ["PL R$ 100", "b", 940], ["lucro R$ 15", "c", 1260]].forEach(([l, c, x], k) =>
+      chip(x, 110, l, c, 32, P(t, .4 + k * .4, 1 + k * .4)));
+    const cols = [[330, "margem", [["lucro", "c", 1]], [["receita", "a", 1]], "7,5%", 4], [800, "giro", [["receita", "a", 1]], [["ativo", "e", 1]], "1,33", 5.5], [1270, "alavancagem", [["ativo", "e", 1]], [["PL", "b", 1]], "1,5", 7]];
+    cols.forEach(([x, name, n, d, v, a]) => {
+      text(x, 260, [[name, "f", 1]], 36, { anchor: "middle", op: P(t, a, a + .6) });
+      frac(x, 360, n, d, 44, P(t, a, a + .6));
+      text(x, 500, [["= " + v, "d", 1]], 48, { anchor: "middle", op: P(t, a + .8, a + 1.4) });
+    });
+    text(565, 370, [["×"]], 50, { anchor: "middle", op: P(t, 9.5, 10) });
+    text(1035, 370, [["×"]], 50, { anchor: "middle", op: P(t, 9.5, 10) });
+    const c = P(t, 10.2, 11);
+    if (c > 0) [[330, "a"], [800, "a"], [800, "e"], [1270, "e"]].forEach(([x, col], k) => {
+      const y = k === 0 ? 400 : k === 1 ? 345 : k === 2 ? 400 : 345, w = col === "a" ? 140 : 110;
+      line(x - w / 2, y - 14, x + w / 2, y - 14, "r", 4, c);
+    });
+    text(800, 640, [["ROE = lucro ÷ PL = 7,5% × 1,33 × 1,5 = "], ["15%", "d", 1]], 44, { anchor: "middle", op: P(t, 11.2, 12) });
+  } },
+
+{ title: "Mesmo ROE, histórias diferentes", dur: 12,
+  cap: [[0, "Três empresas com ROE de 15%. Os números são de exemplo, para mostrar o formato típico de cada setor."],
+        [3, "<b>Varejo</b>: margem pequena, mas vende muito com pouco ativo (giro alto)."],
+        [6, "<b>Software</b>: margem grande, cada venda extra custa quase nada."],
+        [9, "<b>Banco</b>: empresta muito mais do que o patrimônio dos sócios, alavancagem alta."]],
+  draw(t) {
+    const cols = [520, 860, 1200, 1450], hy = 140;
+    [["margem", "c"], ["giro", "a"], ["alavancagem", "e"], ["ROE", "d"]].forEach(([h, c], k) => text(cols[k], hy, [[h, c, 1]], 34, { anchor: "middle", op: P(t, 0, .8) }));
+    line(100, hy + 24, 1530, hy + 24, "l", 2, P(t, 0, .8));
+    const rows = [["varejo", "3%", "2,5", "2", .03, 2.5, 2], ["software", "25%", "0,6", "1", .25, .6, 1], ["banco", "20%", "0,075", "10", .2, .075, 10]];
+    rows.forEach(([n, m, g, a, mv, gv, av], r) => {
+      const y = 260 + r * 170, st = 3 + r * 3, op = P(t, st, st + .6);
+      text(110, y, [[n, "f", 1]], 40, { op });
+      [m, g, a].forEach((v, k) => {
+        const hot = (r === 0 && k === 1) || (r === 1 && k === 0) || (r === 2 && k === 2);
+        text(cols[k], y, [[v, hot ? ["a", "c", "e"][k === 0 ? 1 : k === 1 ? 0 : 2] : "m", hot ? 1 : 0]], hot ? 48 : 40, { anchor: "middle", op: P(t, st + .3 + k * .3, st + .8 + k * .3) });
+      });
+      text(cols[3], y, [[pctBR(mv * gv * av, 0), "d", 1]], 44, { anchor: "middle", op: P(t, st + 1.4, st + 1.9) });
+      text(110, y + 50, [[`${m} × ${g} × ${a} = 15%`, "m"]], 26, { op: P(t, st + 1.6, st + 2.2) });
+    });
+  } },
+
+{ title: "ROE alto que veio da dívida", dur: 15,
+  cap: [[0, "Duas empresas com o mesmo ativo, R$ 100, e o mesmo <b>ROA</b> de 5%: R$ 5 de lucro."],
+        [3.5, "A da esquerda é toda dos sócios: PL R$ 100. A da direita tem PL R$ 25 e R$ 75 de dívida."],
+        [6.5, "Mesmo lucro, PL quatro vezes menor: ROE de <b>5%</b> contra <b>20%</b>."],
+        [10, "Ano ruim, ROA cai para −2%: a da esquerda perde 2% do PL, a endividada perde <b>8%</b>. A dívida multiplica nos dois sentidos."]],
+  draw(t) {
+    const roa = t < 10 ? .05 : L(.05, -.02, P(t, 10, 12));
+    [[380, 100, 0, "sem dívida"], [1080, 25, 75, "com dívida"]].forEach(([x, pl, dv, lab], k) => {
+      const base = 640, sc = 3.6, op = P(t, k * .5, k * .5 + 1);
+      text(x, 120, [[lab, "f", 1]], 38, { anchor: "middle", op });
+      const sp = P(t, 3.5, 4.8);
+      const plh = L(100, pl, sp) * sc, dvh = L(0, dv, sp) * sc;
+      box(x - 140, base - 100 * sc, 120, 100 * sc, "e", op, .2, 8);
+      text(x - 80, base - 50 * sc, [["ativo", "e", 1]], 28, { anchor: "middle", op });
+      text(x - 80, base - 50 * sc + 36, [["R$ 100", "e"]], 26, { anchor: "middle", op });
+      box(x + 20, base - plh, 120, plh, "b", op, .3, 8);
+      if (dvh > 1) box(x + 20, base - plh - dvh, 120, dvh, "r", op, .25, 8);
+      text(x + 80, base - plh / 2 + 10, [["PL " + Math.round(L(100, pl, sp)), "b", 1]], 26, { anchor: "middle", op });
+      if (dvh > 40) text(x + 80, base - plh - dvh / 2 + 10, [["dívida " + Math.round(L(0, dv, sp)), "r", 1]], 26, { anchor: "middle", op });
+      const lucro = 100 * roa, roe = lucro / pl, neg = roe < 0;
+      text(x, 720, [["lucro " + (lucro < 0 ? "−" : "") + "R$ " + Math.abs(lucro).toFixed(1).replace(".", ",") + "  →  ROE "], [pctBR(roe), neg ? "r" : "d", 1]], 34, { anchor: "middle", op: P(t, 6.5, 7.3) });
+    });
+    text(800, 400, [["ROA " + pctBR(roa), roa < 0 ? "r" : "c", 1]], 40, { anchor: "middle", op: P(t, 1, 2) });
+  } },
+
+{ title: "O ROE da empresa não é o seu retorno", dur: 13,
+  cap: [[0, "Você não compra o PL pelo valor do balanço: compra pelo preço da bolsa. Aqui o <b>P/VP</b> é 3."],
+        [4, "Com R$ 100 você compra só <b>R$ 33,33</b> de patrimônio."],
+        [7.5, "Esse patrimônio rende o ROE de 15%: R$ 5 de lucro para você, <b>5%</b> sobre o que pagou. ROE ÷ P/VP = 15% ÷ 3."],
+        [11, "Lucro ÷ preço é o inverso do P/L. Não é dinheiro no bolso: parte vira dividendo, parte fica na empresa."]],
+  draw(t) {
+    const base = 640, sc = 4;
+    const p = P(t, .5, 1.5);
+    box(200, base - 100 * sc * p, 220, 100 * sc * p, "a", p > 0 ? 1 : 0, .3);
+    text(310, base - 200, [["você paga", "f", 1]], 30, { anchor: "middle", op: p });
+    text(310, base - 155, [["R$ 100", "a", 1]], 40, { anchor: "middle", op: p });
+    const q = P(t, 4, 5.5);
+    box(560, base - 33.33 * sc * q, 220, 33.33 * sc * q, "b", q > 0 ? 1 : 0, .35);
+    text(670, base - 33.33 * sc - 20, [["leva R$ 33,33 de PL", "b", 1]], 30, { anchor: "middle", op: P(t, 5, 5.6) });
+    arrow(430, base - 80, 550, base - 80, "m", P(t, 3.5, 4.4));
+    text(490, base - 100, [["÷ 3", "m", 1]], 28, { anchor: "middle", op: P(t, 3.5, 4.4) });
+    const r = P(t, 7.5, 8.5);
+    box(620, base - 33.33 * sc - 80 - 20 * r, 100, 20 * r + 0.01, "c", r, .6, 6);
+    text(670, base - 33.33 * sc - 110 - 20 * r, [["lucro R$ 5", "c", 1]], 28, { anchor: "middle", op: r });
+    frac(1230, 330, [["ROE 15%", "d", 1]], [["P/VP 3", "b", 1]], 46, P(t, 8.5, 9.3), "seu retorno =");
+    text(1230, 480, [["= 5% ao ano", "c", 1]], 54, { anchor: "middle", op: P(t, 9.3, 10) });
+    text(1230, 580, [["= 1 ÷ P/L", "m"]], 34, { anchor: "middle", op: P(t, 11, 11.7) });
+  } },
+
+{ title: "Resumo", dur: 9,
+  cap: [[0, "ROE mede quanto a empresa rende sobre o dinheiro dos sócios. Olhe vários anos e de onde ele vem."]],
+  draw(t) {
+    const o = i => P(t, i * .6, i * .6 + .8);
+    [["ROE = lucro líquido ÷ PL", "d"], ["ROE = margem × giro × alavancagem", "e"], ["crescimento sem emitir ações = ROE × (1 − payout)", "c"], ["seu retorno sobre o preço = ROE ÷ P/VP", "b"]].forEach(([s, c], k) =>
+      text(800, 120 + k * 75, [[s, c, 1]], 38, { anchor: "middle", op: o(k) }));
+    [["olhe 5 a 10 anos de ROE, não um só", "c"], ["ROE alto + dívida alta → olhe a dívida", "r"], ["ROE subiu de repente → lucro que não se repete?", "a"], ["compare dentro do mesmo setor", "e"], ["ROE abaixo da renda fixa por anos → por quê?", "d"]].forEach(([s, c], k) => {
+      dot(330, 435 + k * 62, c, 11, o(4 + k * .5));
+      text(360, 446 + k * 62, [[s]], 32, { op: o(4 + k * .5) });
+    });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
