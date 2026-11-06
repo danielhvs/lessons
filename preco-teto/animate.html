@@ -29,6 +29,7 @@
   #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
   #bar button { font: inherit; background: var(--panel); color: var(--fg);
     border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
   #bar button:disabled { opacity: .4; cursor: default; }
   #bar button.on { border-color: var(--d); color: var(--d); }
   #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
@@ -50,8 +51,8 @@
   <button id="restart" title="recomeçar">⏮</button>
   <button id="prev" title="cena anterior (←)">◀◀</button>
   <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
   <button id="replay" title="repetir esta cena">↻</button>
-  <button id="next" title="próxima cena (→)">⏭</button>
   <button class="spd" data-s="0.5">0.5x</button>
   <button class="spd on" data-s="1">1x</button>
   <button class="spd" data-s="2">2x</button>
