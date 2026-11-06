@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apt vs apt-get, animated</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="next" title="next scene (→)">▶▶</button>
+  <button id="replay" title="replay this scene">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <a href="../">← all lessons</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "apt": "the friendly front end for people at a terminal: apt-get + apt-cache with different defaults",
+  "apt-get": "the older front end for installing and upgrading, with output kept stable for scripts",
+  "apt-cache": "the older front end for searching and showing packages in apt's index",
+  "Binary::apt scope": "config keys under binary::apt:: apply only when the program is named apt; apt-get ignores them",
+  "apt-config dump": "prints every apt setting in effect, defaults included",
+  "escape codes": "hidden bytes like ^[[32m that tell a terminal to change color; a script reading the text sees them as junk",
+  "stderr": "the error stream: warnings go there, separate from the normal output a pipe passes on",
+  "pipe": "| sends one program's output into another program, like grep or cat",
+  "stable CLI": "output format that does not change between versions, so scripts that parse it keep working",
+  "upgrade": "install newer versions of the packages you have",
+  "held back": "an upgrade skipped because it needs a package that is not installed yet",
+  "full-upgrade": "upgrade that may also remove packages (apt-get calls it dist-upgrade)",
+  "-s": "simulate: print what would happen without doing it, no root needed",
+  "-o": "set one config option for this run only, e.g. -o APT::Get::Upgrade-Allow-New=1",
+  "--with-new-pkgs": "apt-get upgrade option that allows new packages, like apt upgrade",
+  "checksums": "MD5/SHA hashes of the .deb file, used to check the download is not corrupted",
+  ".deb cache": "/var/cache/apt/archives: downloaded package files",
+  "dpkg lock": "only one program can run dpkg at a time; unattended-upgrades often holds it right after boot",
+  "CI": "continuous integration: servers that build and test code automatically on every push",
+};
+const TERMS = [["apt", "apt-get", "apt-cache", "Binary::apt scope", "apt-config dump"], ["escape codes"], ["pipe", "stderr", "stable CLI"],
+  ["upgrade", "held back", "-s", "full-upgrade"], ["-o", "--with-new-pkgs"], ["checksums"], [".deb cache", "dpkg lock"], ["stable CLI", "CI"]];
+
+const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" style="fill:${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
+function term(x, y, w, lines, t, size = 24) {
+  const h = 30 + lines.length * (size + 14);
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL.l}" stroke-width="2"/>`);
+  lines.forEach(([a, s, c], k) => mono(x + 18, y + 38 + k * (size + 14), s, size, c || "f", P(t, a, a + .4)));
+}
+
+const SCENES = [
+{ title: "One engine, two front panels", dur: 12,
+  cap: [[0, "<b>apt</b> has no installer of its own. It runs the same library as <b>apt-get</b> and <b>apt-cache</b>."],
+        [4.5, "It only flips some defaults, in config keys that apply when the program is named apt: the <b>Binary::apt scope</b>."],
+        [9, "man apt says it: apt just changes the default value of some options."]],
+  draw(t) {
+    box(560, 380, 480, 120, "m", P(t, 0, .8), .12);
+    text(800, 452, [["the same library", "f", 1]], 36, { anchor: "middle", op: P(t, 0, .8) });
+    [[300, "apt", "b"], [800, "apt-get", "a"], [1300, "apt-cache", "a"]].forEach(([x, n, c], k) => {
+      const op = P(t, .8 + k * .6, 1.4 + k * .6);
+      box(x - 160, 140, 320, 100, c, op, .2);
+      mono(x, 205, n, 34, c, op, "middle", 1);
+      arrow(x, 245, L(x, 800, .5), 375, "m", op, 3);
+    });
+    term(80, 540, 1440, [[4.5, "$ apt-config dump | grep -i binary::apt"], [5, "binary::apt::APT::Color \"1\";  binary::apt::DPkg::Progress-Fancy \"1\";", "b"], [5.5, "binary::apt::APT::Get::Upgrade-Allow-New \"1\";  ... (16 lines in all)", "b"]], t, 22);
+  } },
+
+{ title: "On a terminal: color and progress", dur: 10,
+  cap: [[0, "On a terminal apt shows a progress counter and colors the package name green."],
+        [4, "Those colors are hidden bytes, <b>escape codes</b>: ^[[32m is green, ^[[0m resets. A script would have to strip them."]],
+  draw(t) {
+    term(80, 120, 1440, [[.3, "$ apt list cowsay"], [1, "Listing... Done"], [1.5, "cowsay/noble 3.03+dfsg2-8 all"]], t, 30);
+    const g = P(t, 1.8, 2.5);
+    if (g > 0) mono(98, 120 + 38 + 2 * 44, "cowsay", 30, "c", g, "start", 0);
+    term(80, 400, 1440, [[4, "$ script -qc 'apt list cowsay' /dev/null | cat -v"], [4.6, "^MListing... 0%^M^MListing... Done^M^M"], [5.2, "^[[32mcowsay^[[0m/noble 3.03+dfsg2-8 all^M"]], t, 26);
+    text(800, 680, [["script fakes a terminal; cat -v makes the hidden bytes visible", "m"]], 30, { anchor: "middle", op: P(t, 6, 6.8) });
+  } },
+
+{ title: "Piped into a script", dur: 11,
+  cap: [[0, "Pipe <b>apt</b> into another program and it warns on stderr."],
+        [5, "<b>apt-cache</b> gives the same answer with no warning: its output format is kept stable for scripts. A script parsing apt output can break on an apt upgrade."]],
+  draw(t) {
+    term(80, 110, 1440, [[.3, "$ apt search ^cowsay$ | cat"], [1, "WARNING: apt does not have a stable CLI interface. Use with caution in scripts.", "r"], [1.8, "cowsay/noble 3.03+dfsg2-8 all"]], t, 26);
+    term(80, 400, 1440, [[5, "$ apt-cache search ^cowsay$ | cat"], [5.7, "cowsay - configurable talking cow", "c"]], t, 26);
+  } },
+
+{ title: "upgrade: the difference that matters", dur: 14,
+  cap: [[0, "Same machine, same index, one minute apart. Simulate both (<b>-s</b>, no root needed)."],
+        [3, "<b>apt-get upgrade</b> never installs a new package, so it holds back every upgrade that needs one: 30 left behind."],
+        [7.5, "<b>apt upgrade</b> installs them: 179 upgraded, 39 new, only 13 left behind. Neither removes anything; removing is what full-upgrade adds."]],
+  draw(t) {
+    const rows = [["apt-get -s upgrade", "a", 162, 0, 30, 3], ["apt -s upgrade", "b", 179, 39, 13, 7.5]];
+    rows.forEach(([cmd, c, up, nw, held, a], r) => {
+      const y = 170 + r * 260, op = P(t, a - 1, a);
+      mono(100, y, "$ " + cmd, 30, c, op, "start", 1);
+      const sc = 4, p = P(t, a, a + 2);
+      [[up, "c", "upgraded"], [nw, "d", "new"], [held, "r", "held back"]].reduce((x, [v, col, lab], j) => {
+        const w = v * sc * p;
+        if (v > 0) add(`<rect x="${x}" y="${y + 30}" width="${w}" height="70" fill="${COL[col]}" fill-opacity=".55" opacity="${op}"/>`);
+        if (v > 0) text(x + Math.max(w, 1) / 2, y + 140 + (j === 2 ? 36 : 0), [[v + " " + lab, col, 1]], 28, { anchor: "middle", op: P(t, a + 1.5, a + 2.2) });
+        return x + v * sc;
+      }, 100);
+    });
+  } },
+
+{ title: "Prove it: flip one switch", dur: 12,
+  cap: [[0, "The whole difference is one key, <b>APT::Get::Upgrade-Allow-New</b>. Turn it off for apt and you get apt-get's numbers."],
+        [4.5, "Turn it on for apt-get and you get apt's numbers. <b>--with-new-pkgs</b> is the short way to say the same."]],
+  draw(t) {
+    term(80, 110, 1440, [[.5, "$ apt -s -o APT::Get::Upgrade-Allow-New=0 upgrade | tail -1"], [1.5, "162 upgraded, 0 newly installed, 0 to remove and 30 not upgraded.", "a"],
+      [4.5, "$ apt-get -s -o APT::Get::Upgrade-Allow-New=1 upgrade | tail -1"], [5.5, "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded.", "b"],
+      [8, "$ apt-get -s --with-new-pkgs upgrade | tail -1"], [9, "179 upgraded, 39 newly installed, 0 to remove and 13 not upgraded.", "b"]], t, 26);
+  } },
+
+{ title: "show: for people vs for scripts", dur: 10,
+  cap: [[0, "<b>apt show</b> hides the checksums and the pool path..."],
+        [4, "...and adds what a person wants before installing: download size and which source it comes from. <b>apt-cache show</b> keeps every field."]],
+  draw(t) {
+    box(120, 130, 600, 520, "b", P(t, 0, .8), .08);
+    mono(420, 190, "apt show", 34, "b", P(t, 0, .8), "middle", 1);
+    ["Package", "Version", "Depends", "Download-Size", "APT-Sources", "Description"].forEach((f, k) => mono(170, 260 + k * 60, f, 28, k === 3 || k === 4 ? "c" : "f", P(t, 4 + k * .2, 4.5 + k * .2), "start", k === 3 || k === 4));
+    box(880, 130, 600, 520, "a", P(t, .5, 1.3), .08);
+    mono(1180, 190, "apt-cache show", 34, "a", P(t, .5, 1.3), "middle", 1);
+    ["Architecture", "Filename", "Size", "MD5sum", "SHA1 / SHA256 / SHA512", "Description-md5"].forEach((f, k) => mono(930, 260 + k * 60, f, 28, "r", P(t, 1 + k * .3, 1.5 + k * .3)));
+    text(1180, 630, [["only in apt-cache", "r", 1]], 28, { anchor: "middle", op: P(t, 2.5, 3) });
+  } },
+
+{ title: "Two quiet ones: cache and lock", dur: 11,
+  cap: [[0, "apt deletes the downloaded .debs after a successful install. apt-get keeps them in /var/cache/apt/archives."],
+        [5, "apt also waits up to <b>120 s</b> when another install holds the <b>dpkg lock</b>, instead of failing at once. Only the Binary::apt scope sets these."]],
+  draw(t) {
+    term(80, 110, 1440, [[.3, "binary::apt::APT::Keep-Downloaded-Packages \"0\";", "b"], [5, "binary::apt::DPkg::Lock::Timeout \"120\";", "b"]], t, 28);
+    [["apt", "b", "deletes .debs", "waits 120 s for the lock"], ["apt-get", "a", "keeps .debs", "fails at once on the lock"]].forEach(([n, c, a, b], k) => {
+      const x = 420 + k * 760;
+      mono(x, 360, n, 40, c, P(t, 1 + k * .5, 1.6 + k * .5), "middle", 1);
+      text(x, 440, [[a]], 34, { anchor: "middle", op: P(t, 1.5 + k * .5, 2.1 + k * .5) });
+      text(x, 520, [[b]], 34, { anchor: "middle", op: P(t, 5.5 + k * .5, 6.1 + k * .5) });
+    });
+  } },
+
+{ title: "Which one to type", dur: 10,
+  cap: [[0, "At the prompt, apt. In scripts, Dockerfiles and CI, apt-get and apt-cache: their output must not change between versions, and a progress bar is noise."]],
+  draw(t) {
+    const o = i => P(t, i * .4, i * .4 + .6);
+    mono(120, 120, "# at the prompt: apt", 30, "b", o(0), "start", 1);
+    ["apt update", "apt install cowsay", "apt upgrade", "apt full-upgrade", "apt search / apt show", "apt list --upgradable"].forEach((s, k) => mono(120, 180 + k * 56, s, 30, "f", o(1 + k)));
+    mono(860, 120, "# in scripts: apt-get / apt-cache", 30, "a", o(2), "start", 1);
+    ["apt-get update", "apt-get install -y cowsay", "apt-get upgrade --with-new-pkgs", "apt-get dist-upgrade", "apt-cache search / apt-cache show", "apt-get list → E: Invalid operation list"].forEach((s, k) => mono(860, 180 + k * 56, s, 30, k === 5 ? "r" : "f", o(3 + k)));
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
