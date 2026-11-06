@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frações</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+  }
+}
+* { box-sizing: border-box; }
+/* The page scrolls vertically only. The font sits on html so every rem grows with it. */
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.home { color: var(--accent); font-size: .9rem; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+/* long lines wrap instead of scrolling sideways */
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .box { fill: var(--code-bg); stroke: var(--line); stroke-width: 2; }
+svg.diagram .box.hl { fill: var(--accent-soft); stroke: var(--accent); }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram marker path { fill: var(--muted); }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+
+:root { --o: #e8590c; --pu: #9c36b5; }
+@media (prefers-color-scheme: dark) { :root { --o: #ff922b; --pu: #da77f2; } }
+svg.diagram .empty { fill: var(--code-bg); }
+svg.diagram .fb { fill: var(--accent); fill-opacity: .55; }
+svg.diagram .fo { fill: var(--o); fill-opacity: .6; }
+svg.diagram .fp { fill: var(--pu); fill-opacity: .7; }
+svg.diagram .fr { fill: var(--del); fill-opacity: .25; stroke: var(--del); stroke-width: 3; }
+svg.diagram .sep { stroke: var(--ink); stroke-opacity: .35; stroke-width: 1.5; }
+svg.diagram .sep.strong { stroke-opacity: 1; stroke-width: 3; }
+svg.diagram .frame { fill: none; stroke: var(--ink); stroke-width: 3; }
+svg.diagram .dash { stroke: var(--del); stroke-width: 3; stroke-dasharray: 10 7; }
+svg.diagram .m { fill: var(--muted); }
+svg.diagram .b { fill: var(--accent); font-weight: 700; }
+svg.diagram .o { fill: var(--o); font-weight: 700; }
+svg.diagram .p { fill: var(--pu); font-weight: 700; }
+.big { font-size: 1.15rem; }
+</style>
+</head>
+<body>
+
+<main>
+<a class="home" href="../">← todas as aulas</a>
+<h1>Frações</h1>
+<p class="lead">Como escrever, comparar, somar, multiplicar e dividir pedaços de um inteiro.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p>Uma barra de chocolate para 3 pessoas: cada uma fica com quanto? Não é 1 barra nem 0 barra.
+  Os números inteiros (0, 1, 2, 3...) não têm resposta para isso. A <dfn>fração</dfn> é o número que
+  conta pedaços de um inteiro cortado em partes iguais: cada pessoa fica com <b>1/3</b> da barra.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: 3/4</h2>
+  <div class="split">
+    <div>
+      <p class="big">Corte uma barra em <b>4</b> pedaços iguais e pegue <b>3</b>. Isso é <b>3/4</b> (três quartos).</p>
+      <p>O <dfn>denominador</dfn> é o número de baixo: em quantos pedaços iguais o inteiro foi cortado (4).
+      O <dfn>numerador</dfn> é o número de cima: quantos pedaços você pegou (3).
+      Cada pedaço vale 1/4, e sobra 1 pedaço.</p>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 170" role="img" aria-label="barra cortada em 4 com 3 pintados"><rect class="fb" x="20.0" y="20" width="140.0" height="90"/><rect class="fb" x="160.0" y="20" width="140.0" height="90"/><rect class="fb" x="300.0" y="20" width="140.0" height="90"/><rect class="empty" x="440.0" y="20" width="140.0" height="90"/><line class="sep strong" x1="160.0" x2="160.0" y1="20" y2="110"/><line class="sep strong" x1="300.0" x2="300.0" y1="20" y2="110"/><line class="sep strong" x1="440.0" x2="440.0" y1="20" y2="110"/><rect class="frame" x="20" y="20" width="560" height="90"/><text class="m" x="90" y="145" font-size="24" text-anchor="middle">1/4</text><text class="m" x="230" y="145" font-size="24" text-anchor="middle">1/4</text><text class="m" x="370" y="145" font-size="24" text-anchor="middle">1/4</text><text class="m" x="510" y="145" font-size="24" text-anchor="middle">1/4</text></svg><figcaption>3 dos 4 pedaços pintados: 3/4.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Mesma quantidade, nomes diferentes</h2>
+  <div class="split">
+    <div>
+      <p>Pinte metade da barra: 1/2. Corte cada pedaço em 2: agora são 4 pedaços e 2 pintados, 2/4.
+      Corte cada um em 3: 3/6. A parte pintada não mudou de tamanho.</p>
+      <p>Essas são <dfn>frações equivalentes</dfn>: nomes diferentes para a mesma quantidade.
+      A regra: multiplicar o numerador e o denominador <b>pelo mesmo número</b>.</p>
+      <pre>1/2 = (1×2)/(2×2) = <mark>2/4</mark>
+1/2 = (1×3)/(2×3) = <mark>3/6</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(1, 2) == F(2, 4) == F(3, 6))"</span>
+<span class="out">True</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 300" role="img" aria-label="1/2, 2/4 e 3/6 lado a lado"><rect class="fb" x="20.0" y="20" width="210.0" height="70"/><rect class="empty" x="230.0" y="20" width="210.0" height="70"/><line class="sep strong" x1="230.0" x2="230.0" y1="20" y2="90"/><rect class="frame" x="20" y="20" width="420" height="70"/><text class="b" x="470" y="66" font-size="30" text-anchor="start">1/2</text><rect class="fb" x="20.0" y="115" width="105.0" height="70"/><rect class="fb" x="125.0" y="115" width="105.0" height="70"/><rect class="empty" x="230.0" y="115" width="105.0" height="70"/><rect class="empty" x="335.0" y="115" width="105.0" height="70"/><line class="sep strong" x1="125.0" x2="125.0" y1="115" y2="185"/><line class="sep strong" x1="230.0" x2="230.0" y1="115" y2="185"/><line class="sep strong" x1="335.0" x2="335.0" y1="115" y2="185"/><rect class="frame" x="20" y="115" width="420" height="70"/><text class="b" x="470" y="161" font-size="30" text-anchor="start">2/4</text><rect class="fb" x="20.0" y="210" width="70.0" height="70"/><rect class="fb" x="90.0" y="210" width="70.0" height="70"/><rect class="fb" x="160.0" y="210" width="70.0" height="70"/><rect class="empty" x="230.0" y="210" width="70.0" height="70"/><rect class="empty" x="300.0" y="210" width="70.0" height="70"/><rect class="empty" x="370.0" y="210" width="70.0" height="70"/><line class="sep strong" x1="90.0" x2="90.0" y1="210" y2="280"/><line class="sep strong" x1="160.0" x2="160.0" y1="210" y2="280"/><line class="sep strong" x1="230.0" x2="230.0" y1="210" y2="280"/><line class="sep strong" x1="300.0" x2="300.0" y1="210" y2="280"/><line class="sep strong" x1="370.0" x2="370.0" y1="210" y2="280"/><rect class="frame" x="20" y="210" width="420" height="70"/><text class="b" x="470" y="256" font-size="30" text-anchor="start">3/6</text><line class="dash" x1="230" x2="230" y1="8" y2="290"/></svg><figcaption>A linha tracejada fica no mesmo lugar nas três barras.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Simplificar</h2>
+  <div class="split">
+    <div>
+      <p><dfn>Simplificar</dfn> é o caminho de volta: dividir em cima e embaixo pelo mesmo número,
+      até chegar aos menores números que dão a mesma quantidade.</p>
+      <p>Em 6/8, o maior número que divide 6 e 8 é 2. Esse número se chama <dfn>MDC</dfn>
+      (máximo divisor comum). Dividindo os dois por 2:</p>
+      <pre>6/8 = (6÷2)/(8÷2) = <mark>3/4</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(6, 8))"</span>
+<span class="out">3/4</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 260" role="img" aria-label="6/8 antes e 3/4 depois"><text class="m" x="20" y="30" font-size="24" text-anchor="start">antes: 6/8</text><rect class="fb" x="20.0" y="45" width="70.0" height="70"/><rect class="fb" x="90.0" y="45" width="70.0" height="70"/><rect class="fb" x="160.0" y="45" width="70.0" height="70"/><rect class="fb" x="230.0" y="45" width="70.0" height="70"/><rect class="fb" x="300.0" y="45" width="70.0" height="70"/><rect class="fb" x="370.0" y="45" width="70.0" height="70"/><rect class="empty" x="440.0" y="45" width="70.0" height="70"/><rect class="empty" x="510.0" y="45" width="70.0" height="70"/><line class="sep strong" x1="90.0" x2="90.0" y1="45" y2="115"/><line class="sep strong" x1="160.0" x2="160.0" y1="45" y2="115"/><line class="sep strong" x1="230.0" x2="230.0" y1="45" y2="115"/><line class="sep strong" x1="300.0" x2="300.0" y1="45" y2="115"/><line class="sep strong" x1="370.0" x2="370.0" y1="45" y2="115"/><line class="sep strong" x1="440.0" x2="440.0" y1="45" y2="115"/><line class="sep strong" x1="510.0" x2="510.0" y1="45" y2="115"/><rect class="frame" x="20" y="45" width="560" height="70"/><text class="m" x="20" y="160" font-size="24" text-anchor="start">depois: cada 2 pedaços colados viram 1, 3/4</text><rect class="fb" x="20.0" y="175" width="140.0" height="70"/><rect class="fb" x="160.0" y="175" width="140.0" height="70"/><rect class="fb" x="300.0" y="175" width="140.0" height="70"/><rect class="empty" x="440.0" y="175" width="140.0" height="70"/><line class="sep strong" x1="160.0" x2="160.0" y1="175" y2="245"/><line class="sep strong" x1="300.0" x2="300.0" y1="175" y2="245"/><line class="sep strong" x1="440.0" x2="440.0" y1="175" y2="245"/><rect class="frame" x="20" y="175" width="560" height="70"/></svg><figcaption>Colar os pedaços de 2 em 2 não muda a área pintada.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Comparar: qual é maior?</h2>
+  <div class="split">
+    <div>
+      <p>2/3 ou 3/5? Os pedaços têm tamanhos diferentes (terços e quintos), então comparar 2 com 3 não diz nada.</p>
+      <p>Corte as duas barras no mesmo tamanho de pedaço. 15 serve, porque 3 × 5 = 15:</p>
+      <pre>2/3 = (2×5)/(3×5) = <mark>10/15</mark>
+3/5 = (3×3)/(5×3) = <mark>9/15</mark></pre>
+      <p>Agora é só contar: 10 é maior que 9, então <b>2/3 é maior</b>, por 1/15.
+      Esse fundo comum (15) se chama <dfn>denominador comum</dfn>.</p>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(2, 3) > F(3, 5), F(2, 3) - F(3, 5))"</span>
+<span class="out">True 1/15</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 300" role="img" aria-label="2/3 e 3/5 cortados em 15 pedaços"><text class="b" x="20" y="28" font-size="26" text-anchor="start">2/3 = 10/15</text><rect class="fb" x="20.0" y="40" width="37.3" height="80"/><rect class="fb" x="57.3" y="40" width="37.3" height="80"/><rect class="fb" x="94.7" y="40" width="37.3" height="80"/><rect class="fb" x="132.0" y="40" width="37.3" height="80"/><rect class="fb" x="169.3" y="40" width="37.3" height="80"/><rect class="fb" x="206.7" y="40" width="37.3" height="80"/><rect class="fb" x="244.0" y="40" width="37.3" height="80"/><rect class="fb" x="281.3" y="40" width="37.3" height="80"/><rect class="fb" x="318.7" y="40" width="37.3" height="80"/><rect class="fb" x="356.0" y="40" width="37.3" height="80"/><rect class="empty" x="393.3" y="40" width="37.3" height="80"/><rect class="empty" x="430.7" y="40" width="37.3" height="80"/><rect class="empty" x="468.0" y="40" width="37.3" height="80"/><rect class="empty" x="505.3" y="40" width="37.3" height="80"/><rect class="empty" x="542.7" y="40" width="37.3" height="80"/><line class="sep" x1="57.3" x2="57.3" y1="40" y2="120"/><line class="sep" x1="94.7" x2="94.7" y1="40" y2="120"/><line class="sep" x1="132.0" x2="132.0" y1="40" y2="120"/><line class="sep" x1="169.3" x2="169.3" y1="40" y2="120"/><line class="sep strong" x1="206.7" x2="206.7" y1="40" y2="120"/><line class="sep" x1="244.0" x2="244.0" y1="40" y2="120"/><line class="sep" x1="281.3" x2="281.3" y1="40" y2="120"/><line class="sep" x1="318.7" x2="318.7" y1="40" y2="120"/><line class="sep" x1="356.0" x2="356.0" y1="40" y2="120"/><line class="sep strong" x1="393.3" x2="393.3" y1="40" y2="120"/><line class="sep" x1="430.7" x2="430.7" y1="40" y2="120"/><line class="sep" x1="468.0" x2="468.0" y1="40" y2="120"/><line class="sep" x1="505.3" x2="505.3" y1="40" y2="120"/><line class="sep" x1="542.7" x2="542.7" y1="40" y2="120"/><rect class="frame" x="20" y="40" width="560" height="80"/><text class="o" x="20" y="168" font-size="26" text-anchor="start">3/5 = 9/15</text><rect class="fo" x="20.0" y="180" width="37.3" height="80"/><rect class="fo" x="57.3" y="180" width="37.3" height="80"/><rect class="fo" x="94.7" y="180" width="37.3" height="80"/><rect class="fo" x="132.0" y="180" width="37.3" height="80"/><rect class="fo" x="169.3" y="180" width="37.3" height="80"/><rect class="fo" x="206.7" y="180" width="37.3" height="80"/><rect class="fo" x="244.0" y="180" width="37.3" height="80"/><rect class="fo" x="281.3" y="180" width="37.3" height="80"/><rect class="fo" x="318.7" y="180" width="37.3" height="80"/><rect class="empty" x="356.0" y="180" width="37.3" height="80"/><rect class="empty" x="393.3" y="180" width="37.3" height="80"/><rect class="empty" x="430.7" y="180" width="37.3" height="80"/><rect class="empty" x="468.0" y="180" width="37.3" height="80"/><rect class="empty" x="505.3" y="180" width="37.3" height="80"/><rect class="empty" x="542.7" y="180" width="37.3" height="80"/><line class="sep" x1="57.3" x2="57.3" y1="180" y2="260"/><line class="sep" x1="94.7" x2="94.7" y1="180" y2="260"/><line class="sep strong" x1="132.0" x2="132.0" y1="180" y2="260"/><line class="sep" x1="169.3" x2="169.3" y1="180" y2="260"/><line class="sep" x1="206.7" x2="206.7" y1="180" y2="260"/><line class="sep strong" x1="244.0" x2="244.0" y1="180" y2="260"/><line class="sep" x1="281.3" x2="281.3" y1="180" y2="260"/><line class="sep" x1="318.7" x2="318.7" y1="180" y2="260"/><line class="sep strong" x1="356.0" x2="356.0" y1="180" y2="260"/><line class="sep" x1="393.3" x2="393.3" y1="180" y2="260"/><line class="sep" x1="430.7" x2="430.7" y1="180" y2="260"/><line class="sep strong" x1="468.0" x2="468.0" y1="180" y2="260"/><line class="sep" x1="505.3" x2="505.3" y1="180" y2="260"/><line class="sep" x1="542.7" x2="542.7" y1="180" y2="260"/><rect class="frame" x="20" y="180" width="560" height="80"/><rect class="fr" x="356.0" y="34" width="37.3" height="232"/><text class="m" x="374.6666666666667" y="292" font-size="22" text-anchor="middle">a diferença: 1/15</text></svg><figcaption>Em quinze avos, a barra de cima tem 1 pedaço a mais.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Somar</h2>
+  <div class="split">
+    <div>
+      <p>Com o mesmo denominador, some os numeradores e mantenha o denominador, porque o tamanho do pedaço não mudou:</p>
+      <pre>1/5 + 2/5 = <mark>3/5</mark></pre>
+      <p>Com denominadores diferentes, primeiro reescreva as duas frações com um denominador comum.
+      O menor deles é o <dfn>MMC</dfn> (mínimo múltiplo comum): o menor número que os dois denominadores dividem.
+      O MMC de 2 e 3 é 6:</p>
+      <pre>1/2 + 1/3
+= 3/6 + 2/6
+= <mark>5/6</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(1, 2) + F(1, 3))"</span>
+<span class="out">5/6</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 330" role="img" aria-label="1/2 mais 1/3 em sextos dá 5/6"><text class="b" x="20" y="28" font-size="26" text-anchor="start">1/2 = 3/6</text><rect class="fb" x="20.0" y="40" width="93.3" height="70"/><rect class="fb" x="113.3" y="40" width="93.3" height="70"/><rect class="fb" x="206.7" y="40" width="93.3" height="70"/><rect class="empty" x="300.0" y="40" width="93.3" height="70"/><rect class="empty" x="393.3" y="40" width="93.3" height="70"/><rect class="empty" x="486.7" y="40" width="93.3" height="70"/><line class="sep" x1="113.3" x2="113.3" y1="40" y2="110"/><line class="sep" x1="206.7" x2="206.7" y1="40" y2="110"/><line class="sep strong" x1="300.0" x2="300.0" y1="40" y2="110"/><line class="sep" x1="393.3" x2="393.3" y1="40" y2="110"/><line class="sep" x1="486.7" x2="486.7" y1="40" y2="110"/><rect class="frame" x="20" y="40" width="560" height="70"/><text class="o" x="20" y="140" font-size="26" text-anchor="start">1/3 = 2/6</text><rect class="fo" x="20.0" y="152" width="93.3" height="70"/><rect class="fo" x="113.3" y="152" width="93.3" height="70"/><rect class="empty" x="206.7" y="152" width="93.3" height="70"/><rect class="empty" x="300.0" y="152" width="93.3" height="70"/><rect class="empty" x="393.3" y="152" width="93.3" height="70"/><rect class="empty" x="486.7" y="152" width="93.3" height="70"/><line class="sep" x1="113.3" x2="113.3" y1="152" y2="222"/><line class="sep strong" x1="206.7" x2="206.7" y1="152" y2="222"/><line class="sep" x1="300.0" x2="300.0" y1="152" y2="222"/><line class="sep strong" x1="393.3" x2="393.3" y1="152" y2="222"/><line class="sep" x1="486.7" x2="486.7" y1="152" y2="222"/><rect class="frame" x="20" y="152" width="560" height="70"/><text class="p" x="20" y="252" font-size="26" text-anchor="start">soma: 3/6 + 2/6 = 5/6</text><rect class="fb" x="20.0" y="264" width="93.3" height="60"/><rect class="fb" x="113.3" y="264" width="93.3" height="60"/><rect class="fb" x="206.7" y="264" width="93.3" height="60"/><rect class="fo" x="300.0" y="264" width="93.3" height="60"/><rect class="fo" x="393.3" y="264" width="93.3" height="60"/><rect class="empty" x="486.7" y="264" width="93.3" height="60"/><line class="sep strong" x1="113.3" x2="113.3" y1="264" y2="324"/><line class="sep strong" x1="206.7" x2="206.7" y1="264" y2="324"/><line class="sep strong" x1="300.0" x2="300.0" y1="264" y2="324"/><line class="sep strong" x1="393.3" x2="393.3" y1="264" y2="324"/><line class="sep strong" x1="486.7" x2="486.7" y1="264" y2="324"/><rect class="frame" x="20" y="264" width="560" height="60"/></svg><figcaption>Metades e terços viram sextos; depois é só contar os pedaços.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Multiplicar: fração de uma fração</h2>
+  <div class="split">
+    <div>
+      <p>2/3 × 3/4 quer dizer "2/3 <i>de</i> 3/4". Pinte 3 de 4 colunas (3/4) e, dentro delas,
+      pegue 2 de 3 linhas (2/3). As células roxas estão nas duas partes.</p>
+      <p>Regra: multiplique em cima com em cima e embaixo com embaixo.</p>
+      <pre>2/3 × 3/4 = (2×3)/(3×4) = 6/12 = <mark>1/2</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(2, 3) * F(3, 4))"</span>
+<span class="out">1/2</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 300" role="img" aria-label="grade 4 por 3 com 6 células roxas"><rect class="fp" x="70" y="40" width="80" height="80"/><rect x="70" y="40" width="80" height="80" fill="none" class="sep"/><rect class="fp" x="70" y="120" width="80" height="80"/><rect x="70" y="120" width="80" height="80" fill="none" class="sep"/><rect class="fb" x="70" y="200" width="80" height="80"/><rect x="70" y="200" width="80" height="80" fill="none" class="sep"/><rect class="fp" x="150" y="40" width="80" height="80"/><rect x="150" y="40" width="80" height="80" fill="none" class="sep"/><rect class="fp" x="150" y="120" width="80" height="80"/><rect x="150" y="120" width="80" height="80" fill="none" class="sep"/><rect class="fb" x="150" y="200" width="80" height="80"/><rect x="150" y="200" width="80" height="80" fill="none" class="sep"/><rect class="fp" x="230" y="40" width="80" height="80"/><rect x="230" y="40" width="80" height="80" fill="none" class="sep"/><rect class="fp" x="230" y="120" width="80" height="80"/><rect x="230" y="120" width="80" height="80" fill="none" class="sep"/><rect class="fb" x="230" y="200" width="80" height="80"/><rect x="230" y="200" width="80" height="80" fill="none" class="sep"/><rect class="empty" x="310" y="40" width="80" height="80"/><rect x="310" y="40" width="80" height="80" fill="none" class="sep"/><rect class="empty" x="310" y="120" width="80" height="80"/><rect x="310" y="120" width="80" height="80" fill="none" class="sep"/><rect class="empty" x="310" y="200" width="80" height="80"/><rect x="310" y="200" width="80" height="80" fill="none" class="sep"/><rect class="frame" x="70" y="40" width="320" height="240"/><text class="b" x="190" y="28" font-size="22" text-anchor="middle">3/4 (colunas)</text><text class="p" x="60" y="130" font-size="22" text-anchor="end">2/3</text><text class="p" x="420" y="110" font-size="26" text-anchor="start">roxo: 6 de 12</text><text class="p" x="420" y="150" font-size="26" text-anchor="start">6/12 = 1/2</text></svg><figcaption>6 das 12 células estão nas duas partes.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Dividir: quantas cabem?</h2>
+  <div class="split">
+    <div>
+      <p>3 ÷ 1/2 pergunta: quantas metades cabem em 3 inteiros? Cada inteiro tem 2 metades, então são 6.</p>
+      <p>Atalho: dividir por uma fração é multiplicar pelo <dfn>inverso</dfn> dela, a fração de cabeça para baixo.
+      O inverso de 1/2 é 2/1:</p>
+      <pre>3 ÷ 1/2 = 3 × 2/1 = <mark>6</mark></pre>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(3 / F(1, 2))"</span>
+<span class="out">6</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 150" role="img" aria-label="3 inteiros com 6 metades"><rect class="fo" x="20.0" y="20" width="85.0" height="80"/><rect class="fo" x="105.0" y="20" width="85.0" height="80"/><line class="sep strong" x1="105.0" x2="105.0" y1="20" y2="100"/><rect class="frame" x="20" y="20" width="170" height="80"/><text x="62" y="72" font-size="28" text-anchor="middle">1</text><text x="147" y="72" font-size="28" text-anchor="middle">2</text><text class="m" x="105" y="135" font-size="22" text-anchor="middle">1 inteiro</text><rect class="fo" x="215.0" y="20" width="85.0" height="80"/><rect class="fo" x="300.0" y="20" width="85.0" height="80"/><line class="sep strong" x1="300.0" x2="300.0" y1="20" y2="100"/><rect class="frame" x="215" y="20" width="170" height="80"/><text x="257" y="72" font-size="28" text-anchor="middle">3</text><text x="342" y="72" font-size="28" text-anchor="middle">4</text><text class="m" x="300" y="135" font-size="22" text-anchor="middle">1 inteiro</text><rect class="fo" x="410.0" y="20" width="85.0" height="80"/><rect class="fo" x="495.0" y="20" width="85.0" height="80"/><line class="sep strong" x1="495.0" x2="495.0" y1="20" y2="100"/><rect class="frame" x="410" y="20" width="170" height="80"/><text x="452" y="72" font-size="28" text-anchor="middle">5</text><text x="537" y="72" font-size="28" text-anchor="middle">6</text><text class="m" x="495" y="135" font-size="22" text-anchor="middle">1 inteiro</text></svg><figcaption>6 metades cabem em 3 inteiros.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Mais que um inteiro</h2>
+  <div class="split">
+    <div>
+      <p>Em 7/4 o numerador é maior que o denominador: é mais que um inteiro. Isso é uma <dfn>fração imprópria</dfn>.</p>
+      <p>4 quartos enchem uma barra e sobram 3: 7/4 = 1 inteiro e 3/4. Escrito como
+      <dfn>número misto</dfn>: <b>1 3/4</b>, que em decimal é 1,75.</p>
+      <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(7, 4), float(F(7, 4)))"</span>
+<span class="out">7/4 1.75</span></div>
+    </div>
+    <figure><svg class="diagram" viewBox="0 0 600 160" role="img" aria-label="7/4 como 1 inteiro e 3/4"><rect class="fb" x="20.0" y="20" width="67.5" height="80"/><rect class="fb" x="87.5" y="20" width="67.5" height="80"/><rect class="fb" x="155.0" y="20" width="67.5" height="80"/><rect class="fb" x="222.5" y="20" width="67.5" height="80"/><line class="sep strong" x1="87.5" x2="87.5" y1="20" y2="100"/><line class="sep strong" x1="155.0" x2="155.0" y1="20" y2="100"/><line class="sep strong" x1="222.5" x2="222.5" y1="20" y2="100"/><rect class="frame" x="20" y="20" width="270" height="80"/><rect class="fb" x="310.0" y="20" width="67.5" height="80"/><rect class="fb" x="377.5" y="20" width="67.5" height="80"/><rect class="fb" x="445.0" y="20" width="67.5" height="80"/><rect class="empty" x="512.5" y="20" width="67.5" height="80"/><line class="sep strong" x1="377.5" x2="377.5" y1="20" y2="100"/><line class="sep strong" x1="445.0" x2="445.0" y1="20" y2="100"/><line class="sep strong" x1="512.5" x2="512.5" y1="20" y2="100"/><rect class="frame" x="310" y="20" width="270" height="80"/><text class="m" x="155" y="135" font-size="22" text-anchor="middle">1 inteiro (4/4)</text><text class="m" x="445" y="135" font-size="22" text-anchor="middle">3/4</text></svg><figcaption>Uma barra cheia e mais 3 quartos.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">10</span>Erros comuns</h2>
+  <p class="mistake"><b>Somar em cima e embaixo:</b> 1/2 + 1/3 = 2/5 está errado. 2/5 = 0,4 é <i>menor</i> que 1/2 = 0,5,
+  e somar não pode diminuir. Correção: denominador comum primeiro, 3/6 + 2/6 = 5/6.</p>
+  <div class="term"><span class="cmd">python3 -c "from fractions import Fraction as F; print(F(1, 2) + F(1, 3) == F(2, 5), float(F(2, 5)))"</span>
+<span class="out">False 0.4</span></div>
+  <p class="mistake"><b>Achar que denominador maior é fração maior:</b> 1/4 é menor que 1/3. Cortar em mais pedaços deixa cada pedaço menor.</p>
+  <p class="mistake"><b>Mudar só um dos números:</b> 1/2 → 2/2 não é equivalente (2/2 é um inteiro). Para ter a mesma quantidade, multiplique ou divida em cima <i>e</i> embaixo pelo mesmo número.</p>
+  <p class="mistake"><b>Inverter a fração errada na divisão:</b> em 3 ÷ 1/2, quem vira de cabeça para baixo é a de depois do sinal (1/2 → 2/1), não o 3.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Denominador (embaixo): em quantos pedaços iguais o inteiro foi cortado. Numerador (em cima): quantos você pegou.</li>
+    <li>Multiplicar ou dividir em cima e embaixo pelo mesmo número dá a mesma quantidade (equivalentes, simplificar).</li>
+    <li>Para comparar, somar ou subtrair, primeiro deixe os pedaços do mesmo tamanho (denominador comum, o MMC).</li>
+    <li>Multiplicar: em cima × em cima, embaixo × embaixo. Dividir: multiplique pelo inverso.</li>
+    <li>Numerador maior que o denominador é mais que um inteiro: 7/4 = 1 3/4.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
