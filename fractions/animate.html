@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fractions, animated</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="next" title="next scene (→)">▶▶</button>
+  <button id="replay" title="replay this scene">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <a href="../">← all lessons</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "fraction": "a number written top / bottom: pieces taken out of one whole cut into equal pieces",
+  "numerator": "the top number: how many pieces you take",
+  "denominator": "the bottom number: how many equal pieces one whole is cut into",
+  "equivalent fractions": "different names for the same amount, like 1/2, 2/4 and 3/6",
+  "simplify": "rewrite a fraction with the smallest numbers that keep the same amount",
+  "GCD": "greatest common divisor: the biggest number that divides both top and bottom (GCD of 6 and 8 is 2)",
+  "common denominator": "a bottom number both fractions can be rewritten with, so the pieces are the same size",
+  "LCM": "least common multiple: the smallest number both bottoms divide into (LCM of 3 and 5 is 15)",
+  "reciprocal": "the fraction flipped upside down: the reciprocal of 1/2 is 2/1",
+  "improper fraction": "a fraction whose top is bigger than its bottom, like 7/4: more than one whole",
+  "mixed number": "a whole number plus a fraction, like 1 3/4",
+};
+const TERMS = [["fraction", "numerator", "denominator"], ["equivalent fractions"], ["simplify", "GCD"], ["common denominator", "LCM"],
+  ["numerator", "denominator"], ["common denominator", "LCM", "simplify"], ["numerator", "denominator", "simplify"], ["reciprocal"], ["improper fraction", "mixed number"]];
+
+// one whole as a bar cut into n equal pieces; the first k shaded (k may be fractional while it grows)
+function fbar(x, y, w, h, n, k, color, op = 1, glue = 1) {
+  if (op <= 0) return;
+  const pw = w / n;
+  for (let i = 0; i < n; i++) {
+    const s = clamp(k - i);
+    add(`<rect x="${x + i * pw}" y="${y}" width="${pw}" height="${h}" fill="${s > 0 ? COL[color] : COL.p}" fill-opacity="${s > 0 ? .25 + .45 * s : 1}" opacity="${op}"/>`);
+  }
+  for (let i = 1; i < n; i++) {
+    const strong = i % glue === 0;
+    add(`<line x1="${x + i * pw}" x2="${x + i * pw}" y1="${y}" y2="${y + h}" stroke="${COL.f}" stroke-width="${strong ? 3 : 1.5}" opacity="${op * (strong ? 1 : .35)}"/>`);
+  }
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+}
+const F = (n, d, x, y, size, c, op = 1) => frac(x, y, [["" + n, c, 1]], [["" + d, c, 1]], size, op);
+
+const SCENES = [
+{ title: "A fraction is pieces of one whole", dur: 10,
+  cap: [[0, "Take one whole bar. Cut it into <b>4</b> equal pieces: the bottom number."],
+        [4, "Take <b>3</b> of them: the top number. That amount is <b>3/4</b>."],
+        [7.5, "Each piece is 1/4 of the whole; 1 piece is left over."]],
+  draw(t) {
+    const n = t < 1 ? 1 : 4;
+    fbar(150, 260, 1000, 140, n, 3 * P(t, 4, 6), "b", P(t, 0, .8));
+    F(3, 4, 1350, 330, 90, "b", P(t, 4.5, 5.3));
+    text(1350, 520, [["top = pieces you take", "b"]], 30, { anchor: "middle", op: P(t, 5.3, 6) });
+    text(1350, 570, [["bottom = pieces in a whole", "m"]], 30, { anchor: "middle", op: P(t, 2, 3) });
+    for (let i = 0; i < 4; i++) text(150 + 125 + i * 250, 460, [["1/4", "m"]], 30, { anchor: "middle", op: P(t, 7.5, 8.3) });
+  } },
+
+{ title: "Same amount, different names", dur: 12,
+  cap: [[0, "Shade half a bar: <b>1/2</b>."],
+        [3, "Cut every piece in 2: <b>2/4</b>. More pieces, each smaller, and the shaded amount does not move."],
+        [7, "Cut every piece in 3: <b>3/6</b>. Rule: multiply top and bottom by the same number."]],
+  draw(t) {
+    const rows = [[1, 2, 0], [2, 4, 3], [3, 6, 7]];
+    rows.forEach(([k, n, a], r) => {
+      const op = r === 0 ? P(t, 0, .8) : P(t, a, a + .8), y = 130 + r * 180;
+      fbar(150, y, 1000, 110, n, k, "b", op);
+      F(k, n, 1340, y + 55, 56, "b", op);
+    });
+    line(650, 110, 650, 620, "r", 4, P(t, 1.5, 2.3), "12 8");
+    text(1340, 700, [["× 2 / × 2,  × 3 / × 3", "m"]], 30, { anchor: "middle", op: P(t, 8, 9) });
+  } },
+
+{ title: "Simplify: glue pieces back together", dur: 11,
+  cap: [[0, "<b>6/8</b>: 6 of 8 pieces."],
+        [3, "The biggest number that divides 6 and 8 is <b>2</b>. Glue every 2 pieces into one."],
+        [7, "Now there are 4 pieces and 3 are taken: <b>6/8 = 3/4</b>. Same amount, smaller numbers."]],
+  draw(t) {
+    const g = P(t, 4.5, 6.5);
+    fbar(150, 280, 1000, 140, 8, 6, "b", 1, 1);
+    if (g > 0) for (let i = 1; i < 8; i += 2) add(`<line x1="${150 + i * 125}" x2="${150 + i * 125}" y1="280" y2="420" stroke="${COL.p}" stroke-width="5" opacity="${g}"/>`);
+    F(6, 8, 1340, 300, 64, "b", 1);
+    text(1340, 440, [["÷ 2", "a", 1]], 40, { anchor: "middle", op: P(t, 3, 3.8) });
+    F(3, 4, 1340, 540, 64, "c", P(t, 7, 7.8));
+  } },
+
+{ title: "Which is bigger?", dur: 13,
+  cap: [[0, "<b>2/3</b> or <b>3/5</b>? The pieces are different sizes, so the tops cannot be compared directly."],
+        [4, "Cut both bars into the same size pieces: 15, because 3 × 5 = 15. 2/3 = 10/15, 3/5 = 9/15."],
+        [9, "Now count: 10 beats 9. <b>2/3 is bigger</b>, by 1/15."]],
+  draw(t) {
+    const cut = t >= 5;
+    fbar(150, 180, 1000, 120, cut ? 15 : 3, cut ? 10 : 2, "b", P(t, 0, .8), cut ? 5 : 1);
+    fbar(150, 420, 1000, 120, cut ? 15 : 5, cut ? 9 : 3, "a", P(t, .5, 1.3), cut ? 3 : 1);
+    F(cut ? 10 : 2, cut ? 15 : 3, 1340, 240, 56, "b");
+    F(cut ? 9 : 3, cut ? 15 : 5, 1340, 480, 56, "a");
+    const d = P(t, 9, 10);
+    if (d > 0) add(`<rect x="${150 + 1000 * 9 / 15}" y="170" width="${1000 / 15}" height="380" fill="${COL.r}" fill-opacity=".2" stroke="${COL.r}" stroke-width="3" opacity="${d}"/>`);
+    text(800, 640, [["2/3 > 3/5", "d", 1]], 52, { anchor: "middle", op: P(t, 9.5, 10.3) });
+  } },
+
+{ title: "Adding with the same size pieces", dur: 10,
+  cap: [[0, "<b>1/5 + 2/5</b>: both are fifths, so the pieces are the same size."],
+        [3.5, "Slide the 2 pieces into the first bar and count: <b>3/5</b>."],
+        [7, "Add the tops; the bottom stays, because the piece size did not change."]],
+  draw(t) {
+    const m = P(t, 3.5, 5.5);
+    fbar(150, 200, 1000, 120, 5, 1, "b");
+    fbar(150, 440, 1000, 120, 5, 0, "a");
+    for (let i = 0; i < 2; i++) {
+      const x = L(150 + i * 200, 150 + (1 + i) * 200, m), y = L(440, 200, m);
+      add(`<rect x="${x}" y="${y}" width="200" height="120" fill="${COL.a}" fill-opacity=".6"/>`);
+    }
+    row(1340, 280, [["1/5", "b", 1], [" + "], ["2/5", "a", 1]], 50, {});
+    text(1340, 380, [["= 3/5", "d", 1]], 60, { anchor: "middle", op: P(t, 5.5, 6.3) });
+  } },
+
+{ title: "Adding with different size pieces", dur: 14,
+  cap: [[0, "<b>1/2 + 1/3</b>. Halves and thirds cannot be counted together, the same way 1 meter + 1 foot is not 2 of anything."],
+        [5, "Cut both into sixths, because 6 is the smallest number 2 and 3 both divide: 1/2 = 3/6, 1/3 = 2/6."],
+        [9.5, "Now they are the same size: slide and count. <b>3/6 + 2/6 = 5/6</b>."]],
+  draw(t) {
+    const cut = t >= 6, m = P(t, 9.5, 11.5);
+    fbar(150, 200, 1000, 120, cut ? 6 : 2, cut ? 3 : 1, "b", 1, cut ? 3 : 1);
+    fbar(150, 440, 1000, 120, cut ? 6 : 3, cut ? (m > 0 ? 0 : 2) : 1, "a", 1, cut ? 2 : 1);
+    if (cut && m > 0) for (let i = 0; i < 2; i++) {
+      const pw = 1000 / 6, x = L(150 + i * pw, 150 + (3 + i) * pw, m), y = L(440, 200, m);
+      add(`<rect x="${x}" y="${y}" width="${pw}" height="120" fill="${COL.a}" fill-opacity=".6"/>`);
+    }
+    row(1340, 230, [[cut ? "3/6" : "1/2", "b", 1], [" + "], [cut ? "2/6" : "1/3", "a", 1]], 50, {});
+    text(1340, 330, [["= 5/6", "d", 1]], 60, { anchor: "middle", op: P(t, 11.5, 12.3) });
+  } },
+
+{ title: "Multiplying: a fraction of a fraction", dur: 14,
+  cap: [[0, "<b>2/3 × 3/4</b> means 2/3 <i>of</i> 3/4. Shade 3/4 of a square: 3 of 4 columns."],
+        [4.5, "Now take 2/3 of that: 2 of 3 rows, only inside the shaded part."],
+        [8.5, "The purple cells are the answer: <b>2 × 3 = 6</b> cells out of <b>3 × 4 = 12</b>. 6/12, which simplifies to <b>1/2</b>."]],
+  draw(t) {
+    const X = 220, Y = 120, W = 560, H = 480, cw = W / 4, ch = H / 3;
+    const c = P(t, 1, 3), r = P(t, 5, 7);
+    for (let col = 0; col < 4; col++) for (let rw = 0; rw < 3; rw++) {
+      const inC = col < 3 && col < 3 * c + .001 && c > 0, inR = rw < 2 && r > 0 && rw < 2 * r + .001;
+      const color = inC && inR ? "d" : inC ? "b" : null;
+      add(`<rect x="${X + col * cw}" y="${Y + rw * ch}" width="${cw}" height="${ch}" fill="${color ? COL[color] : COL.p}" fill-opacity="${color ? (color === "d" ? .7 : .3) : 1}" stroke="${COL.f}" stroke-width="1.5" stroke-opacity=".4"/>`);
+    }
+    add(`<rect x="${X}" y="${Y}" width="${W}" height="${H}" fill="none" stroke="${COL.f}" stroke-width="3"/>`);
+    text(X + W * 3 / 8, Y - 18, [["3/4", "b", 1]], 34, { anchor: "middle", op: c });
+    text(X - 18, Y + H / 3 + 10, [["2/3", "d", 1]], 34, { anchor: "end", op: r });
+    row(1220, 260, [["2/3", "d", 1], [" × "], ["3/4", "b", 1], [" = "], ["(2×3) / (3×4)"]], 44, { op: P(t, 8.5, 9.3) });
+    text(1220, 380, [["= 6/12 = 1/2", "d", 1]], 56, { anchor: "middle", op: P(t, 10, 10.8) });
+  } },
+
+{ title: "Dividing: how many fit?", dur: 12,
+  cap: [[0, "<b>3 ÷ 1/2</b> asks: how many halves fit in 3 wholes?"],
+        [3, "Count them as they drop in: <b>6</b>."],
+        [8.5, "Shortcut: dividing by a fraction is multiplying by it flipped. 3 × 2/1 = 6."]],
+  draw(t) {
+    for (let w = 0; w < 3; w++) fbar(150 + w * 340, 180, 320, 120, 1, 0, "b");
+    let n = 0;
+    for (let i = 0; i < 6; i++) {
+      const p = P(t, 3 + i * .7, 3.6 + i * .7), x = 150 + Math.floor(i / 2) * 340 + (i % 2) * 160;
+      if (p <= 0) continue;
+      if (p >= 1) n++;
+      add(`<rect x="${x + 4}" y="${L(420, 184, p)}" width="152" height="112" rx="8" fill="${COL.a}" fill-opacity=".55"/>`);
+      text(x + 80, L(420, 184, p) + 70, [["" + (i + 1), "f", 1]], 36, { anchor: "middle" });
+    }
+    text(800, 470, [["halves that fit: " + n, "a", 1]], 44, { anchor: "middle", op: P(t, 3, 3.5) });
+    row(800, 600, [["3 ÷ "], ["1/2", "a", 1], [" = 3 × "], ["2/1", "d", 1], [" = 6"]], 50, { op: P(t, 8.5, 9.3) });
+  } },
+
+{ title: "More than one whole", dur: 10,
+  cap: [[0, "<b>7/4</b>: the top is bigger than the bottom. Fill quarters one by one."],
+        [5, "4 quarters fill the first bar; 3 spill into a second. 7/4 = <b>1 3/4</b>."]],
+  draw(t) {
+    const k = 7 * P(t, .5, 4.5);
+    fbar(150, 260, 560, 140, 4, Math.min(k, 4), "b");
+    fbar(760, 260, 560, 140, 4, Math.max(0, k - 4), "b");
+    F(7, 4, 800, 560, 64, "b", P(t, 0, .8));
+    text(1000, 580, [["= 1 3/4", "d", 1]], 60, { op: P(t, 5, 5.8) });
+    text(430, 450, [["1 whole", "m"]], 30, { anchor: "middle", op: P(t, 3, 3.6) });
+    text(1040, 450, [["3/4", "m"]], 30, { anchor: "middle", op: P(t, 4.5, 5) });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
