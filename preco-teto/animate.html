@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preço teto e preço teto projetivo, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { min-width: 13em; color: var(--muted); }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button id="next" title="próxima cena (→)">⏭</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <span id="where"></span>
+ 
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+const ANOS = [["2021", 1.2], ["2022", 1.5], ["2023", 1.8], ["2024", 1.3], ["2025", 2.2]];
+const MEDIA = 1.6, TETO = MEDIA / 0.06, PRECO = 30;
+
+// horizontal price line from lo to hi; returns x for a price
+function nline(x0, x1, y, lo, hi, step, op = 1) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [["R$ " + v, "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+// a labeled pin standing on the price line
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+
+// ---------- scenes: draw(t) renders the frame at local time t, so scrubbing is exact
+const SCENES = [
+{ title: "Até quanto pagar?", dur: 8,
+  cap: [[0, "A ação X custa <b>R$ 30,00</b>. Vale pagar isso?"],
+        [3.5, "<b>Preço teto</b> é o máximo que você aceita pagar por ela. Acima do teto, você não compra e espera."]],
+  draw(t) {
+    const base = 700, sc = 11, bx = 620;
+    add(`<line x1="${bx - 220}" x2="${bx + 220}" y1="${base}" y2="${base}" stroke="${COL.m}" stroke-width="3"/>`);
+    const h = PRECO * sc * P(t, 0, 2);
+    add(`<rect x="${bx - 90}" y="${base - h}" width="180" height="${h}" rx="10" fill="${COL.b}" fill-opacity=".7"/>`);
+    text(bx, base - h - 20, [[brl(PRECO), "b", 1]], 48, { anchor: "middle", op: P(t, 1.5, 2.2) });
+    text(bx, base + 44, [["ação X hoje", "m"]], 28, { anchor: "middle" });
+    const op = P(t, 3.5, 4.5), ty = base - 40 * sc + Math.sin(t * 3) * 10 * op;
+    add(`<line x1="${bx - 260}" x2="${bx + 260}" y1="${ty}" y2="${ty}" stroke="${COL.c}" stroke-width="5" stroke-dasharray="16 10" opacity="${op}"/>`);
+    text(bx + 290, ty + 14, [["teto = ?", "c", 1]], 44, { op });
+    text(1250, 480, [["preço ≤ teto → compra", "c", 1]], 40, { anchor: "middle", op: P(t, 5, 5.8) });
+    text(1250, 560, [["preço > teto → espera", "r", 1]], 40, { anchor: "middle", op: P(t, 5.8, 6.6) });
+  } },
+
+{ title: "Média de 5 anos", dur: 12,
+  cap: [[0, "O método de <b>Décio Bazin</b> parte dos proventos (dividendos e JCP) que a ação já pagou."],
+        [3, "Um ano isolado engana: um ano bom infla, um ano ruim derruba. A versão mais usada tira a <b>média dos últimos 5 anos</b>."],
+        [8.5, "Somando dá R$ 8,00 em 5 anos: média de <b>R$ 1,60</b> por ano."]],
+  draw(t) {
+    const base = 600, sc = 180, x0 = 140, sw = 170;
+    add(`<line x1="${x0 - 20}" x2="${x0 + sw * 5}" y1="${base}" y2="${base}" stroke="${COL.m}" stroke-width="3"/>`);
+    const tops = ANOS.map(([y, v], i) => {
+      const cx = x0 + sw * (i + .5), g = P(t, .5 + i * .4, 1.5 + i * .4), h = v * sc * g;
+      add(`<rect x="${cx - 50}" y="${base - h}" width="100" height="${h}" rx="6" fill="${COL.a}" fill-opacity=".75"/>`);
+      text(cx, base - 24, [[br(v), "f", 1]], 30, { anchor: "middle", op: g });
+      text(cx, base + 38, [[y, "m"]], 26, { anchor: "middle" });
+      return [cx, base - v * sc - 14];
+    });
+    const mop = P(t, 3.2, 4);
+    add(`<line x1="${x0 - 20}" x2="${x0 + sw * 5}" y1="${base - MEDIA * sc * mop}" y2="${base - MEDIA * sc * mop}" stroke="${COL.a}" stroke-width="3" stroke-dasharray="10 8" opacity="${mop}"/>`);
+    let sum = 0;
+    ANOS.forEach(([, v], i) => {
+      const a = 4.5 + i * .7, p = clamp((t - a) / .9);
+      fly(tops[i][0], tops[i][1], 1300, 250, ease(p), br(v), "a", 30);
+      if (p >= 1) sum += v;
+    });
+    text(1300, 260, [["soma: "], [brl(sum), "a", 1]], 44, { anchor: "middle", op: P(t, 4.2, 4.6) });
+    text(1300, 380, [["÷ 5 anos", "m"]], 36, { anchor: "middle", op: P(t, 8.5, 9) });
+    text(1300, 500, [["média = "], [brl(MEDIA), "a", 1]], 54, { anchor: "middle", op: P(t, 9, 9.8) });
+  } },
+
+{ title: "Dividir por 6%", dur: 11,
+  cap: [[0, "Bazin só comprava se a ação rendesse <b>pelo menos 6% ao ano</b> em proventos."],
+        [2.5, "Então pergunte ao contrário: a que preço R$ 1,60 vira 6%? Divida a média por 0,06."],
+        [7, "<b>Preço teto = R$ 26,67</b>. Pagando isso, a média de R$ 1,60 rende exatos 6%."]],
+  draw(t) {
+    chip(470, 110, "média 5 anos = R$ 1,60", "a", 34);
+    chip(1130, 110, "DY mínimo = 6% = 0,06", "d", 34);
+    frac(820, 300, [["média dos proventos", "a", 1]], [["DY mínimo", "d", 1]], 52, P(t, 0, 1), "preço teto =");
+    const cy = 560, s = 64;
+    frac(640, cy, [["1,60", "a", 1]], [["0,06", "d", 1]], s, P(t, 2.8, 3.1), "preço teto =");
+    fly(470, 120, 640, cy - s * .3, clamp((t - 3.1) / 1.1), "1,60", "a", 46);
+    fly(1130, 120, 640, cy + s, clamp((t - 3.8) / 1.1), "0,06", "d", 46);
+    const big = P(t, 6.5, 7.5);
+    text(1150, cy + 22, [["= R$ 26,67", "c", 1]], L(s, 84, big), { anchor: "middle", op: big });
+    text(1150, cy + 110, [["1,60 ÷ 26,67 = 6% ✓", "m"]], 30, { anchor: "middle", op: P(t, 8.5, 9.2) });
+  } },
+
+{ title: "O teto no gráfico", dur: 15,
+  cap: [[0, "A curva mostra o DY da média de R$ 1,60 para cada preço. A linha roxa é o mínimo de 6%."],
+        [3, "Em <b>R$ 20,00</b> o DY é 8%: acima dos 6%, preço abaixo do teto."],
+        [7, "Em <b>R$ 26,67</b> a curva cruza os 6%: esse é o teto."],
+        [10.5, "Em <b>R$ 30,00</b> o DY cai para 5,3%: acima do teto, Bazin espera."]],
+  draw(t) {
+    const gx = p => L(130, 940, (p - 15) / 30), gy = d => L(700, 90, d / .1);
+    add(`<rect x="${gx(15)}" y="${gy(.1)}" width="${gx(TETO) - gx(15)}" height="${gy(0) - gy(.1)}" fill="${COL.c}" opacity=".1"/>
+         <rect x="${gx(TETO)}" y="${gy(.1)}" width="${gx(45) - gx(TETO)}" height="${gy(0) - gy(.1)}" fill="${COL.r}" opacity=".1"/>`);
+    add(`<g stroke="${COL.m}" stroke-width="2.5"><line x1="${gx(15)}" x2="${gx(45)}" y1="${gy(0)}" y2="${gy(0)}"/><line x1="${gx(15)}" x2="${gx(15)}" y1="${gy(0)}" y2="${gy(.1)}"/></g>`);
+    [15, 20, 25, 30, 35, 40, 45].forEach(p => text(gx(p), gy(0) + 34, [["R$ " + p, "m"]], 24, { anchor: "middle" }));
+    [.02, .04, .06, .08, .1].forEach(d => text(gx(15) - 12, gy(d) + 8, [[pct(d), "m"]], 24, { anchor: "end" }));
+    text(gx(30), gy(0) + 74, [["preço", "b", 1]], 28, { anchor: "middle" });
+    add(`<line x1="${gx(15)}" x2="${gx(45)}" y1="${gy(.06)}" y2="${gy(.06)}" stroke="${COL.d}" stroke-width="3"/>`);
+    text(gx(45) - 6, gy(.06) - 12, [["6%", "d", 1]], 28, { anchor: "end" });
+    const pts = [];
+    for (let i = 0; i <= 120; i++) { const p = 16 + 29 * i / 120; pts.push(`${gx(p).toFixed(1)},${gy(MEDIA / p).toFixed(1)}`); }
+    add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL.a}" stroke-width="4"/>`);
+    const tp = P(t, 7, 8);
+    add(`<line x1="${gx(TETO)}" x2="${gx(TETO)}" y1="${gy(.1)}" y2="${gy(0)}" stroke="${COL.c}" stroke-width="4" stroke-dasharray="10 8" opacity="${tp}"/>`);
+    text(gx(TETO) + 10, gy(.1) + 30, [["teto R$ 26,67", "c", 1]], 28, { op: tp });
+    const p = t < 3 ? 20 : t < 3.5 ? 20 : t < 7 ? L(20, TETO, P(t, 5, 7)) : t < 10.5 ? TETO : L(TETO, 30, P(t, 10.5, 12));
+    const d = MEDIA / p, x = gx(p), y = gy(d), op = P(t, 2.5, 3.2);
+    add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${gy(0)}" stroke="${COL.b}" stroke-width="2.5" stroke-dasharray="8 6" opacity="${op}"/>`);
+    dot(x, y, "b", 13, op);
+    const ok = p <= TETO + 1e-6;
+    text(1280, 220, [["preço: "], [brl(p), "b", 1]], 44, { anchor: "middle", op });
+    frac(1300, 380, [["1,60", "a", 1]], [[br(p), "b", 1]], 50, op, "DY =");
+    text(1280, 550, [["= " + pct(d), "d", 1]], 64, { anchor: "middle", op });
+    text(1280, 640, [[ok ? "dentro do teto: compra" : "acima do teto: espera", ok ? "c" : "r", 1]], 38, { anchor: "middle", op });
+  } },
+
+{ title: "A ação X pelo passado", dur: 8,
+  cap: [[0, "Põe tudo na mesma régua: o teto de Bazin e o preço de hoje."],
+        [3, "R$ 30,00 está <b>R$ 3,33 acima</b> do teto. Olhando para trás, a ação X está cara."]],
+  draw(t) {
+    const y = 520, f = nline(140, 1460, y, 15, 45, 5);
+    pin(f(TETO), y, 200, "R$ 26,67", "teto Bazin (passado)", "c", P(t, .3, 1.2));
+    pin(f(PRECO), y, 90, "R$ 30,00", "preço hoje", "b", P(t, 1.5, 2.4));
+    const g = P(t, 3, 4.2);
+    if (g > 0) add(`<rect x="${f(TETO)}" y="${y - 14}" width="${(f(PRECO) - f(TETO)) * g}" height="28" fill="${COL.r}" opacity=".55"/>`);
+    text((f(TETO) + f(PRECO)) / 2, y + 100, [["+ R$ 3,33", "r", 1]], 40, { anchor: "middle", op: P(t, 4, 4.6) });
+  } },
+
+{ title: "Preço teto projetivo", dur: 15,
+  cap: [[0, "O passado não sabe que a empresa vai crescer. O <b>preço teto projetivo</b> troca a média passada pelo provento que você <b>espera</b> no próximo ano."],
+        [4, "Estime o <b>LPA</b> (lucro por ação) do próximo ano e o <b>payout</b> (parte do lucro que vira provento). Aqui: LPA R$ 4,00, payout 60%."],
+        [8, "4,00 × 0,60 = <b>R$ 2,40</b> de provento projetado."],
+        [11, "Mesma régua de 6%: 2,40 ÷ 0,06 = <b>R$ 40,00</b>."]],
+  draw(t) {
+    chip(470, 110, "LPA projetado = R$ 4,00", "e", 34, P(t, 4, 4.6));
+    chip(1130, 110, "payout = 60%", "f", 34, P(t, 4.6, 5.2));
+    const r1 = row(800, 300, [["provento = "], ["LPA", "e", 1], [" × "], ["payout", "f", 1], [" = "], ["4,00", "e", 1], [" × "], ["0,60", "f", 1], [" = "], ["R$ 2,40", "a", 1]], 50,
+      { op: [1, 1, 1, 1, 1, 0, 1, 0, 1, 0].map((v, i) => i === 5 ? P(t, 6.3, 6.5) : i === 7 ? P(t, 7, 7.2) : i === 9 ? P(t, 8, 8.8) : P(t, 1, 2)) });
+    fly(470, 120, r1[5], 285, clamp((t - 5.4) / 1), "4,00", "e", 44);
+    fly(1130, 120, r1[7], 285, clamp((t - 6.1) / 1), "0,60", "f", 44);
+    const cy = 560, s = 62;
+    frac(620, cy, [["2,40", "a", 1]], [["0,06", "d", 1]], s, P(t, 10.5, 10.8), "teto projetivo =");
+    fly(r1[9], 290, 620, cy - s * .3, clamp((t - 10.8) / 1.1), "2,40", "a", 46);
+    const big = P(t, 12, 13);
+    text(1170, cy + 22, [["= R$ 40,00", "e", 1]], L(s, 84, big), { anchor: "middle", op: big });
+  } },
+
+{ title: "Dois tetos", dur: 10,
+  cap: [[0, "Na mesma régua: o teto do passado, o teto projetivo e o preço de hoje."],
+        [3.5, "Pelo passado, R$ 30,00 é caro. Pela projeção, está <b>R$ 10,00 abaixo</b> do teto."],
+        [7, "Os dois métodos discordam. O que decide é se você acredita no lucro de R$ 4,00."]],
+  draw(t) {
+    const y = 560, f = nline(140, 1460, y, 15, 45, 5);
+    pin(f(TETO), y, 260, "R$ 26,67", "teto Bazin (passado)", "c");
+    pin(f(PRECO), y, 90, "R$ 30,00", "preço hoje", "b");
+    pin(f(40), y, 260, "R$ 40,00", "teto projetivo", "e", P(t, .5, 1.5));
+    const g = P(t, 3.5, 4.7);
+    if (g > 0) add(`<rect x="${f(PRECO)}" y="${y - 14}" width="${(f(40) - f(PRECO)) * g}" height="28" fill="${COL.c}" opacity=".5"/>`);
+    text((f(PRECO) + f(40)) / 2, y + 100, [["folga de R$ 10,00", "c", 1]], 38, { anchor: "middle", op: P(t, 4.5, 5.1) });
+  } },
+
+{ title: "Se a projeção errar", dur: 16,
+  cap: [[0, "O teto projetivo é tão bom quanto a estimativa de lucro. Mexa no LPA e veja o teto andar."],
+        [2, "O lucro veio fraco: LPA <b>R$ 2,50</b>. Provento 1,50, teto <b>R$ 25,00</b>. Agora R$ 30,00 é caro."],
+        [7, "Lucro forte: LPA <b>R$ 5,00</b>. Provento 3,00, teto <b>R$ 50,00</b>."],
+        [11.5, "Com payout de 60%, cada R$ 1,00 de LPA move o teto em <b>R$ 10,00</b> (0,60 ÷ 0,06). Erro pequeno no lucro, erro grande no teto."]],
+  draw(t) {
+    const lpa = t < 2 ? 4 : t < 4.5 ? L(4, 2.5, P(t, 2, 4.5)) : t < 7 ? 2.5 : t < 10 ? L(2.5, 5, P(t, 7, 10)) : t < 13 ? 5 : L(5, 4, P(t, 13, 15));
+    const pv = lpa * .6, teto = pv / .06, ok = PRECO <= teto;
+    row(800, 110, [["LPA "], [brl(lpa), "e", 1], ["  ×  0,60  =  provento "], [brl(pv), "a", 1]], 46);
+    row(800, 200, [["teto projetivo  =  "], [br(pv), "a", 1], ["  ÷  0,06  =  "], [brl(teto), ok ? "e" : "r", 1]], 46);
+    const y = 560, f = nline(140, 1460, y, 15, 55, 5);
+    pin(f(PRECO), y, 90, "R$ 30,00", "preço hoje", "b");
+    pin(f(teto), y, 240, brl(teto), "teto projetivo", ok ? "e" : "r");
+    text(800, 720, [[ok ? "preço abaixo do teto: compra" : "preço acima do teto: espera", ok ? "c" : "r", 1]], 38, { anchor: "middle" });
+  } },
+
+{ title: "Resumo", dur: 9,
+  cap: [[0, "Os dois usam a mesma régua de 6%. Muda só de onde vem o provento: do passado ou da sua projeção."]],
+  draw(t) {
+    const o = i => P(t, i * .7, i * .7 + .8);
+    frac(470, 170, [["média 5 anos", "a", 1]], [["0,06", "d", 1]], 44, o(0), "teto Bazin =");
+    frac(1210, 170, [["LPA × payout", "e", 1]], [["0,06", "d", 1]], 44, o(1), "teto projetivo =");
+    text(470, 300, [["X: 1,60 ÷ 0,06 = "], ["R$ 26,67", "c", 1]], 34, { anchor: "middle", op: o(.5) });
+    text(1210, 300, [["X: 2,40 ÷ 0,06 = "], ["R$ 40,00", "e", 1]], 34, { anchor: "middle", op: o(1.5) });
+    [["Bazin olha para trás: só vale se os proventos se repetem", "c"],
+     ["projetivo olha para frente: só vale se o lucro estimado vier", "e"],
+     ["6% é o mínimo de Bazin; quem acha pouco perto da Selic usa uma taxa maior", "d"],
+     ["compre abaixo do teto, com folga para errar", "b"]].forEach(([s, c], i) => {
+      dot(150, 425 + i * 80, c, 12, o(2.5 + i * .6));
+      text(185, 437 + i * 80, [[s]], 34, { op: o(2.5 + i * .6) });
+    });
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = `${i + 1}/${SCENES.length} · ${s.title}`;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
