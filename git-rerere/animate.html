@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>git rerere, animated</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="next" title="next scene (→)">▶▶</button>
+  <button id="replay" title="replay this scene">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+  <a href="../">← all lessons</a>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "rerere": "reuse recorded resolution: git remembers how you fixed a conflict and replays the fix",
+  "merge conflict": "two branches changed the same lines differently, so git stops and asks you to choose",
+  "branch": "a line of commits; feature work usually lives on its own branch",
+  "rebase": "replay your branch's commits on top of another branch, one by one",
+  "git config --global": "a setting stored in ~/.gitconfig that applies to every repo on this machine",
+  "rr-cache": ".git/rr-cache/: rerere's notebook, one folder per conflict it has seen",
+  "fingerprint": "a SHA-1 hash of the conflict text, with branch labels and the base section stripped",
+  "SHA-1": "a function that turns any text into a 40-character code; the same text always gives the same code",
+  "preimage": "the conflict as git saw it, before you fixed it",
+  "postimage": "your resolved text for that exact conflict",
+  "conflict markers": "the &lt;&lt;&lt;&lt;&lt;&lt;&lt;, ======= and &gt;&gt;&gt;&gt;&gt;&gt;&gt; lines git writes around the two versions",
+  "UU": "git status code for a file that is still unmerged: both sides changed it",
+  "staged": "added to the index with git add, ready to be committed",
+  "autoUpdate": "rerere.autoUpdate: also stage the replayed file, so no git add is needed",
+  "ours / theirs": "the two sides of a conflict; during a rebase they swap places",
+  "rerere forget": "git rerere forget &lt;file&gt;: delete the recording for that file so you can resolve it again",
+  "rerere gc": "prunes old recordings: unresolved after 15 days, resolved after 60, by default",
+};
+const TERMS = [["merge conflict", "branch", "rebase"], ["rerere", "git config --global", "rr-cache"], ["fingerprint", "SHA-1", "preimage", "conflict markers"],
+  ["postimage", "rr-cache"], ["UU", "postimage"], ["autoUpdate", "staged"], ["rebase", "ours / theirs", "fingerprint"], ["rerere forget", "preimage"], ["rr-cache", "rerere gc"]];
+
+const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" fill="${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
+// terminal panel; lines = [[appearAt, text, color]]
+function term(x, y, w, lines, t, title = "terminal") {
+  const h = 60 + lines.length * 40;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL.l}" stroke-width="2"/>`);
+  text(x + 18, y + 32, [[title, "m"]], 22);
+  lines.forEach(([a, s, c], k) => mono(x + 18, y + 74 + k * 40, s, 25, c || "f", P(t, a, a + .4)));
+}
+// file card with a few lines
+function file(x, y, w, name, lines, op = 1) {
+  if (op <= 0) return;
+  const h = 64 + lines.length * 38;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${COL.bg || COL.p}" stroke="${COL.b}" stroke-width="3" opacity="${op}"/>`);
+  mono(x + 16, y + 34, name, 24, "b", op, "start", 1);
+  lines.forEach(([s, c], k) => mono(x + 16, y + 76 + k * 38, s, 25, c || "f", op));
+}
+// rerere's notebook: one folder with preimage / postimage
+function notebook(x, y, pre, post, op = 1, hit = 0) {
+  if (op <= 0) return;
+  box(x, y, 420, 230, "d", op, .08 + .25 * hit);
+  mono(x + 20, y + 40, ".git/rr-cache/", 26, "d", op, "start", 1);
+  mono(x + 40, y + 90, "&lt;hash&gt;/", 25, "d", op);
+  mono(x + 70, y + 140, "preimage", 25, "f", op * pre);
+  mono(x + 70, y + 190, "postimage", 25, "c", op * post);
+}
+
+const SCENES = [
+{ title: "The same conflict, again and again", dur: 11,
+  cap: [[0, "Two branches changed the same line of <b>app.txt</b>. Every merge stops with the same conflict."],
+        [4.5, "A long-lived branch rebased onto main every week hits it every week. You fix the same lines by hand each time."],
+        [8, "<b>rerere</b> (reuse recorded resolution) fixes it once and replays your fix every time it comes back."]],
+  draw(t) {
+    line(140, 220, 1460, 220, "b", 6, P(t, 0, 1));
+    mono(140, 180, "main", 28, "b", P(t, 0, 1), "start", 1);
+    mono(140, 460, "feature", 28, "a", P(t, 0, 1), "start", 1);
+    [0, 1, 2].forEach(k => {
+      const a = .8 + k * 1.8, x = 380 + k * 400;
+      line(x - 200, 420, x, 220, "a", 5, P(t, a, a + .8));
+      line(x - 220, 420, x + 20, 420, "a", 5, P(t, a, a + .8));
+      const p = P(t, a + .8, a + 1.2);
+      dot(x, 220, "r", 18 * p + .01, p);
+      text(x, 290, [["conflict", "r", 1]], 30, { anchor: "middle", op: p });
+      text(x, 330, [["fix by hand #" + (k + 1), "m"]], 26, { anchor: "middle", op: P(t, a + 1.2, a + 1.6) });
+    });
+    text(800, 600, [["rerere: fix once, replay forever", "d", 1]], 48, { anchor: "middle", op: P(t, 8, 8.8) });
+  } },
+
+{ title: "Turn it on", dur: 9,
+  cap: [[0, "rerere is off by default. One config line turns it on for every repo on the machine."],
+        [4, "From then on git keeps a small notebook in <b>.git/rr-cache/</b>: one folder per conflict it has seen."]],
+  draw(t) {
+    term(140, 140, 1000, [[.5, "$ git config --global rerere.enabled true"], [2, "$ git config --get rerere.enabled"], [2.5, "true", "c"]], t);
+    notebook(1000, 420, 0, 0, P(t, 4, 5));
+    text(780, 560, [["created the first time", "m"]], 28, { anchor: "middle", op: P(t, 5, 5.8) });
+    text(780, 600, [["rerere records a conflict", "m"]], 28, { anchor: "middle", op: P(t, 5, 5.8) });
+  } },
+
+{ title: "First conflict: the fingerprint", dur: 13,
+  cap: [[0, "The merge stops as usual, with one extra line: <b>Recorded preimage</b>."],
+        [4, "rerere strips the branch labels and the base section, hashes what is left (the <b>fingerprint</b>), and stores that conflict as the <b>preimage</b>."],
+        [9.5, "Same clash on a different branch name still gives the same hash."]],
+  draw(t) {
+    term(80, 100, 860, [[.3, "$ git merge feature"], [.8, "Auto-merging app.txt"], [1.2, "CONFLICT (content): Merge conflict in app.txt", "r"], [1.8, "Recorded preimage for 'app.txt'", "d"], [2.2, "Automatic merge failed; fix conflicts and"], [2.2, "then commit the result."]], t);
+    file(80, 440, 560, "app.txt", [["&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD", "m"], ["color = red", "b"], ["=======", "m"], ["color = green", "a"], ["&gt;&gt;&gt;&gt;&gt;&gt;&gt; feature", "m"]], P(t, 3, 3.8));
+    const s = P(t, 5, 6);
+    if (s > 0) { line(96, 520, 380, 520, "r", 3, s); line(96, 672, 400, 672, "r", 3, s); }
+    arrow(660, 600, 980, 560, "d", P(t, 6.5, 7.5));
+    text(820, 545, [["hash", "d", 1]], 28, { anchor: "middle", op: P(t, 6.5, 7.5) });
+    notebook(1020, 420, P(t, 7.5, 8.3), 0, 1);
+  } },
+
+{ title: "You resolve it once", dur: 10,
+  cap: [[0, "Resolve by hand like always: here, <b>color = teal</b>."],
+        [3.5, "When you commit, rerere prints <b>Recorded resolution</b> and saves your result as the <b>postimage</b>, next to the preimage."]],
+  draw(t) {
+    file(80, 140, 560, "app.txt", [["color = teal", "c"]], P(t, 0, .8));
+    term(80, 360, 860, [[1.5, "$ git add app.txt"], [2.5, "$ git commit"], [3.5, "Recorded resolution for 'app.txt'.", "c"]], t);
+    arrow(660, 200, 1000, 400, "c", P(t, 4, 5));
+    notebook(1020, 380, 1, P(t, 5, 5.8), 1);
+  } },
+
+{ title: "Same conflict again: replayed", dur: 12,
+  cap: [[0, "Throw the merge away and merge again. Same conflict, same hash."],
+        [4, "git finds the folder and writes the postimage into the file: <b>Resolved 'app.txt' using previous resolution</b>."],
+        [8, "The file is already fixed, but still marked unmerged (<b>UU</b>). Look at it, then git add."]],
+  draw(t) {
+    term(80, 100, 860, [[.3, "$ git merge feature"], [.8, "CONFLICT (content): Merge conflict in app.txt", "r"], [4, "Resolved 'app.txt' using previous resolution.", "c"], [8, "$ git status --short"], [8.4, "UU app.txt", "a"]], t);
+    const hit = P(t, 2, 3) * (1 - P(t, 6, 7));
+    notebook(1060, 100, 1, 1, 1, hit);
+    const f = P(t, 4.5, 6);
+    fly(1180, 300, 360, 520, f, "color = teal", "c", 30);
+    file(80, 440, 560, "app.txt", [["color = teal", "c"]], P(t, 5.8, 6.4));
+  } },
+
+{ title: "Skip the git add: autoUpdate", dur: 10,
+  cap: [[0, "Set <b>rerere.autoUpdate</b> and git also stages the replayed file."],
+        [4, "The message changes to <b>Staged</b>, and the status goes from UU to M."],
+        [7, "Trade-off: a replayed fix gets staged without you looking at it. Leave it off to review every replay."]],
+  draw(t) {
+    term(140, 100, 1100, [[.3, "$ git config --global rerere.autoUpdate true"], [1.5, "$ git merge feature"], [2, "CONFLICT (content): Merge conflict in app.txt", "r"], [3.5, "Staged 'app.txt' using previous resolution.", "c"], [4.5, "$ git status --short"], [5, "M  app.txt", "c"]], t);
+  } },
+
+{ title: "Rebase too", dur: 10,
+  cap: [[0, "rerere also works when you <b>rebase</b> instead of merging."],
+        [3.5, "In a rebase the two sides swap places (ours and theirs flip), yet rerere sorts the sides before hashing, so the fingerprint still matches."]],
+  draw(t) {
+    const sw = P(t, 3.5, 5.5);
+    [["color = red", "b", 0], ["color = green", "a", 1]].forEach(([s, c, k]) => {
+      const y = L(220 + k * 140, 220 + (1 - k) * 140, sw);
+      box(160, y - 50, 460, 90, c, 1, .2);
+      mono(390, y + 10, s, 30, c, 1, "middle", 1);
+    });
+    text(390, 150, [["merge → rebase: sides swap", "m"]], 30, { anchor: "middle" });
+    arrow(660, 290, 900, 290, "d", P(t, 5.5, 6.5));
+    text(780, 270, [["sort, then hash", "d", 1]], 28, { anchor: "middle", op: P(t, 5.5, 6.5) });
+    notebook(940, 180, 1, 1, P(t, 6, 6.8), P(t, 6.8, 7.4));
+    text(1150, 470, [["same hash → replay", "c", 1]], 34, { anchor: "middle", op: P(t, 7.4, 8) });
+  } },
+
+{ title: "Recorded a bad fix? Forget it", dur: 11,
+  cap: [[0, "rerere replays whatever you recorded, mistakes included."],
+        [3, "<b>git rerere forget app.txt</b> deletes the recording for that file."], [6, "Abort and merge again: the conflict comes back with no replay, so you can record a new fix."]],
+  draw(t) {
+    term(80, 120, 900, [[3, "$ git rerere forget app.txt"], [3.8, "Updated preimage for 'app.txt'"], [4.3, "Forgot resolution for 'app.txt'", "r"], [6, "$ git merge --abort &amp;&amp; git merge feature"], [6.6, "CONFLICT (content): Merge conflict in app.txt", "r"]], t);
+    notebook(1080, 120, 1, 1 - P(t, 4.3, 5.3), 1);
+    if (P(t, 4.3, 5.3) > .5) line(1150, 300, 1330, 300, "r", 4, 1);
+  } },
+
+{ title: "Summary", dur: 9,
+  cap: [[0, "Solve the conflict once; every rerun is free."]],
+  draw(t) {
+    const o = i => P(t, i * .6, i * .6 + .8);
+    [["git config --global rerere.enabled true", "c"], ["first conflict → preimage", "f"], ["your fix → postimage", "c"], ["same conflict → replayed (staged with autoUpdate)", "d"], ["git rerere forget &lt;file&gt; → record again", "r"]].forEach(([s, c], k) =>
+      mono(200, 130 + k * 80, s, 34, c, o(k)));
+    [["rr-cache is local: not pushed, each clone builds its own"], ["git rerere gc prunes: unresolved after 15 days, resolved after 60"]].forEach(([s], k) =>
+      text(200, 560 + k * 60, [[s, "m"]], 30, { op: o(5 + k * .5) }));
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
