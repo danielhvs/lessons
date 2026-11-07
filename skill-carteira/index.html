@@ -82,7 +82,7 @@ td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowra
 <section>
   <h2><span class="num">1</span>O problema</h2>
   <p>Você tem R$ 2.000 para investir e 13 papéis na carteira. Sem regra, a escolha vira palpite: comprar o que caiu mais (BBAS3 parece barata: P/L 6,5), ou o que subiu no noticiário, ou sempre o mesmo papel até ele virar 30% de tudo.</p>
-  <p>Uma <dfn>skill</dfn> do Claude Code é um arquivo <code>SKILL.md</code> com instruções que o Claude segue quando você diz certas palavras ("carteira", "onde invisto R$ X", "revisão anual"). A skill <code>carteira</code> fixa as regras por escrito e os scripts trazem os números de fora, então a mesma carteira com os mesmos dados dá sempre a mesma resposta.</p>
+  <p>Uma <dfn>skill</dfn> do Claude Code é um arquivo <code>SKILL.md</code> com instruções que o Claude segue quando você diz certas palavras ("carteira", "onde invisto R$ X", "revisão semestral"). A skill <code>carteira</code> fixa as regras por escrito e os scripts trazem os números de fora, então a mesma carteira com os mesmos dados dá sempre a mesma resposta.</p>
   <p class="note">Todos os números desta aula são reais, puxados pelos scripts em 06/11/2026 (cotações de 05/11/2026). A carteira de exemplo é inventada: as quantidades não são de ninguém.</p>
 </section>
 
@@ -310,14 +310,15 @@ BBAS3:  min(3,066; 1,170) ÷ 0,06 = R$ 19,50   cotação 16,49 ≤ 19,50 → "ba
     <tr><td class="warn">⚠️ observar</td><td>dividendo acima do lucro, vacância subindo, erra uma régua por pouco, ou uma notícia ruim com dados bons</td><td>LREN3 erra ROE por pouco (14,3 vs 15), mas também o cres5a por muito: as notícias decidem entre ⚠️ e ❌</td></tr>
     <tr><td class="no">❌ fraco</td><td>classe <code>outro</code>, ou reprova qualidade E tem notícia ruim (lucro caindo, corte de dividendo)</td><td>PRIO3 (outro); BBAS3 e VINO11 se a busca oficial confirmar a queda</td></tr>
   </table>
-  <h3>Venda: só em abril</h3>
-  <p>A rodada do mês só decide onde entra o dinheiro novo. Um ❌ mostra "congelar aportes, revisar em abril". Abril é a <dfn>revisão anual</dfn>: as DFPs saem até 31 de março, então o ano inteiro está publicado. Lá um ❌ cuja <dfn>tese quebrou</dfn> (lucro caindo há anos, dívida explodindo, corte estrutural de dividendo, fraude; no FII, vacância alta sem recuperar) vira "candidata a venda", com a linha de imposto:</p>
+  <h3>Venda: só em abril e outubro</h3>
+  <p>A rodada do mês só decide onde entra o dinheiro novo. Um ❌ mostra "congelar aportes, revisar em abril" (ou outubro, a que vier primeiro). Abril e outubro são a <dfn>revisão semestral</dfn>: em abril as DFPs já saíram (prazo 31 de março), então o ano inteiro está publicado; em outubro já saiu o <dfn>ITR</dfn> (balanço trimestral) do 2º trimestre, então o 1º semestre também. Na revisão, um ❌ cuja <dfn>tese quebrou</dfn> (lucro caindo há anos, dívida explodindo, corte estrutural de dividendo, fraude; no FII, vacância alta sem recuperar) vira "candidata a venda", com a linha de imposto:</p>
   <table>
     <tr><th>ativo</th><th>IR sobre o lucro</th></tr>
     <tr><td>ações</td><td>isento se as vendas do mês somam até R$ 20 mil; acima, 15%</td></tr>
     <tr><td>FII</td><td>20%, sem isenção</td></tr>
   </table>
-  <p>Exceção, em qualquer mês: fraude, recuperação judicial, corte grande de dividendo ou FII perdendo o inquilino principal. Preço caindo nunca é motivo de venda.</p>
+  <p>Exceção, em qualquer mês: fraude, recuperação judicial, corte grande de dividendo ou FII perdendo o inquilino principal. Preço caindo nunca é motivo de venda, e papel melhor em outro lugar entra com dinheiro novo (Oportunidade), nunca vendendo um papel bom no meio do semestre.</p>
+  <p><dfn>Rebalanceamento</dfn>, só na revisão: a skill soma os aportes dos últimos 6 meses no log, simula esse dinheiro indo para as classes abaixo do alvo e só sugere venda do que ainda sobra: papel acima de 15% ou classe mais de 10 pontos acima do alvo. No exemplo, BTLG11 tem 19,5% de R$ 12.500,15; com R$ 6.000 de aportes no semestre, o total vai a R$ 18.500,15 e BTLG11 cai para 13,2% sem vender nada.</p>
 </section>
 
 <section>
@@ -382,7 +383,7 @@ sobra: R$ 6,82</pre>
   <p class="mistake">Comprar o que está mais barato. VINO11 (P/VP 0,41) e BBAS3 (P/L 6,5) são os mais baratos da carteira e os dois reprovam em qualidade. A skill testa qualidade primeiro; preço só ordena quem passou.</p>
   <p class="mistake">Calcular o teto pela média com dividendo em queda. BBAS3 daria R$ 51,10; com o último ano dá R$ 19,50. Use <code>min(média, último)</code>.</p>
   <p class="mistake">Contar o ano extraordinário como tendência. ITUB4 2025 (4,73) é mais que o dobro dos outros anos; julgue sem ele.</p>
-  <p class="mistake">Vender porque caiu ou porque veio uma notícia de jornal. Mês comum: congela aporte. Venda só em abril, com tese quebrada e documento oficial.</p>
+  <p class="mistake">Vender porque caiu ou porque veio uma notícia de jornal. Mês comum: congela aporte. Venda só em abril ou outubro, com tese quebrada e documento oficial.</p>
   <p class="mistake">Confiar em quantidades de uma conversa antiga. A skill relê <code>carteira.csv</code> toda vez: atualize a <code>qtd</code> depois de comprar.</p>
 </section>
 
@@ -393,7 +394,7 @@ sobra: R$ 6,82</pre>
     <li>Qualidade (5 anos de lucro e dividendo, ROE, setor) decide se presta; preço (teto, P/L, P/VP) só decide a ordem de compra.</li>
     <li>Teto = min(média, último dividendo) ÷ 0,06; ano acima de 2× os outros é extraordinário e sai da conta.</li>
     <li>Limites: 10 ações, 6 FIIs, 15% por papel, 35% por setor, 1 Oportunidade por rodada, cotas inteiras, sobra fica para o próximo aporte.</li>
-    <li>Mês comum só aplica dinheiro novo; venda só na revisão anual de abril ou em evento grave.</li>
+    <li>Mês comum só aplica dinheiro novo; venda só na revisão semestral (abril e outubro: tese quebrada ou desvio que os aportes não fecham) ou em evento grave.</li>
   </ol>
 </section>
 </main>
