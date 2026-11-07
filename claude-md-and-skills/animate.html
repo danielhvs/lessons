@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLAUDE.md and skills</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="links"><a href="../">← all lessons</a></div>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="restart">⏮</button>
+  <button id="prev" title="previous scene (←)">◀◀</button>
+  <button id="play" title="play / pause (space)">▶</button>
+  <button id="next" title="next scene (→)">▶▶</button>
+  <button id="replay" title="replay this scene">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "context window": "everything Claude can see this turn: system prompt, loaded files, the conversation, tool results",
+  "CLAUDE.md": "a markdown file of standing instructions that Claude Code loads into the context for you",
+  "cwd": "current working directory: the folder the session started in",
+  "@import": "a line holding @ plus a path inside a CLAUDE.md; Claude Code pastes that file's text in its place",
+  "skill": "a folder with a SKILL.md: instructions for one kind of task, loaded only when the task comes up",
+  "frontmatter": "the block between the two --- lines at the top of SKILL.md: name and description",
+  "description": "the frontmatter field that says what the skill does and which words should trigger it",
+  "Skill tool": "the tool Claude calls to open a skill; the call is what pulls SKILL.md's body into the context",
+  "slash command": "/name typed by you; for a skill it loads that skill directly",
+  "Read tool": "the tool Claude uses to open a file from disk",
+  "nested CLAUDE.md": "a CLAUDE.md in a folder below the cwd; it loads the first time Claude reads a file in that folder",
+  "MEMORY.md": "the memory index: one line per saved fact, loaded every session",
+  "memory file": "one fact per file, with its why and how to apply; read when its index line matters",
+  "/clear": "built-in command that empties the conversation; the next turn starts fresh",
+  "progressive disclosure": "load the cheap summary first and the details only when needed, so the context stays small",
+};
+const TERMS = [["context window", "CLAUDE.md", "skill"], ["cwd", "CLAUDE.md", "nested CLAUDE.md"], ["@import"], ["frontmatter", "description"],
+  ["description", "Skill tool"], ["slash command", "Skill tool"], ["Read tool", "nested CLAUDE.md"], ["progressive disclosure", "Skill tool"],
+  ["MEMORY.md", "memory file"], ["/clear", "context window"]];
+
+const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" style="fill:${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
+// a file on disk: name + one muted line; dim fades it and dashes the border
+function card(x, y, w, name, sub, c, op = 1, dim = 0) {
+  if (op <= 0) return;
+  const o = op * (1 - .6 * dim);
+  box(x, y, w, 78, c, o, .12, 10, dim > .5 ? "8 6" : "");
+  mono(x + 16, y + 33, name, 24, c, o, "start", 1);
+  text(x + 16, y + 64, [[sub, "m"]], 22, { op: o });
+}
+// the context window on the right; rows = [appearAt, label, color, size, gone?, fromX?, fromY?]
+const CX = 1090, CW = 470;
+function ctx(t, rows, o = {}) {
+  const op = o.op ?? 1;
+  box(CX, 60, CW, 720, "e", op, .05, 14);
+  text(CX + CW / 2, 100, [["context window", "e", 1]], 28, { anchor: "middle", op });
+  let y = 125;
+  rows.forEach(([a, label, c, size, gone, fx, fy]) => {
+    if (fx !== undefined) fly(fx, fy, CX + CW / 2, y + 38, P(t, a - 1, a), label, c, 24);
+    const p = P(t, a, a + .5) * (gone ? 1 - P(t, gone, gone + .8) : 1);
+    if (p > 0) {
+      box(CX + 16, y, CW - 32, 58, c, p, .2, 10);
+      text(CX + 32, y + 38, [[label, c, 1]], 24, { op: p });
+      if (size) text(CX + CW - 32, y + 38, [[size, "m"]], 22, { anchor: "end", op: p });
+    }
+    if (!o.collapse || p > 0) y += 68;
+  });
+}
+const START = (a = 0, gone) => [
+  [a, "CLAUDE.md (+ import)", "b", "220 lines", gone], [a + .3, "MEMORY.md index", "c", "4 lines", gone], [a + .6, "skill menu", "d", "1 entry each", gone]];
+function bubble(x, y, w, s, op = 1, c = "a") {
+  if (op <= 0) return;
+  box(x, y, w, 70, c, op, .15, 30);
+  text(x + 26, y + 45, [[s]], 26, { op });
+}
+function call(x, y, s, op = 1) {
+  if (op <= 0) return;
+  const w = s.replace(/&[a-z]+;/g, "x").length * 15.7 + 40;
+  box(x, y, w, 60, "e", op, .25, 8);
+  mono(x + 20, y + 40, s, 26, "e", op, "start", 1);
+}
+
+const SCENES = [
+{ title: "A new session: what loads before you type", dur: 12,
+  cap: [[0, "A session starts with an empty <b>context window</b>. Before your first message, Claude Code fills it from disk."],
+        [6, "Skills arrive only as a menu: one name and description each. Their bodies stay on disk."],
+        [9.5, "What sits in the context window I know this turn. Anything else I have to open with a tool."]],
+  draw(t) {
+    text(60, 100, [["disk", "m", 1]], 28);
+    const dim = P(t, 8, 9);
+    card(60, 120, 640, "~/CLAUDE.md", "115 lines", "b");
+    card(60, 215, 640, "i-have-adhd/SKILL.md", "105 lines, imported by CLAUDE.md line 22", "b");
+    card(60, 310, 640, "memory/MEMORY.md", "4 lines: one per fact", "c");
+    card(60, 405, 640, "memory/print-needs-go-ahead.md ...", "4 fact files", "c", 1, dim);
+    card(60, 500, 640, "skills/teach-me/SKILL.md", "197 lines", "d", 1, dim);
+    card(60, 595, 640, "skills/new-session/SKILL.md", "24 lines", "d", 1, dim);
+    text(730, 560, [["stays on disk", "r", 1]], 28, { op: dim });
+    ctx(t, [[1.5, "~/CLAUDE.md", "b", "115 lines", 0, 380, 160], [3, "i-have-adhd (import)", "b", "105 lines", 0, 380, 255],
+      [4.5, "MEMORY.md index", "c", "4 lines", 0, 380, 350], [6.5, "skill menu", "d", "1 entry each", 0, 380, 540]]);
+  } },
+
+{ title: "Which CLAUDE.md files: walk up from the cwd", dur: 12,
+  cap: [[0, "Claude Code starts in the <b>cwd</b> and walks up to <b>/</b>. Every CLAUDE.md on that path loads at start."],
+        [5.5, "That is why <b>~/CLAUDE.md</b> is in every session you start anywhere under your home folder."],
+        [8.5, "A CLAUDE.md <b>below</b> the cwd, like emacs.d/CLAUDE.md, waits. It loads when I touch a file in that folder (scene 7)."]],
+  draw(t) {
+    const rows = [["/", 0], ["home/danielhabib/", 1], ["dotfiles/", 2], [".claude/worktrees/", 3], ["new-session-skill/", 4], ["emacs.d/", 5]];
+    const Y = k => 150 + k * 95;
+    rows.forEach(([s, k]) => {
+      const x = 80 + k * 50;
+      if (k) line(x - 34, Y(k - 1) + 12, x - 34, Y(k) - 8, "l", 2);
+      mono(x, Y(k), s, 28, k === 4 ? "a" : "f", 1, "start", k === 4);
+    });
+    text(640, Y(4), [["← cwd", "a", 1]], 28);
+    const climb = P(t, 1, 4.5), py = L(Y(4) - 9, Y(0) - 9, climb);
+    if (t > 1 && t < 5.5) dot(56, py, "a", 12, 1);
+    arrow(56, Y(4) - 9, 56, Y(0) + 12, "a", climb * (1 - P(t, 5, 5.5)), 3);
+    const hit = P(t, 3.2, 3.7);
+    chip(560, Y(1) - 9, "CLAUDE.md", hit > 0 ? "b" : "m", 26);
+    chip(640, Y(5) - 9, "CLAUDE.md", "m", 26);
+    text(780, Y(5), [["waits", "m"]], 26, { op: P(t, 8.5, 9.3) });
+    ctx(t, [[4.5, "~/CLAUDE.md", "b", "115 lines", 0, 560, Y(1)]]);
+  } },
+
+{ title: "@imports are pasted in", dur: 11,
+  cap: [[0, "Line 22 of your CLAUDE.md is an <b>import</b>: an @ followed by a path."],
+        [3.5, "Claude Code swaps that line for the file's 105 lines before I see anything. No tool call, no decision on my side."],
+        [7.5, "So i-have-adhd lives in a file called SKILL.md, yet it behaves like CLAUDE.md: on in every turn of every session."]],
+  draw(t) {
+    const grow = P(t, 3.5, 5.5);
+    const h = 300 + 230 * grow;
+    add(`<rect x="60" y="80" width="980" height="${h}" rx="12" fill="${COL.p}" stroke="${COL.b}" stroke-width="3"/>`);
+    mono(80, 120, "~/CLAUDE.md", 26, "b", 1, "start", 1);
+    mono(80, 175, "18  # Conversation", 24, "m");
+    mono(80, 220, "19  1. Always answer in the i-have-adhd style...", 24, "m");
+    mono(80, 270, "22  @~/dotfiles/claude/i-have-adhd/SKILL.md", 24, "a", 1 - grow, "start", 1);
+    if (grow > 0) {
+      box(110, 245, 900, 220 * grow, "b", grow, .15, 8);
+      ["# i-have-adhd", "The reader has ADHD. Output is not just brief...", "### 1. Lead with the next action", "... 105 lines"].forEach((s, k) =>
+        mono(130, 285 + k * 50, s, 24, k === 3 ? "m" : "f", P(t, 4.5 + k * .3, 5 + k * .3)));
+    }
+    mono(80, 330 + 230 * grow, "24  1. Use a regular dash -, never an em dash", 24, "m");
+    text(550, 720, [["import = always on, like CLAUDE.md", "b", 1]], 34, { anchor: "middle", op: P(t, 7.5, 8.3) });
+    ctx(t, [[0, "~/CLAUDE.md", "b", "115 lines"], [5.5, "i-have-adhd (import)", "b", "105 lines", 0, 560, 300]]);
+  } },
+
+{ title: "A skill enters as one line: its description", dur: 12,
+  cap: [[0, "A skill is a folder with a SKILL.md. Its top block, the <b>frontmatter</b>, holds a name and a description."],
+        [4, "Only the description goes into the menu at start. It is the trigger list: the words that tell me when to open the skill."],
+        [8.5, "The 197-line body below it costs nothing until the skill fires."]],
+  draw(t) {
+    add(`<rect x="60" y="80" width="980" height="650" rx="12" fill="${COL.p}" stroke="${COL.d}" stroke-width="3"/>`);
+    mono(80, 120, "skills/teach-me/SKILL.md", 26, "d", 1, "start", 1);
+    const fm = P(t, 1, 2);
+    box(80, 140, 940, 220, "d", fm, .2, 8);
+    mono(100, 180, "---", 24, "m");
+    mono(100, 220, "name: teach-me", 24, "d", 1, "start", 1);
+    mono(100, 260, "description: Teach the user a concept...", 24, "f");
+    mono(100, 300, "  Use when the user says \"teach me\",", 24, "a", 1, "start", 1);
+    mono(100, 340, "  ... \"show me X as an animation\" (animation only).", 24, "a", 1, "start", 1);
+    mono(100, 400, "---", 24, "m");
+    const dim = P(t, 8.5, 9.3);
+    ["# teach-me", "## 0. Pick the pages", "## 1. Plan (every page)", "## 3. The animation and interaction pages", "... 197 lines"].forEach((s, k) =>
+      mono(100, 450 + k * 52, s, 24, k === 4 ? "m" : "f", 1 - .6 * dim));
+    text(820, 700, [["stays on disk", "r", 1]], 28, { anchor: "middle", op: dim });
+    ctx(t, [[0, "~/CLAUDE.md (+ import)", "b", "220 lines"], [0, "MEMORY.md index", "c", "4 lines"],
+      [5, "teach-me: description", "d", "1 entry", 0, 500, 260], [6, "new-session: description", "d", "1 entry"],
+      [6.3, "reminder-add: description", "d", "1 entry"], [6.6, "carteira: description ...", "d", "1 entry"]]);
+  } },
+
+{ title: "Scenario A: your words match a description", dur: 14,
+  cap: [[0, "This very session. Your message arrives."],
+        [3, "I check it against every description in the menu. \"Teach me\" and \"animation only\" match teach-me's trigger words."],
+        [7, "I call the <b>Skill tool</b>. Only now do the 197 lines of the body load into the context."],
+        [11, "From here I follow the body step by step. That is how this page got built."]],
+  draw(t) {
+    bubble(60, 90, 980, "Teach me how you work with MD files ... via animation only", P(t, 0, .8));
+    const m = P(t, 3, 4);
+    if (m > 0) { const w1 = width([["Teach me"]], 26), w0 = width([["Teach me how you work with MD files ... via "]], 26), w2 = width([["animation only"]], 26);
+      box(80, 105, w1 + 12, 42, "a", m, .35, 6); box(80 + w0, 105, w2 + 12, 42, "a", m, .35, 6); }
+    ["teach-me: \"teach me\", \"animation only\"", "new-session: \"new claude session\"", "reminder-add: \"add a reminder\"", "carteira: \"check my portfolio\""].forEach((s, k) => {
+      const hit = k === 0 ? P(t, 4.5, 5.2) : 0;
+      box(60, 230 + k * 80, 980, 62, hit ? "d" : "l", 1, .1 + .3 * hit, 10);
+      mono(80, 272 + k * 80, s, 24, k === 0 && hit ? "d" : "m", 1, "start", k === 0 && hit > 0);
+    });
+    arrow(450, 165, 450, 225, "a", P(t, 4, 4.8));
+    call(60, 580, "Skill(\"teach-me\")", P(t, 7, 7.6));
+    text(60, 700, [["→ \"Pages: animation\", then section 3 of the body", "m"]], 26, { op: P(t, 11, 11.8) });
+    ctx(t, [[0, "CLAUDE.md (+ import)", "b", "220 lines"], [0, "MEMORY.md index", "c", "4 lines"], [0, "skill menu", "d", "1 entry each"],
+      [0.5, "your message", "a", ""], [7.6, "Skill call", "e", ""], [9, "teach-me SKILL.md body", "d", "197 lines", 0, 330, 610]]);
+  } },
+
+{ title: "Scenario B: /name skips the matching", dur: 10,
+  cap: [[0, "Type <b>/new-session</b> and the skill loads straight away. No reading of your words needed."],
+        [5, "Plain words work too when they match the description: \"open another claude in dotfiles\" fires the same skill."]],
+  draw(t) {
+    bubble(60, 110, 500, "/new-session", P(t, 0, .6));
+    arrow(580, 145, 700, 145, "e", P(t, 1, 1.8));
+    call(720, 115, "Skill", P(t, 1.8, 2.3));
+    bubble(60, 380, 700, "open another claude in dotfiles", P(t, 5, 5.6));
+    box(60, 500, 980, 62, "d", P(t, 6.5, 7.2), .25, 10);
+    mono(80, 542, "new-session: \"open another claude in &lt;repo&gt;\"", 24, "d", P(t, 6.5, 7.2), "start", 1);
+    arrow(410, 455, 410, 495, "a", P(t, 6, 6.6));
+    arrow(1000, 530, 1060, 530, "e", P(t, 7.5, 8));
+    ctx(t, [[0, "CLAUDE.md (+ import)", "b", "220 lines"], [0, "MEMORY.md index", "c", "4 lines"], [0, "skill menu", "d", "1 entry each"],
+      [2.8, "new-session body", "d", "24 lines", 0, 800, 145]]);
+  } },
+
+{ title: "Scenario C: no skill matches, a folder rule does", dur: 12,
+  cap: [[0, "\"Fix the typo in emacs.d/init.el\" matches no description. No skill body loads."],
+        [5, "But I open emacs.d/init.el with the <b>Read tool</b>, and that folder has its own CLAUDE.md."],
+        [8, "Claude Code attaches it, 41 lines, the first time I touch a file in that folder. Its rules then apply to the edit."]],
+  draw(t) {
+    bubble(60, 90, 980, "Fix the typo in emacs.d/init.el", P(t, 0, .6));
+    ["teach-me", "new-session", "reminder", "carteira"].forEach((s, k) => {
+      const x = 60 + k * 248, o = P(t, 1.5 + k * .4, 2 + k * .4);
+      box(x, 210, 228, 62, "l", 1, .1, 10);
+      mono(x + 16, 252, s, 24, "m");
+      text(x + 205, 252, [["✗", "r", 1]], 30, { anchor: "end", op: o });
+    });
+    call(60, 340, "Read(\"emacs.d/init.el\")", P(t, 5, 5.6));
+    card(60, 460, 560, "emacs.d/CLAUDE.md", "41 lines: rules for elisp", "b", P(t, 6.5, 7.2));
+    ctx(t, [[0, "CLAUDE.md (+ import)", "b", "220 lines"], [0, "MEMORY.md index", "c", "4 lines"], [0, "skill menu", "d", "1 entry each"],
+      [0.5, "your message", "a", ""], [5.8, "init.el", "e", "file"], [8.5, "emacs.d/CLAUDE.md", "b", "41 lines", 0, 340, 500]]);
+  } },
+
+{ title: "Inside a skill: three layers", dur: 12,
+  cap: [[0, "A skill folder can hold more than SKILL.md: teach-me also has template.html and fit-check.py."],
+        [4, "Those load only when a step in the body points at them. fit-check.py gets run, so only its output enters the context."],
+        [8.5, "Three layers, each paid for only when needed: description always, body on trigger, extra files on demand."]],
+  draw(t) {
+    const L3 = [["description", "always, from session start", "1 entry", 0], ["SKILL.md body", "when the skill fires", "197 lines", 1.5], ["template.html / fit-check.py", "when a step says so", "118 / 178 lines", 4]];
+    L3.forEach(([n, w, s, a], k) => {
+      const o = P(t, a, a + .8), wd = 420 + k * 230, x = 550 - wd / 2, y = 140 + k * 180;
+      box(x, y, wd, 140, "d", o, .1 + .12 * (2 - k), 12);
+      text(550, y + 55, [[n, "d", 1]], 30, { anchor: "middle", op: o });
+      text(550, y + 100, [[w + " · " + s, "m"]], 24, { anchor: "middle", op: o });
+    });
+    text(550, 740, [["$ python3 fit-check.py animate.html  →  fit-check: pass", "c"]], 26, { anchor: "middle", op: P(t, 6, 6.8) });
+    ctx(t, [[0, "skill menu", "d", "1 entry each"], [1.5, "teach-me body", "d", "197 lines"], [6.8, "fit-check output", "c", "1 line", 0, 550, 740]]);
+  } },
+
+{ title: "Memory: the index always, a fact when it matters", dur: 13,
+  cap: [[0, "Memory works like skills. <b>MEMORY.md</b> is the menu: one line per fact, loaded every session."],
+        [4, "You say \"print this\". The line <b>Print needs go-ahead</b> matches, so that fact file gets opened."],
+        [8, "It says: build the PDF, show it, run lp only after your go. To remember something new, I write one file and add one line to the index."]],
+  draw(t) {
+    add(`<rect x="60" y="80" width="980" height="300" rx="12" fill="${COL.p}" stroke="${COL.c}" stroke-width="3"/>`);
+    mono(80, 120, "memory/MEMORY.md", 26, "c", 1, "start", 1);
+    ["tmux test target", "Print needs go-ahead", "User pronouns", "TTS voice"].forEach((s, k) => {
+      const hit = k === 1 ? P(t, 5, 5.6) : 0;
+      if (hit) box(76, 145 + k * 54, 948, 46, "a", hit, .3, 6);
+      mono(96, 178 + k * 54, "- " + s, 24, hit ? "a" : "f");
+    });
+    bubble(60, 410, 400, "print this", P(t, 4, 4.5));
+    card(60, 520, 980, "print-needs-go-ahead.md", "Don't run lp until Daniel says go.", "c", P(t, 6, 6.7));
+    call(60, 630, "Write(new-fact.md) + 1 line in MEMORY.md", P(t, 10, 10.6));
+    ctx(t, [[0, "CLAUDE.md (+ import)", "b", "220 lines"], [0, "MEMORY.md index", "c", "4 lines"], [0, "skill menu", "d", "1 entry each"],
+      [4.5, "your message", "a", ""], [7, "print-needs-go-ahead.md", "c", "fact", 0, 550, 560]]);
+  } },
+
+{ title: "/clear, and when each file loads", dur: 13,
+  cap: [[0, "<b>/clear</b> empties the conversation. The next turn starts like scene 1: the skill bodies are gone until something fires them again."],
+        [6, "When does each file load?"]],
+  draw(t) {
+    const R = [["session start", "CLAUDE.md up from cwd + @imports, MEMORY.md, skill menu", "b"],
+      ["words match a description, or /name", "that SKILL.md body", "d"],
+      ["a skill step points at it", "the skill's extra files", "d"],
+      ["I touch a file in a folder", "that folder's CLAUDE.md", "b"],
+      ["a memory line matters", "that memory file", "c"]];
+    R.forEach(([w, f, c], k) => {
+      const o = P(t, 6 + k * .6, 6.8 + k * .6), y = 120 + k * 120;
+      box(60, y, 980, 100, c, o, .1, 10);
+      text(80, y + 42, [[w, c, 1]], 26, { op: o });
+      text(80, y + 80, [["→ " + f]], 24, { op: o });
+    });
+    const gone = 1.5;
+    ctx(t, [[0, "CLAUDE.md (+ import)", "b", "220 lines", gone], [0, "MEMORY.md index", "c", "4 lines", gone], [0, "skill menu", "d", "1 entry each", gone],
+      [0, "teach-me body", "d", "197 lines", gone], [0, "conversation", "a", "", gone]], { collapse: false });
+    ctx(t, START(3.5), { op: 0 });
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
