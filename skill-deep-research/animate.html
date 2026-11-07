@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill deep research</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="links"><a href="../">← todas as aulas</a></div>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)", e: "var(--e)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const mono = (x, y, s, size, c = "f", op = 1, anchor = "start", w = 0) => op > 0 && add(`<text x="${x}" y="${y}" font-size="${size}" font-family="ui-monospace, monospace" style="fill:${COL[c]}" opacity="${op}" text-anchor="${anchor}"${w ? ' font-weight="700"' : ""}>${s}</text>`);
+function card(x, y, w, name, sub, c, op = 1, dim = 0) {
+  if (op <= 0) return;
+  const o = op * (1 - .6 * dim);
+  box(x, y, w, 78, c, o, .12, 10, dim > .5 ? "8 6" : "");
+  mono(x + 16, y + 33, name, 24, c, o, "start", 1);
+  text(x + 16, y + 64, [[sub, "m"]], 22, { op: o });
+}
+// a context window; rows = [appearAt, label, color, size, gone?, fromX?, fromY?]
+function panel(x, y, w, h, title, c, t, rows, o = {}) {
+  const op = o.op ?? 1;
+  box(x, y, w, h, c, op, .05, 14, o.dash || "");
+  text(x + w / 2, y + 40, [[title, c, 1]], 26, { anchor: "middle", op });
+  let ry = y + 62;
+  rows.forEach(([a, label, rc, size, gone, fx, fy]) => {
+    if (fx !== undefined) fly(fx, fy, x + w / 2, ry + 34, P(t, a - 1, a), label, rc, 24);
+    const p = P(t, a, a + .5) * (gone ? 1 - P(t, gone, gone + .8) : 1) * op;
+    if (p > 0) {
+      box(x + 14, ry, w - 28, 52, rc, p, .2, 10);
+      text(x + 28, ry + 35, [[label, rc, 1]], 23, { op: p });
+      if (size) text(x + w - 28, ry + 35, [[size, "m"]], 22, { anchor: "end", op: p });
+    }
+    ry += 60;
+  });
+}
+const CX = 1090, CW = 470;
+const ctx = (t, rows, o) => panel(CX, 60, CW, 720, "contexto do coordenador", "e", t, rows, o);
+function bubble(x, y, w, s, op = 1, c = "a") {
+  if (op <= 0) return;
+  box(x, y, w, 70, c, op, .15, 30);
+  text(x + 26, y + 45, [[s]], 26, { op });
+}
+function call(x, y, s, op = 1) {
+  if (op <= 0) return;
+  const w = s.replace(/&[a-z]+;/g, "x").length * 15.7 + 40;
+  box(x, y, w, 60, "e", op, .25, 8);
+  mono(x + 20, y + 40, s, 26, "e", op, "start", 1);
+}
+function diamond(cx, cy, w, h, label, c, op = 1) {
+  if (op <= 0) return;
+  add(`<polygon points="${cx},${cy - h / 2} ${cx + w / 2},${cy} ${cx},${cy + h / 2} ${cx - w / 2},${cy}" fill="${COL[c]}" fill-opacity=".15" stroke="${COL[c]}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + 9, [[label, c, 1]], 26, { anchor: "middle", op });
+}
+const Q = "Compare plataformas de CRM para pequenas empresas";
+const TITLE = "CRM para pequenas empresas";
+
+const GLOSS = {
+  "contexto": "tudo o que o Claude enxerga neste turno: instruções, arquivos lidos, conversa, resultados de tools",
+  "subagente": "outro Claude aberto pela Agent tool, com contexto próprio e vazio; devolve só um resumo final",
+  "coordenador": "o Claude da sua sessão; com esta skill ele planeja, abre subagentes e entrega, sem pesquisar",
+  "skill": "pasta com um SKILL.md: instruções para um tipo de tarefa, carregadas quando a tarefa aparece",
+  "description": "campo no topo do SKILL.md que diz quando a skill deve disparar",
+  "Agent tool": "a tool que abre um subagente (chamada Task em algumas versões)",
+  "AskUserQuestion": "tool que mostra uma pergunta com opções clicáveis",
+  "research_notes/": "pasta das notas dos pesquisadores, uma subpasta por pesquisa",
+  "MECE": "mutuamente exclusivos e coletivamente exaustivos: subtemas sem sobreposição que juntos cobrem tudo",
+  "em paralelo": "todas as chamadas Agent na mesma mensagem: rodam ao mesmo tempo",
+  "primeiro plano": "run_in_background=false: o coordenador espera o subagente terminar",
+  "tool call": "uma chamada de ferramenta: uma busca, a leitura de uma página...",
+  "WebSearch / WebFetch": "WebSearch busca na web e devolve trechos; WebFetch baixa uma página inteira",
+  "snippet": "o trecho que a busca mostra de cada resultado; fora da página, fácil de ler errado",
+  "fonte primária": "quem produziu o dado (site do fabricante, relatório oficial), não quem repassou",
+  "agregador": "site que junta e repassa conteúdo de outros",
+  "Gaps": "seção das notas com o que ficou sem fonte confiável; nada inventado no lugar",
+  "lacuna crítica": "um buraco nas notas que deixaria o relatório incompleto",
+  "timeout / rate limit": "tempo máximo de espera / limite de chamadas por minuto; estourados, a resposta não chega",
+  "redator": "o subagente report writer: lê as notas e escreve o relatório, sem pesquisar nada",
+  "BLUF": "bottom line up front: a conclusão no primeiro parágrafo, antes do detalhe",
+  "cabeçalho-placa": "signpost header: título de seção que já conta o achado, de preferência com um número",
+  "SendUserFile": "tool que manda um arquivo para você, inclusive em outro aparelho",
+};
+const TERMS = [["contexto", "coordenador", "subagente"], ["description", "Agent tool"], ["AskUserQuestion", "research_notes/"],
+  ["MECE"], ["em paralelo", "primeiro plano", "subagente"], ["tool call", "WebSearch / WebFetch", "snippet"],
+  ["fonte primária", "agregador", "Gaps"], ["lacuna crítica", "timeout / rate limit"], ["redator", "BLUF", "cabeçalho-placa"],
+  ["SendUserFile", "contexto"]];
+
+const SCENES = [
+{ title: "Por que um coordenador", dur: 12,
+  cap: [[0, "Pesquisa de verdade lê dezenas de páginas. Num agente só, cada busca e cada página inteira ficam no seu <b>contexto</b>."],
+        [5.5, "Com a skill, <b>subagentes</b> leem as páginas, cada um no seu próprio contexto. O coordenador recebe só os resumos."],
+        [9.5, "O SKILL.md dá esse motivo com todas as letras: manter limpo o contexto do coordenador."]],
+  draw(t) {
+    const rows = [[0.3, "sua pergunta", "a"]];
+    for (let k = 0; k < 9; k++) rows.push([0.8 + k * .5, k % 3 ? `página inteira ${k - Math.floor(k / 3)}` : `busca ${k / 3 + 1}`, k % 3 ? "m" : "e", k % 3 ? "milhares de linhas" : "10 resultados"]);
+    panel(60, 60, 680, 720, "sem a skill: um agente faz tudo", "r", t, rows);
+    text(400, 760, [["contexto lotado", "r", 1]], 30, { anchor: "middle", op: P(t, 5, 5.6) });
+    for (let k = 0; k < 4; k++) {
+      const y = 140 + k * 150, o = P(t, 6 + k * .3, 6.6 + k * .3), dim = P(t, 10, 10.8);
+      box(790, y, 260, 110, "c", o * (1 - .6 * dim), .12, 12, dim > .5 ? "8 6" : "");
+      text(920, y + 45, [[`pesquisador ${k + 1}`, "c", 1]], 24, { anchor: "middle", op: o * (1 - .6 * dim) });
+      text(920, y + 82, [[dim > .5 ? "descartado" : "contexto próprio", "m"]], 22, { anchor: "middle", op: o });
+    }
+    ctx(t, [[0.3, "sua pergunta", "a"], [6, "SKILL.md deep-research", "d", "146 linhas"],
+      [8.5, "4 resumos curtos", "c", "", 0, 920, 400], [9.3, "resumo do redator", "b"]]);
+  } },
+
+{ title: "Quando a skill dispara", dur: 12,
+  cap: [[0, "Sua mensagem chega e é comparada com a <b>description</b> de cada skill."],
+        [3, "Duas condições: pesquisar em várias fontes (comparar opções conta) e juntar tudo num relatório narrativo."],
+        [7.5, "E uma trava: só serve se existir a <b>Agent tool</b>. Sem ela, o Claude pesquisa direto, sem coordenar ninguém."]],
+  draw(t) {
+    bubble(60, 80, 980, Q, P(t, 0, .8));
+    const L1 = P(t, 3.5, 4.2), L2 = P(t, 5.5, 6.2), L3 = P(t, 8, 8.7);
+    add(`<rect x="60" y="190" width="980" height="390" rx="12" fill="${COL.p}" stroke="${COL.d}" stroke-width="3"/>`);
+    mono(80, 230, "deep-research/SKILL.md", 24, "d", 1, "start", 1);
+    const D = [["description: Use this skill when the user's", "f", 0], ["  prompt requires (1) researching a topic across", L1 ? "a" : "f", L1],
+      ["  multiple sources, comparing options ...", L1 ? "a" : "f", L1], ["  and (2) synthesizing that research into a", L2 ? "a" : "f", L2],
+      ["  comprehensive, narrative report. ...", L2 ? "a" : "f", L2], ["  use it only when you have a tool for", L3 ? "e" : "f", L3],
+      ["  spawning subagents (the Agent or Task tool)", L3 ? "e" : "f", L3]];
+    D.forEach(([s, c, h], k) => mono(80, 280 + k * 42, s, 24, c, 1, "start", h > 0));
+    arrow(900, 155, 900, 255, "a", P(t, 3, 3.8));
+    call(60, 620, "Skill(\"deep-research\")", P(t, 9.5, 10.1));
+    ctx(t, [[0.5, "sua pergunta", "a"], [10.8, "SKILL.md deep-research", "d", "146 linhas", 0, 330, 650]]);
+  } },
+
+{ title: "Passos 1 e 2: uma dúvida? e o título", dur: 13,
+  cap: [[0, "Passo 1: pergunta de volta só quando a resposta mudaria a pesquisa, e com <b>AskUserQuestion</b>."],
+        [4, "Passo 2: um título curto. Ele vira o nome da pasta das notas e o nome do relatório."],
+        [9, "As pastas ficam no diretório atual, nunca em /tmp. Um título novo por pedido, para nunca misturar notas."]],
+  draw(t) {
+    text(60, 100, [["Passo 1: falta algum detalhe?", "d", 1]], 30);
+    ["sigla ou jargão com 2 sentidos?", "região implícita que muda a resposta?", "nome que aponta pra 2 coisas?"].forEach((s, k) => {
+      const o = P(t, .8 + k * .6, 1.3 + k * .6);
+      box(60, 130 + k * 80, 680, 62, "l", o, .1, 10);
+      text(80, 170 + k * 80, [[s]], 24, { op: o });
+      text(720, 172 + k * 80, [["não", "m", 1]], 24, { anchor: "end", op: P(t, 2.5 + k * .3, 3 + k * .3) });
+    });
+    text(60, 420, [["→ segue sem perguntar", "c", 1]], 26, { op: P(t, 3.3, 3.9) });
+    text(820, 100, [["Passo 2: o título", "d", 1]], 30, { op: P(t, 4, 4.5) });
+    chip(1080, 175, TITLE, "a", 30, P(t, 4.5, 5.2));
+    [["4 palavras", "de 3 a 6"], ["26 caracteres", "menos de 50"], ["só letras, números, espaços", "sem hífen nem pontuação"]].forEach(([a, b], k) => {
+      const o = P(t, 5.5 + k * .6, 6 + k * .6);
+      text(820, 270 + k * 50, [["✓ ", "c", 1], [a, "f", 1], ["  " + b, "m"]], 24, { op: o });
+    });
+    const f = P(t, 8.5, 9.2);
+    box(820, 430, 720, 230, "c", f, .08, 12);
+    mono(840, 475, "./research_notes/", 24, "c", f, "start", 1);
+    mono(840, 515, "    " + TITLE + "/", 24, "c", f);
+    mono(840, 565, "./reports/", 24, "b", f, "start", 1);
+    mono(840, 605, "    " + TITLE + ".md", 24, "b", P(t, 10, 10.6));
+    text(840, 640, [["(o relatório, mais tarde)", "m"]], 22, { op: P(t, 10, 10.6) });
+    text(820, 720, [["pedido seguinte = título novo, pasta nova", "m", 1]], 24, { op: P(t, 11, 11.6) });
+  } },
+
+{ title: "Passo 3: quebrar em subtemas", dur: 13,
+  cap: [[0, "Quantos pesquisadores? A tabela do SKILL.md liga o formato da pergunta ao número."],
+        [5, "\"Compare CRMs\" tem critérios distintos: 4 pesquisadores, um por critério."],
+        [8.5, "Os subtemas são <b>MECE</b>: nenhum pisa no outro e juntos cobrem a pergunta. Na dúvida, 3."]],
+  draw(t) {
+    text(110, 100, [["pesquisadores", "m", 1]], 22, { anchor: "middle" });
+    text(220, 100, [["quando", "m", 1]], 22);
+    [["1", "pergunta factual única"], ["3", "poucos ângulos de um tema focado"], ["4", "facetas ou critérios distintos"],
+     ["5", "várias entidades, regiões ou domínios"], ["6+", "conjunto grande que dá pra enumerar"]].forEach(([n, s], k) => {
+      const o = P(t, .5 + k * .5, 1 + k * .5), y = 130 + k * 100, hit = k === 2 ? P(t, 5, 5.7) : 0;
+      box(60, y, 960, 80, hit ? "a" : "l", o, .08 + .25 * hit, 10);
+      text(110, y + 54, [[n, hit ? "a" : "f", 1]], 38, { anchor: "middle", op: o });
+      text(220, y + 52, [[s, hit ? "a" : "f", hit > 0]], 26, { op: o });
+    });
+    chip(1310, 130, "Compare CRMs p/ pequenas empresas", "a", 22, P(t, 5.5, 6.1));
+    ["1. modelos de preço", "2. funcionalidades", "3. ecossistema de integrações", "4. avaliações e sentimento"].forEach((s, k) => {
+      const y = 290 + k * 120, p = P(t, 6.3 + k * .4, 7 + k * .4);
+      chip(1310, y, s, "c", 24, p);
+    });
+    text(1310, 780, [["sem sobreposição, sem buraco", "c", 1]], 24, { anchor: "middle", op: P(t, 9, 9.6) });
+  } },
+
+{ title: "Passo 4: todos de uma vez", dur: 13,
+  cap: [[0, "O coordenador manda as 4 chamadas Agent na mesma mensagem: rodam <b>em paralelo</b>, em <b>primeiro plano</b>."],
+        [5, "Cada pesquisador, antes de tudo, lê references/researcher.md. O coordenador nunca abre esse arquivo."],
+        [8.5, "O prompt é preenchido num formato fixo: objetivo, perguntas-chave, fontes, restrições e o caminho exato do arquivo de notas."]],
+  draw(t) {
+    chip(550, 90, "coordenador", "e", 28, 1);
+    box(60, 140, 980, 110, "e", P(t, .8, 1.3), .06, 12, "8 6");
+    text(80, 172, [["uma mensagem", "m"]], 22, { op: P(t, .8, 1.3) });
+    ["preços", "funcionalidades", "integrações", "avaliações"].forEach((s, k) => {
+      const y = 320, bx = 60 + k * 251, p = P(t, 2.5, 3.2), o = P(t, 1.3, 1.9);
+      mono(bx + 112, 225, "Agent(...)", 24, "e", o, "middle", 1);
+      arrow(bx + 112, 250, bx + 112, y - 4, "e", P(t, 2, 2.6), 3);
+      box(bx, y, 225, 110, "c", p, .12, 12);
+      text(bx + 112, y + 45, [[`pesquisador ${k + 1}`, "c", 1]], 24, { anchor: "middle", op: p });
+      text(bx + 112, y + 82, [[s, "m"]], 22, { anchor: "middle", op: p });
+      arrow(bx + 112, y + 110, 550, 545, "c", P(t, 5, 5.8), 3);
+    });
+    chip(550, 575, "references/researcher.md", "c", 24, P(t, 5.5, 6));
+    text(550, 650, [["1º passo de cada pesquisador", "c", 1]], 24, { anchor: "middle", op: P(t, 6, 6.6) });
+    text(550, 710, [["o coordenador não lê: mantém o contexto limpo", "r"]], 24, { anchor: "middle", op: P(t, 7, 7.6) });
+    const pp = P(t, 8.5, 9.1);
+    box(CX, 60, CW, 720, "c", pp, .05, 14);
+    text(CX + CW / 2, 100, [["prompt do pesquisador 1", "c", 1]], 26, { anchor: "middle", op: pp });
+    ["Research modelos de preço", "de CRM p/ pequenas empresas.", "", "Objective: ...", "Key questions:", "- quanto custa por usuário?",
+     "Suggested sources:", "- páginas de preço oficiais", "Constraints: ...", "Save your output notes to", ".../CRM para pequenas",
+     "   empresas/precos.md", "As a first step, you must", "read .../researcher.md"].forEach((s, k) =>
+      mono(CX + 20, 150 + k * 43, s, 22, k >= 9 ? "a" : "f", P(t, 8.8 + k * .12, 9.3 + k * .12), "start", k >= 9));
+  } },
+
+{ title: "Dentro de um pesquisador", dur: 13,
+  cap: [[0, "O pesquisador gira um laço: ver o que falta, buscar, ler a página inteira, repetir."],
+        [4.5, "Ler inteiro importa: um <b>snippet</b> solto tira a frase do contexto. Buscas e leituras saem em paralelo."],
+        [9.2, "Uns 10 <b>tool calls</b> é o normal, 15 o teto. Depois disso o relatório atrasa e as chamadas estouram tempo."]],
+  draw(t) {
+    const V = [[520, 160], [800, 560], [240, 560]];
+    V.forEach((v, k) => { const w = V[(k + 1) % 3]; line(v[0], v[1], w[0], w[1], "l", 4); });
+    [["1. refletir", "que lacuna ainda falta?"], ["2. buscar", "WebSearch, consulta curta"], ["3. ler inteiro", "WebFetch nas promissoras"]].forEach(([a, b], k) => {
+      const [x, y] = V[k];
+      box(x - 200, y - 55, 400, 110, "p", 1, 1, 14);
+      box(x - 200, y - 55, 400, 110, "c", 1, .15, 14);
+      text(x, y - 8, [[a, "c", 1]], 28, { anchor: "middle" });
+      text(x, y + 30, [[b, "m"]], 22, { anchor: "middle" });
+    });
+    const u = clamp((t - 1) / 7.8) * 9, seg = Math.min(8, Math.floor(u)), f = u - seg;
+    const a = V[seg % 3], b = V[(seg + 1) % 3];
+    if (t > 1 && t < 8.8) dot(L(a[0], b[0], ease(f)), L(a[1], b[1], ease(f)), "a", 16);
+    chip(800, 685, "\"CRM preço por usuário\"  4 palavras", "e", 22, P(t, 2.5, 3.1));
+    text(240, 690, [["snippet sozinho engana", "r", 1]], 24, { anchor: "middle", op: P(t, 4.5, 5.1) });
+    text(520, 430, [["várias buscas e leituras", "m"]], 22, { anchor: "middle", op: P(t, 6, 6.6) });
+    text(520, 460, [["na mesma mensagem", "m"]], 22, { anchor: "middle", op: P(t, 6, 6.6) });
+    const n = Math.round(10 * clamp((t - 1) / 7.8));
+    const X = s => L(1120, 1500, s / 15);
+    text(1310, 120, [["tool calls: ", "f", 1], [String(n), "a", 1]], 32, { anchor: "middle" });
+    box(1120, 170, 380, 40, "l", 1, .1, 8);
+    if (n > 0) box(1120, 170, X(n) - 1120, 40, "a", 1, .5, 8);
+    line(X(10), 155, X(10), 225, "c", 3); text(X(10), 260, [["10 típico", "c", 1]], 22, { anchor: "middle" });
+    line(X(15), 155, X(15), 225, "r", 3); text(X(15) - 4, 300, [["15 teto", "r", 1]], 22, { anchor: "end" });
+    text(1110, 400, [["para quando:", "f", 1]], 26, { op: P(t, 9.2, 9.8) });
+    ["perguntas-chave respondidas", "nada novo aparecendo", "chegando perto de 15 calls"].forEach((s, k) =>
+      text(1110, 450 + k * 50, [["• " + s]], 24, { op: P(t, 9.6 + k * .4, 10.2 + k * .4) }));
+  } },
+
+{ title: "As notas: todo fato tem fonte", dur: 13,
+  cap: [[0, "Cada pesquisador grava as notas no arquivo do seu prompt, num formato fixo por pergunta-chave."],
+        [6.5, "Fato sem URL não entra em Cited Findings: desce para <b>Gaps</b>. Escrever \"não achei fonte confiável\" também é informação."],
+        [10.5, "Fontes que brigam ficam as duas, marcadas. O redator não pesquisa nada, então a nota precisa se sustentar sozinha."]],
+  draw(t) {
+    add(`<rect x="60" y="60" width="980" height="720" rx="12" fill="${COL.p}" stroke="${COL.c}" stroke-width="3"/>`);
+    mono(80, 100, ".../" + TITLE + "/precos.md", 22, "c", 1, "start", 1);
+    const N = [["# Modelos de preço", "f", 1], ["## Quanto custa por usuário?", "f", 1], ["### Takeaway", "d", 1], ["1-2 frases com a conclusão", "m", 0],
+      ["### Cited Findings", "d", 1], ["- fato A - [Source](URL)", "f", 0], ["- fato B - [Fonte A](URL); contradito por [Fonte B](URL)", "f", 0],
+      ["- fato C", "r", 0], ["### Inferences", "d", 1], ["- o que se conclui de A e B", "m", 0], ["### Gaps", "d", 1], ["- fato C: nenhuma fonte confiável", "r", 0]];
+    const move = P(t, 7.5, 9);
+    N.forEach(([s, c, w], k) => {
+      let o = P(t, .5 + k * .4, 1 + k * .4);
+      if (k === 7) o *= 1 - P(t, 7.5, 7.8);
+      if (k === 11) o = P(t, 9, 9.4);
+      mono(90, 150 + k * 52, s, 24, c, o, "start", w || (k === 6 && P(t, 10.5, 11) > 0));
+    });
+    if (move > 0 && move < 1) mono(90, L(150 + 7 * 52, 150 + 11 * 52, move), "- fato C", 24, "r", 1, "start", 1);
+    text(1100, 120, [["antes de anotar um fato:", "f", 1]], 26, { op: P(t, 3, 3.5) });
+    ["especulação ou fato confirmado?", "fonte primária ou agregador?", "fonte suspeita? (autoridade falsa,", "  \"fontes dizem\", sem nomes)"].forEach((s, k) =>
+      text(1100, 180 + k * 46, [[s]], 24, { op: P(t, 3.5 + k * .4, 4 + k * .4) }));
+    text(1100, 450, [["sem URL → Gaps", "r", 1]], 30, { op: P(t, 7, 7.6) });
+    text(1100, 520, [["conflito → as duas, marcadas", "a", 1]], 26, { op: P(t, 10.5, 11.1) });
+  } },
+
+{ title: "Passo 5: no máximo uma rodada extra", dur: 13,
+  cap: [[0, "Os 4 terminam e cada um devolve só um resumo curto ao coordenador."],
+        [3.5, "Se falta algo que deixaria o relatório incompleto, abre mais pesquisadores. Uma vez só, e ao abrir diz a frase-trava abaixo."],
+        [9.5, "Uma segunda rodada nunca: viria <b>timeout</b> ou <b>rate limit</b> e você ficaria sem resposta."]],
+  draw(t) {
+    chip(400, 90, "coordenador", "e", 28, 1);
+    for (let k = 0; k < 4; k++) {
+      const bx = 60 + k * 230;
+      box(bx, 600, 200, 90, "c", 1, .12, 12);
+      text(bx + 100, 655, [[`pesquisador ${k + 1}`, "c", 1]], 22, { anchor: "middle" });
+      fly(bx + 100, 590, 400, 120, P(t, .5 + k * .3, 2.5 + k * .3), "resumo", "c", 24);
+    }
+    diamond(400, 260, 340, 130, "lacuna crítica?", "a", P(t, 3.5, 4.1));
+    arrow(400, 125, 400, 192, "a", P(t, 3.5, 4.1), 3);
+    arrow(572, 260, 760, 260, "a", P(t, 4.8, 5.4), 3);
+    text(665, 245, [["sim, 1 vez", "a", 1]], 22, { anchor: "middle", op: P(t, 4.8, 5.4) });
+    box(770, 215, 230, 90, "c", P(t, 5.4, 6), .12, 12);
+    text(885, 270, [["pesquisador 5", "c", 1]], 22, { anchor: "middle", op: P(t, 5.4, 6) });
+    const m = P(t, 6.5, 7.2);
+    box(60, 380, 980, 130, "d", m, .1, 12);
+    text(550, 432, [["\"After these researchers finish, I will", "d", 1]], 26, { anchor: "middle", op: m });
+    text(550, 478, [["move directly to coordinating the report writer\"", "d", 1]], 26, { anchor: "middle", op: m });
+    text(550, 760, [["2ª rodada extra ✗", "r", 1], ["  timeout, rate limit, sem resposta", "r"]], 26, { anchor: "middle", op: P(t, 9.5, 10.1) });
+    ctx(t, [[0, "sua pergunta", "a"], [0, "SKILL.md deep-research", "d", "146 linhas"], [3, "4 resumos curtos", "c"], [8, "resumo do pesquisador 5", "c"]]);
+  } },
+
+{ title: "Passo 6: o redator", dur: 14,
+  cap: [[0, "Um único subagente, o <b>redator</b>, lê todas as notas. Antes, lê references/report-writer.md."],
+        [5, "O relatório abre com o <b>BLUF</b>: quem ler só o primeiro parágrafo já sai sabendo a resposta."],
+        [10, "Prosa densa, sem listas. Fato que chegou nas notas sem URL fica fora: 5 afirmações com fonte valem mais que 20 meio soltas."]],
+  draw(t) {
+    ["precos.md", "funcionalidades.md", "integracoes.md", "avaliacoes.md", "lacuna.md"].forEach((s, k) => {
+      const y = 100 + k * 100;
+      card(60, y, 330, s, "notas", "c", 1, P(t, 2.2 + k * .25, 2.8 + k * .25) * .6);
+      fly(225, y + 40, 565, 400, P(t, 1.5 + k * .25, 3 + k * .25), s, "c", 22);
+    });
+    chip(565, 200, "report-writer.md", "b", 22, P(t, .5, 1));
+    arrow(565, 222, 565, 325, "b", P(t, 1, 1.5), 3);
+    box(440, 330, 250, 140, "b", 1, .15, 14);
+    text(565, 393, [["redator", "b", 1]], 30, { anchor: "middle" });
+    text(565, 432, [["não pesquisa", "m"]], 22, { anchor: "middle" });
+    arrow(690, 400, 735, 400, "b", P(t, 4, 4.5), 3);
+    add(`<rect x="740" y="80" width="800" height="560" rx="12" fill="${COL.p}" stroke="${COL.b}" stroke-width="3" opacity="${P(t, 4, 4.5)}"/>`);
+    [["# Título de ~6 palavras, verbo ativo", "b", 1], ["BLUF: achado principal primeiro,", "a", 1], ["      5 a 8 frases, um parágrafo", "m", 0],
+     ["## Cabeçalho que já conta o achado", "b", 1], ["   prosa densa, **negrito**, ([Source](URL))", "f", 0], ["## ... 3 a 5 seções assim", "b", 1],
+     ["## Conclusion", "b", 1], ["   só o que é novo, 1 a 2 parágrafos", "m", 0]].forEach(([s, c, w], k) =>
+      mono(760, 135 + k * 60, s, 23, c, P(t, k < 3 ? 5 + k * .4 : 7 + k * .4, (k < 3 ? 5 + k * .4 : 7 + k * .4) + .5), "start", w));
+    text(760, 690, [["sem listas · fato sem URL fica fora", "r", 1]], 26, { op: P(t, 10, 10.6) });
+    mono(760, 750, "→ reports/" + TITLE + ".md", 24, "b", P(t, 12, 12.6), "start", 1);
+  } },
+
+{ title: "Passo 7: entregar", dur: 13,
+  cap: [[0, "O coordenador manda o arquivo com <b>SendUserFile</b>, lê o relatório pronto e escreve um resumo de 3 a 5 frases dizendo onde ele está."],
+        [5, "Os contextos dos pesquisadores somem com eles. No coordenador sobram poucos blocos."],
+        [8.5, "Voltou ao tema? Título novo que diz o que muda, e o redator recebe o relatório antigo como base."]],
+  draw(t) {
+    call(60, 80, "SendUserFile(\"reports/" + TITLE + ".md\")", P(t, .5, 1.1));
+    box(60, 180, 980, 80, "b", P(t, 2.5, 3.1), .12, 12);
+    text(80, 230, [["resumo de 3 a 5 frases", "b", 1], [" + onde está o relatório", "f"]], 26, { op: P(t, 2.5, 3.1) });
+    for (let k = 0; k < 5; k++) {
+      const bx = 60 + k * 198, dim = P(t, 5.5, 6.5);
+      box(bx, 300, 180, 100, "c", 1 - .6 * dim, .1, 12, dim > .5 ? "8 6" : "");
+      text(bx + 90, 342, [[`pesquisador ${k + 1}`, "c", 1]], 22, { anchor: "middle", op: 1 - .6 * dim });
+      text(bx + 90, 378, [[dim > .5 ? "descartado" : "~10 calls", "m"]], 22, { anchor: "middle" });
+    }
+    bubble(60, 460, 560, "e os preços em reais?", P(t, 8.5, 9.1));
+    text(60, 600, [["título novo: ", "m"], ["CRM pequenas empresas em reais", "a", 1]], 26, { op: P(t, 9.5, 10.1) });
+    text(60, 660, [["redator recebe: ", "m"], ["reports/" + TITLE + ".md", "b", 1]], 24, { op: P(t, 10.5, 11.1) });
+    text(60, 700, [["e a pasta de notas antiga, como base", "m"]], 24, { op: P(t, 10.5, 11.1) });
+    ctx(t, [[0, "sua pergunta", "a"], [0, "SKILL.md deep-research", "d", "146 linhas"], [0, "5 resumos curtos", "c"],
+      [0, "resumo do redator", "b"], [2.5, "seu resumo para você", "e"]]);
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
