@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A skill carteira, animada</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 46px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+  #links a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" title="recomeçar">⏮</button>
+  <button id="prev" title="cena anterior (←)">◀◀</button>
+  <button id="play" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" title="próxima cena (→)">▶▶</button>
+  <button id="replay" title="repetir esta cena">↻</button>
+  <button class="spd" data-s="0.5">0.5x</button>
+  <button class="spd on" data-s="1">1x</button>
+  <button class="spd" data-s="2">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0.001 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const ring = (x, y, color, r = 11, op = 1) => op > 0.001 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+function box(x, y, w, h, c, op = 1, dash = "") {
+  if (op <= 0.001) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${COL.p}" stroke="${COL[c]}" stroke-width="3"${dash ? ` stroke-dasharray="${dash}"` : ""} opacity="${op}"/>`);
+}
+function arrow(x1, y1, x2, y2, p, c = "m") {
+  if (p <= 0.001) return;
+  add(`<line x1="${x1}" y1="${y1}" x2="${L(x1, x2, p)}" y2="${L(y1, y2, p)}" stroke="${COL[c]}" stroke-width="3.5" marker-end="url(#ah)"/>`);
+}
+const hline = (x1, x2, y, c, op = 1, dash = "", w = 3) => op > 0.001 && add(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="${COL[c]}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ""} opacity="${op}"/>`);
+const bar = (x, y, w, h, c, op = 1, fo = .75) => op > 0.001 && h > 0 && add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="${COL[c]}" fill-opacity="${fo}" opacity="${op}"/>`);
+const type = (s, p) => s.slice(0, Math.round(s.length * clamp(p)));
+const brN = (v, d = 2) => v.toFixed(d).replace(".", ",");
+const mil = v => Math.round(v).toLocaleString("pt-BR");
+
+// ---------- scenes
+const GLOSS = {
+  "skill": "um arquivo de instruções que o Claude Code segue quando você diz certas palavras",
+  "SKILL.md": "o arquivo da skill: regras, critérios e formato da resposta, em texto",
+  "carteira.csv": "uma linha por papel: ticker, quantidade, classe e pm (preço médio que você pagou)",
+  "TSV": "texto com valores separados por tab, uma linha por ticker",
+  "P/L": "preço ÷ lucro por ação: em quantos anos o lucro paga o preço",
+  "P/VP": "preço ÷ valor patrimonial por cota; abaixo de 1, paga menos que o patrimônio",
+  "DY": "dividend yield: proventos de 12 meses ÷ preço, em %",
+  "ROE": "lucro ÷ patrimônio, em %: quanto a empresa rende sobre o dinheiro dos sócios",
+  "CVM": "Comissão de Valores Mobiliários, o regulador do mercado; publica os dados das empresas",
+  "FCA": "formulário cadastral da CVM: liga cada ticker ao CNPJ da empresa",
+  "DFP": "demonstrações financeiras anuais entregues à CVM; dela sai o lucro de cada ano",
+  "oficial": "site de RI (relações com investidores), documento da CVM ou da B3/FundosNet",
+  "imprensa": "Valor, InfoMoney, Brazil Journal, Money Times: contexto, nunca muda o veredito sozinho",
+  "fato relevante": "comunicado obrigatório da empresa sobre algo que mexe no preço",
+  "relatório gerencial": "relatório mensal do FII: rendimento, vacância, inquilinos",
+  "BESST": "bancos, energia, saneamento, seguros, telecom: setores perenes, com demanda estável",
+  "70% da média": "o último ano precisa valer pelo menos 0,7 × a média dos 5 anos",
+  "extraordinário": "ano acima de 2× a média dos outros anos; sai da conta da tendência e do teto",
+  "data-com": "último dia em que comprar ainda dá direito ao provento; o dividendo conta no ano dela",
+  "cres5a": "crescimento da receita nos últimos 5 anos, % ao ano",
+  "FII tijolo": "fundo imobiliário dono de imóveis: galpões, shoppings, escritórios",
+  "outro": "classe para papel cíclico ou especulativo: conta no total, nunca recebe compra",
+  "teto": "preço máximo a pagar: menor entre a média e o último dividendo, ÷ 0,06",
+  "0,06": "6% ao ano, o rendimento mínimo de Bazin",
+  "alvo": "40% dividendo, 40% FII tijolo, 20% crescimento, sobre o total depois do aporte",
+  "aporte": "dinheiro novo que entra na carteira",
+  "Oportunidade": "candidato novo muito barato: entra mesmo com os papéis atuais passando; 1 por rodada",
+  "limite": "no máximo 10 ações e 6 FIIs, para cada posição continuar relevante",
+  "15%": "papel acima de 15% do total não recebe compra",
+  "sobra": "troco do aporte; nunca vai para papel caro, soma no próximo",
+  "git push": "envia o commit do log para o repositório finances",
+};
+const TERMS = [["skill", "SKILL.md", "carteira.csv"], ["TSV", "P/L", "P/VP", "DY", "ROE", "CVM", "FCA", "DFP"],
+  ["oficial", "imprensa", "fato relevante", "relatório gerencial"], ["BESST", "70% da média"],
+  ["extraordinário", "data-com"], ["ROE", "cres5a", "FII tijolo", "outro"], ["teto", "0,06", "P/L"],
+  ["alvo", "aporte"], ["limite", "Oportunidade", "15%"], ["sobra", "git push"]];
+
+const TICKERS = [["TAEE11", "a"], ["VIVT3", "a"], ["ITUB4", "a"], ["BBAS3", "a"], ["TOTS3", "b"], ["LREN3", "b"], ["PRIO3", "m"],
+  ["BTLG11", "c"], ["XPML11", "c"], ["PVBI11", "c"], ["TRXF11", "c"], ["RBRP11", "c"], ["VINO11", "c"]];
+
+function divChart(x0, tk, d, ok, t, tRes, f1, f2) {
+  const base = 590, sc = 85, avg = d.reduce((a, b) => a + b) / 5;
+  text(x0 + 255, 120, [[tk, "a", 1]], 38, { anchor: "middle" });
+  hline(x0 - 15, x0 + 510, base, "m");
+  d.forEach((v, i) => {
+    const g = P(t, .2 + i * .25, 1 + i * .25), x = x0 + i * 105, h = v * sc * g;
+    const c = i === 4 && t >= tRes ? (ok ? "c" : "r") : "a";
+    bar(x, base - h, 70, h, c, 1, i === 4 && t >= tRes ? 1 : .7);
+    text(x + 35, base - h - 12, [[brN(v, 2)]], 26, { anchor: "middle", op: g });
+    text(x + 35, base + 34, [[String(2021 + i), "m"]], 24, { anchor: "middle" });
+  });
+  const ma = P(t, 2.2, 3), m7 = P(t, 3.2, 4);
+  hline(x0 - 15, x0 + 510, base - avg * sc, "m", ma, "10 7");
+  text(x0 + 520, base - avg * sc + 8, [["média " + brN(avg, 2), "m"]], 24, { op: ma });
+  hline(x0 - 15, x0 + 510, base - .7 * avg * sc, "f", m7, "5 5", 2.5);
+  text(x0 + 520, base - .7 * avg * sc + 8, [["70%", "f", 1]], 24, { op: m7 });
+  const r = P(t, tRes, tRes + .8);
+  text(x0 + 255, 690, [[f1, ok ? "c" : "r", 1]], 32, { anchor: "middle", op: r });
+  text(x0 + 255, 745, [[f2, ok ? "c" : "r"]], 28, { anchor: "middle", op: P(t, tRes + 1, tRes + 1.8) });
+}
+
+const SCENES = [
+{ title: "O pedido", dur: 9,
+  cap: [[0, "Você pede: <b>carteira, aporte R$ 2.000</b>."],
+        [2, "O Claude abre <b>SKILL.md</b>: as regras da skill, escritas em texto."],
+        [4.5, "Antes de qualquer conta, ele relê três arquivos em <b>~/workspace/finances</b>: o que você tem, a última rodada e as pendências."]],
+  draw(t) {
+    const bp = P(t, 0, .8);
+    box(50, 320, 400, 140, "b", bp);
+    text(250, 370, [["você", "m"]], 26, { anchor: "middle", op: bp });
+    text(250, 420, [[type("carteira, aporte R$ 2.000", P(t, .3, 1.5)), "b", 1]], 30, { anchor: "middle", op: bp });
+    arrow(455, 390, 590, 390, P(t, 1.4, 2));
+    const cp = P(t, 1.6, 2.2);
+    box(600, 290, 330, 200, "e", cp);
+    text(765, 345, [["Claude", "e", 1]], 40, { anchor: "middle", op: cp });
+    chip(765, L(110, 430, P(t, 2.2, 3.4)), "SKILL.md", "d", 28, P(t, 2, 2.4));
+    const files = [["carteira.csv", "ticker,qtd,classe,pm"], ["carteira-log.md", "última rodada: veredito, sobra"], ["proximos-passos.md", "- [ ] após 3T26: ..."]];
+    files.forEach(([n, s], i) => {
+      const y = 160 + i * 230, op = P(t, 4.6 + i * .8, 5.3 + i * .8);
+      box(1060, y - 70, 500, 130, "m", op);
+      text(1310, y - 15, [[n, "f", 1]], 30, { anchor: "middle", op });
+      text(1310, y + 32, [[s, "m"]], 26, { anchor: "middle", op });
+      arrow(1055, y, 940, L(330, 450, i / 2), P(t, 5 + i * .8, 5.6 + i * .8));
+    });
+  } },
+
+{ title: "Dois scripts em paralelo", dur: 12,
+  cap: [[0, "<b>fundamentus.sh</b> baixa a página de cada ticker e devolve uma linha: cotação, P/L, P/VP, DY, ROE, crescimento."],
+        [5, "<b>historico.sh</b> procura o ticker no cadastro da CVM. Achou CNPJ: é ação, e ele pega o lucro de 5 anos. Não achou: é FII, só dividendos."],
+        [10, "Os dois rodam ao mesmo tempo. Ticker sem dado sai como erro, nunca como número inventado."]],
+  draw(t) {
+    chip(190, 90, "fundamentus.sh", "e", 30, P(t, 0, .6));
+    arrow(335, 90, 520, 90, P(t, .5, 1.2));
+    const bp = P(t, 1, 1.6);
+    box(530, 50, 560, 80, "m", bp);
+    text(810, 100, [["fundamentus.com.br/detalhes.php", "m"]], 26, { anchor: "middle", op: bp });
+    const vals = ["TAEE11", "39.60", "05/11/2026", "8.39", "1.69", "7.6", "Energia Elétrica", "20.1", "13.0"];
+    const labs = ["ticker", "cotação", "data", "P/L", "P/VP", "DY", "segmento", "ROE", "cres5a"];
+    const toks = [];
+    vals.forEach((v, i) => { toks.push([v, i === 0 ? "a" : "f", i === 0 ? 1 : 0]); if (i < vals.length - 1) toks.push(["    "]); });
+    const ops = toks.map((_, i) => P(t, 1.8 + (i >> 1) * .18, 2.2 + (i >> 1) * .18));
+    const cs = row(800, 210, toks, 28, { op: ops });
+    labs.forEach((l, i) => text(cs[i * 2], 250, [[l, "e"]], 24, { anchor: "middle", op: P(t, 3.2, 4) }));
+    hline(40, 1560, 300, "l");
+
+    chip(190, 360, "historico.sh", "e", 30, P(t, 5, 5.6));
+    arrow(335, 360, 520, 360, P(t, 5.5, 6.1));
+    const fp = P(t, 6, 6.6);
+    box(530, 320, 560, 80, "m", fp);
+    text(810, 370, [["FCA da CVM: ticker → CNPJ", "m"]], 26, { anchor: "middle", op: fp });
+    text(120, 470, [["TAEE11", "a", 1], ["  → CNPJ achado → "], ["ação", "a", 1], ["  → dividendos + lucro da DFP", "m"]], 28, { op: P(t, 6.6, 7.2) });
+    text(160, 520, [[type("div      4.504   4.855   2.915   3.532   3.229", P(t, 7.2, 8)), "f"]], 26, {});
+    text(160, 565, [[type("lucro   2213714   1449215   1367834   1693915   1579863", P(t, 7.6, 8.4)), "f"]], 26, {});
+    text(120, 660, [["BTLG11", "c", 1], ["  → sem CNPJ → "], ["FII", "c", 1], ["  → só dividendos", "m"]], 28, { op: P(t, 8.4, 9) });
+    text(160, 710, [[type("div      8.150   8.840   9.000   9.270   9.490", P(t, 9, 9.8)), "f"]], 26, {});
+    text(1500, 520, [["2021 → 2025", "m"]], 24, { anchor: "end", op: P(t, 7.2, 8) });
+    text(800, 790, [["XXXX9  erro: papel não encontrado", "r", 1]], 26, { anchor: "middle", op: P(t, 10.2, 11) });
+  } },
+
+{ title: "Notícias", dur: 9,
+  cap: [[0, "Duas buscas por ticker, só dos últimos 30 dias: uma <b>oficial</b> e uma de <b>imprensa</b>."],
+        [4, "No máximo 7 buscas de cada vez: 15 juntas estouram o limite."],
+        [7.2, "13 tickers × 2 = 26 buscas, em lotes de 7, 7, 7 e 5."]],
+  draw(t) {
+    const pos = TICKERS.map((_, i) => i < 7 ? [200 + i * 200, 250] : [300 + (i - 7) * 200, 430]);
+    const batchT = b => 1.5 + b * 1.4;
+    const cur = t < batchT(0) ? -1 : Math.min(3, Math.floor((t - 1.5) / 1.4));
+    TICKERS.forEach(([tk, c], i) => {
+      const [x, y] = pos[i];
+      chip(x, y, tk, c, 26, P(t, i * .06, .5 + i * .06));
+      [0, 1].forEach(k => {
+        const idx = 2 * i + k, b = Math.floor(idx / 7), lit = P(t, batchT(b) + .2, batchT(b) + .7);
+        const dx = x + (k ? 22 : -22), col = k ? "m" : "b";
+        ring(dx, y + 55, col, 12, .5);
+        dot(dx, y + 55, col, 12, lit);
+      });
+    });
+    if (cur >= 0) text(800, 130, [["lote " + (cur + 1) + " de 4 · " + (cur < 3 ? 7 : 5) + " buscas", "e", 1]], 34, { anchor: "middle" });
+    const lp = P(t, .5, 1.2);
+    dot(330, 600, "b", 13, lp);
+    text(355, 610, [["oficial: ", "b", 1], ["fato relevante (ação) ou relatório gerencial (FII); vale RI, CVM, B3", "f"]], 26, { op: lp });
+    dot(330, 660, "m", 13, lp);
+    text(355, 670, [["imprensa: ", "m", 1], ["resultado e dividendos em Valor, InfoMoney, Brazil Journal...", "f"]], 26, { op: lp });
+    text(800, 760, [["13 × 2 = 26 buscas → 7 + 7 + 7 + 5", "e", 1]], 32, { anchor: "middle", op: P(t, 7.2, 8) });
+  } },
+
+{ title: "Qualidade: dividendo", dur: 15,
+  cap: [[0, "Classe dividendo: 5 anos de proventos e de lucro. O último ano precisa valer pelo menos <b>70% da média</b>."],
+        [5, "TAEE11: 3,23 é <b>85%</b> da média de 3,81, e o lucro de 2025 é 95% da média. Passa."],
+        [10, "BBAS3: 1,17 é <b>38%</b> da média de 3,07, e o lucro caiu para 65%. Reprova, por mais barata que pareça."]],
+  draw(t) {
+    divChart(120, "TAEE11", [4.504, 4.855, 2.915, 3.532, 3.229], true, t, 5, "3,229 ÷ 3,807 = 85% ✓", "lucro 2025 = 95% da média ✓");
+    divChart(900, "BBAS3", [2.262, 4.139, 4.540, 3.219, 1.170], false, t, 10, "1,170 ÷ 3,066 = 38% ✗", "lucro 2025 = 65% da média ✗");
+  } },
+
+{ title: "Ano extraordinário", dur: 11,
+  cap: [[0, "ITUB4 pagou <b>R$ 4,73</b> em 2025. Os quatro anos anteriores têm média de 1,40."],
+        [3.5, "Um ano acima de 2× a média dos outros é <b>extraordinário</b>: dividendo declarado em dezembro e pago depois infla um ano só. Sai da conta."],
+        [7.5, "Sem 2025, a tendência sobe: 2,41 ÷ 1,40 = 172%. Passa."]],
+  draw(t) {
+    const d = [.909, 1.018, 1.257, 2.413, 4.732], base = 620, sc = 80;
+    text(700, 120, [["ITUB4", "a", 1], ["  dividendo por ano, R$", "m"]], 36, { anchor: "middle" });
+    hline(250, 1260, base, "m");
+    d.forEach((v, i) => {
+      const g = P(t, .2 + i * .25, 1 + i * .25), x = 290 + i * 200, h = v * sc * g;
+      const ex = i === 4 && t >= 3.5, fade = i === 4 ? L(1, .3, P(t, 4.5, 5.5)) : 1;
+      bar(x, base - h, 120, h, ex ? "r" : "a", fade);
+      text(x + 60, base - h - 14, [[brN(v, 3), ex ? "r" : "f", ex ? 1 : 0]], 28, { anchor: "middle", op: g });
+      text(x + 60, base + 36, [[String(2021 + i), "m"]], 26, { anchor: "middle" });
+    });
+    const mo = P(t, 1.8, 2.6), m2 = P(t, 3.5, 4.3);
+    hline(250, 1260, base - 1.399 * sc, "c", mo, "10 7");
+    text(1280, base - 1.399 * sc + 9, [["média dos outros 1,40", "c", 1]], 26, { op: mo });
+    hline(250, 1260, base - 2.798 * sc, "r", m2, "10 7");
+    text(1280, base - 2.798 * sc + 9, [["2 × 1,40 = 2,80", "r", 1]], 26, { op: m2 });
+    text(1150, 172, [["extraordinário", "r", 1]], 30, { anchor: "middle", op: P(t, 4.5, 5.2) });
+    text(800, 740, [["tendência sem 2025: 2,413 ÷ 1,399 = 172% ✓", "c", 1]], 34, { anchor: "middle", op: P(t, 7.5, 8.3) });
+  } },
+
+{ title: "Qualidade: crescimento e FII", dur: 11,
+  cap: [[0, "Crescimento: ROE ≥ 15, receita crescendo ≥ 10% ao ano e lucro positivo nos 5 anos."],
+        [4.5, "FII tijolo: o rendimento do último ano precisa valer pelo menos 80% da média."],
+        [8, "Classe <b>outro</b> nunca recebe compra, passe o que passar."]],
+  draw(t) {
+    const cols = [130, 450, 800, 1130, 1440];
+    ["papel", "régua 1", "régua 2", "régua 3", "resultado"].forEach((h, i) => text(cols[i], 110, [[h, "m"]], 26, { anchor: i ? "middle" : "start" }));
+    hline(60, 1560, 130, "l");
+    const rows = [
+      [230, ["TOTS3", "b"], [["ROE 26,7 ≥ 15 ✓", "c"], ["cres5a 16,3 ≥ 10 ✓", "c"], ["lucro &gt; 0 em 5/5 ✓", "c"]], ["passa", "c"], .4],
+      [320, ["LREN3", "b"], [["ROE 14,3 &lt; 15 ✗", "r"], ["cres5a 5,5 &lt; 10 ✗", "r"], ["lucro &gt; 0 em 5/5 ✓", "c"]], ["reprova", "r"], 2],
+      [460, ["BTLG11", "c"], [["9,49 ÷ média 8,95 = 106% ≥ 80% ✓", "c"]], ["passa", "c"], 4.6],
+      [550, ["VINO11", "c"], [["0,64 ÷ média 2,77 = 23% &lt; 80% ✗", "r"]], ["reprova", "r"], 6],
+      [690, ["PRIO3", "m"], [["classe outro", "m"]], ["fora", "r"], 8],
+    ];
+    rows.forEach(([y, [tk, c], cells, [res, rc], t0]) => {
+      const op = P(t, t0, t0 + .5);
+      chip(cols[0] + 70, y - 9, tk, c, 26, op);
+      if (cells.length === 1) text(cols[2] - 30, y, [[cells[0][0], cells[0][1], 1]], 28, { anchor: "middle", op: P(t, t0 + .3, t0 + .9) });
+      else cells.forEach(([s, cc], i) => text(cols[i + 1], y, [[s, cc, 1]], 28, { anchor: "middle", op: P(t, t0 + .3 + i * .35, t0 + .8 + i * .35) }));
+      text(cols[4], y, [[res, rc, 1]], 30, { anchor: "middle", op: P(t, t0 + 1.2, t0 + 1.7) });
+    });
+  } },
+
+{ title: "Preço: o teto", dur: 15,
+  cap: [[0, "Preço só decide a ordem de compra. Teto = menor entre a média e o último dividendo, ÷ 0,06."],
+        [3, "TAEE11: 3,229 ÷ 0,06 = <b>R$ 53,82</b>. Cotação 39,60 abaixo do teto e P/L 8,4: barato."],
+        [7, "BBAS3: pela média o teto seria R$ 51,10; pelo último ano, <b>R$ 19,50</b>. Está abaixo, mas reprovou em qualidade: não compra."],
+        [11, "VIVT3: cotação abaixo do teto, mas P/L 15,2 passa de 15. Caro: continua ✅, o aporte espera."]],
+  draw(t) {
+    const X = v => 300 + v * 20;
+    const lanes = [
+      { tk: "TAEE11", y: 230, teto: 53.82, pr: 39.60, f: "min(3,807; 3,229) ÷ 0,06 = R$ 53,82", v: "barato ✓", vc: "c", t0: 3 },
+      { tk: "BBAS3", y: 470, teto: 19.50, ghost: 51.10, pr: 16.49, f: "min(3,066; 1,170) ÷ 0,06 = R$ 19,50", v: "reprovou: não compra", vc: "r", t0: 7 },
+      { tk: "VIVT3", y: 710, teto: 41.08, pr: 31.12, f: "teto R$ 41,08 ok, mas P/L 15,2 &gt; 15", v: "caro: aporte espera", vc: "d", t0: 11 },
+    ];
+    lanes.forEach(({ tk, y, teto, ghost, pr, f, v, vc, t0 }, li) => {
+      text(60, y + 10, [[tk, "a", 1]], 30, {});
+      hline(X(0), X(60), y, "m", 1, "", 3);
+      for (let k = 0; k <= 60; k += 10) add(`<line x1="${X(k)}" x2="${X(k)}" y1="${y - 8}" y2="${y + 8}" stroke="${COL.m}" stroke-width="2"/>`);
+      if (li === 2) for (let k = 0; k <= 60; k += 10) text(X(k), y + 90, [["R$ " + k, "m"]], 24, { anchor: "middle" });
+      const op = P(t, t0, t0 + .6);
+      text(X(0), y - 80, [[f, "f"]], 28, { op });
+      const tv = ghost ? L(ghost, teto, P(t, t0 + 1.2, t0 + 2.6)) : teto;
+      add(`<line x1="${X(tv)}" x2="${X(tv)}" y1="${y - 34}" y2="${y + 14}" stroke="${COL.c}" stroke-width="5" opacity="${op}"/>`);
+      text(X(tv), y - 42, [["teto " + brN(tv), "c", 1]], 24, { anchor: "middle", op });
+      dot(X(pr), y, "b", 13, P(t, t0 + .4, t0 + 1));
+      text(X(pr), y + 44, [[brN(pr), "b", 1]], 26, { anchor: "middle", op: P(t, t0 + .4, t0 + 1) });
+      text(1560, y - 80, [[v, vc, 1]], 30, { anchor: "end", op: P(t, t0 + 2.6, t0 + 3.2) });
+    });
+  } },
+
+{ title: "Para onde vai o dinheiro", dur: 12,
+  cap: [[0, "Novo total: 12.500,15 + 2.000 = <b>R$ 14.500,15</b>. Alvo: 40% dividendo, 20% crescimento, 40% FII tijolo."],
+        [4, "FII tijolo já passou do alvo. Faltam R$ 1.655 em dividendo e R$ 1.675 em crescimento."],
+        [8, "O aporte vai para as duas classes mais longe do alvo, cerca de metade para cada."]],
+  draw(t) {
+    const x0 = 380, k = .15;
+    const rows = [["dividendo", "a", 4145.20, 5800.06, 1013.68, 280], ["crescimento", "b", 1224.80, 2900.03, 979.50, 450], ["fii-tijolo", "c", 6514.75, 5800.06, 0, 620]];
+    rows.forEach(([n, c, tem, alvo, buy, y], i) => {
+      text(x0 - 20, y + 10, [[n, c, 1]], 30, { anchor: "end" });
+      const g = P(t, .3 + i * .3, 1.3 + i * .3);
+      bar(x0, y - 35, tem * k * g, 70, c, 1, .7);
+      text(x0 + tem * k * g - 12, y + 10, [[mil(tem), "f", 1]], 26, { anchor: "end", op: g });
+      const ao = P(t, 2 + i * .3, 2.8 + i * .3);
+      add(`<line x1="${x0 + alvo * k}" x2="${x0 + alvo * k}" y1="${y - 55}" y2="${y + 55}" stroke="${COL.f}" stroke-width="3" stroke-dasharray="8 6" opacity="${ao}"/>`);
+      text(x0 + alvo * k + 12, y - 40, [["alvo " + mil(alvo), "f"]], 24, { op: ao });
+      const gp = P(t, 4, 4.8);
+      if (alvo > tem) {
+        add(`<rect x="${x0 + tem * k}" y="${y - 35}" width="${(alvo - tem) * k}" height="70" rx="5" fill="none" stroke="${COL[c]}" stroke-width="3" stroke-dasharray="8 6" opacity="${gp}"/>`);
+        text(x0 + alvo * k + 12, y + 30, [["falta " + mil(alvo - tem), c, 1]], 26, { op: gp });
+        const fp = P(t, 9.4, 10.4);
+        bar(x0 + tem * k, y - 35, buy * k * fp, 70, c, 1, 1);
+      } else text(x0 + tem * k + 12, y + 30, [["+ " + mil(tem - alvo) + " acima", "r", 1]], 26, { op: gp });
+    });
+    chip(800, 130, "aporte R$ 2.000", "e", 32, P(t, 7.6, 8.2) * (1 - P(t, 8.6, 8.9)));
+    fly(800, 130, x0 + 4145.2 * k + 75, 280, clamp((t - 8.6) / 1), "≈ R$ 1.000", "a", 30);
+    fly(800, 130, x0 + 1224.8 * k + 75, 450, clamp((t - 8.6) / 1), "≈ R$ 1.000", "b", 30);
+  } },
+
+{ title: "Limites", dur: 15,
+  cap: [[0, "No máximo <b>10 ações</b> e <b>6 FIIs</b>."],
+        [3, "FIIs 6/6: HGRU11 passa e está barato (P/VP 0,89), mas só entraria se você vender VINO11. Vender é decisão sua, nunca entra na lista de compra."],
+        [7.5, "Ações 7/10: cabe um papel novo. CMIG4 é <b>Oportunidade</b>: cotação 10,16 ≤ 0,898 ÷ 0,08 = 11,22, e P/L 6,3."],
+        [11.5, "BTLG11 já é 19,5% da carteira: acima de 15%, não recebe compra."]],
+  draw(t) {
+    const acoes = TICKERS.slice(0, 7), fiis = TICKERS.slice(7);
+    const sx = i => 300 + i * 125;
+    const cm = P(t, 8, 9.5);
+    text(60, 215, [["ações " + (cm >= 1 ? 8 : 7) + "/10", "f", 1]], 30, {});
+    for (let i = 0; i < 10; i++) {
+      const tk = acoes[i];
+      box(sx(i), 170, 112, 70, tk ? tk[1] : "l", 1, tk ? "" : "8 6");
+      if (tk) text(sx(i) + 56, 215, [[tk[0], "f", 1]], 24, { anchor: "middle" });
+    }
+    text(60, 525, [["FIIs 6/6", "f", 1]], 30, {});
+    fiis.forEach(([tk], i) => {
+      const bad = tk === "VINO11" && t >= 4, big = tk === "BTLG11" && t >= 11.5;
+      box(sx(i), 480, 112, 70, bad || big ? "r" : "c");
+      text(sx(i) + 56, 525, [[tk, bad || big ? "r" : "f", 1]], 24, { anchor: "middle" });
+    });
+    // HGRU11 bumps against the full FII row
+    const hp = t < 3 ? 0 : t < 4.2 ? P(t, 3, 4.2) : 1 - .25 * P(t, 4.2, 5);
+    const hx = L(1560, sx(6) + 70, hp);
+    chip(hx, 515, "HGRU11", "c", 26, P(t, 3, 3.4));
+    text(sx(5) + 56, 650, [["HGRU11 entraria se você vender VINO11", "c", 1]], 28, { anchor: "middle", op: P(t, 4.5, 5.2) });
+    // CMIG4 flies into slot 8
+    const cx = L(1500, sx(7) + 56, cm), cy = L(80, 205, cm) - Math.sin(cm * Math.PI) * 50;
+    chip(cx, cy, "CMIG4", "a", 26, P(t, 7.5, 8));
+    text(sx(7) + 56, 290, [["Oportunidade", "a", 1]], 26, { anchor: "middle", op: P(t, 9.5, 10) });
+    text(sx(0) + 56, 450, [["19,5% &gt; 15%: sem compra", "r", 1]], 28, { anchor: "start", op: P(t, 11.5, 12.2) });
+    text(800, 760, [["setor: bancos (ITUB4 + BBAS3) = 16,2% ≤ 35% ✓", "m"]], 26, { anchor: "middle", op: P(t, 13, 13.8) });
+  } },
+
+{ title: "Lista de compra e log", dur: 14,
+  cap: [[0, "Cotas inteiras, primeiro quem passa em qualidade e está barato."],
+        [6, "Sobram <b>R$ 6,82</b>. Nunca vão para um papel caro: ficam para o próximo aporte."],
+        [9, "No fim, o Claude grava o bloco do dia em carteira-log.md e dá <b>git push</b>. A próxima rodada começa lendo esse bloco."]],
+  draw(t) {
+    const items = [["TOTS3", "b", "30 × 32,65 = R$ 979,50"], ["TAEE11", "a", "12 × 39,60 = R$ 475,20"], ["CMIG4", "a", "53 × 10,16 = R$ 538,48"]];
+    items.forEach(([tk, c, s], i) => {
+      const op = P(t, .5 + i * 1.2, 1.1 + i * 1.2), y = 190 + i * 100;
+      chip(170, y - 9, tk, c, 28, op);
+      text(290, y, [[s, "f"]], 30, { op });
+    });
+    hline(100, 820, 450, "m", P(t, 4.2, 4.8));
+    text(290, 510, [["total R$ 1.993,18", "f", 1]], 32, { op: P(t, 4.6, 5.3) });
+    text(290, 580, [["sobra R$ 6,82 → próximo aporte", "d", 1]], 30, { op: P(t, 6, 6.8) });
+    const lp = P(t, 9, 9.6);
+    box(930, 110, 630, 440, "m", lp);
+    const log = ["## 2026-11-06 (mensal)", "total: R$ 12.500,15", "✅ TAEE11, VIVT3, ITUB4, TOTS3, ...", "⚠️ LREN3 (ROE 14,3 &lt; 15)", "❌ PRIO3 (outro), BBAS3 (div 38%)", "sobra: R$ 6,82"];
+    log.forEach((s, i) => text(960, 170 + i * 62, [[s, i ? "f" : "e", i ? 0 : 1]], 26, { op: P(t, 9.4 + i * .3, 9.8 + i * .3) }));
+    arrow(1245, 560, 1245, 650, P(t, 11.5, 12.1));
+    chip(1245, 700, "git push → ~/workspace/finances", "e", 26, P(t, 12, 12.6));
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = '<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="' + COL.m + '"/></marker></defs>';
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("play").click(); }
+  if (e.key === "ArrowRight") go(sceneAt(T) + 1);
+  if (e.key === "ArrowLeft") go(sceneAt(T) - 1);
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

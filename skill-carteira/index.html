@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A skill carteira</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+  --div: #e8590c; --cre: #1c7ed6; --fii: #2b8a3e; --out: #868e96; --caro: #9c36b5; --warn: #e0a800;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+    --div: #ff922b; --cre: #4dabf7; --fii: #51cf66; --out: #adb5bd; --caro: #da77f2; --warn: #ffd43b;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+nav.links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .9rem; }
+nav.links a { color: var(--accent); }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 80ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+section h3 { margin: 12px 0 4px; font-size: 1.08rem; }
+p, li { max-width: 80ch; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; overflow-wrap: anywhere; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+.term .err { color: #ffb86b; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+.term mark { background: #6ea0ff40; color: #fff; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .box { fill: var(--code-bg); stroke: var(--line); stroke-width: 2; }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2.5; fill: none; }
+svg.diagram marker path { fill: var(--muted); }
+svg.diagram .mut { fill: var(--muted); }
+table { border-collapse: collapse; width: 100%; margin: 4px 0 10px; font-size: .92rem; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ok { color: var(--add); font-weight: 600; }
+.no { color: var(--del); font-weight: 600; }
+.caro { color: var(--caro); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.tag { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: .9em; font-weight: 600; border: 1.5px solid; }
+.tag.div { color: var(--div); } .tag.cre { color: var(--cre); } .tag.fii { color: var(--fii); } .tag.out { color: var(--out); }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<nav class="links"><a href="../">← todas as aulas</a><a href="animate.html">animação</a><a href="../preco-teto/">preço teto</a><a href="../p-vp/">P/VP</a><a href="../roe/">ROE</a><a href="../dividend-yield/">DY</a></nav>
+<h1>A skill carteira</h1>
+<p class="lead">Como a skill <code>/carteira</code> do Claude Code lê a carteira, chama dois scripts e aplica regras fixas para dizer o que está bom, o que está caro e onde entra o dinheiro novo.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p>Você tem R$ 2.000 para investir e 13 papéis na carteira. Sem regra, a escolha vira palpite: comprar o que caiu mais (BBAS3 parece barata: P/L 6,5), ou o que subiu no noticiário, ou sempre o mesmo papel até ele virar 30% de tudo.</p>
+  <p>Uma <dfn>skill</dfn> do Claude Code é um arquivo <code>SKILL.md</code> com instruções que o Claude segue quando você diz certas palavras ("carteira", "onde invisto R$ X", "revisão anual"). A skill <code>carteira</code> fixa as regras por escrito e os scripts trazem os números de fora, então a mesma carteira com os mesmos dados dá sempre a mesma resposta.</p>
+  <p class="note">Todos os números desta aula são reais, puxados pelos scripts em 06/11/2026 (cotações de 05/11/2026). A carteira de exemplo é inventada: as quantidades não são de ninguém.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O mecanismo: do pedido à resposta</h2>
+  <figure>
+    <svg class="diagram" viewBox="0 0 1300 470" role="img" aria-label="fluxo da skill carteira">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0L10,5L0,10z"/></marker></defs>
+      <rect class="box" x="10" y="180" width="200" height="110" rx="12"/>
+      <text x="110" y="215" font-size="19" font-weight="700" text-anchor="middle">você</text>
+      <text x="110" y="245" font-size="17" text-anchor="middle">"carteira,</text>
+      <text x="110" y="270" font-size="17" text-anchor="middle">aporte R$ 2.000"</text>
+      <path class="edge" d="M210,235 L255,235" marker-end="url(#arr)"/>
+      <rect class="box" x="260" y="180" width="180" height="110" rx="12" style="stroke:var(--accent)"/>
+      <text x="350" y="222" font-size="19" font-weight="700" text-anchor="middle">Claude</text>
+      <text x="350" y="252" font-size="17" text-anchor="middle">lê SKILL.md</text>
+      <text x="350" y="276" font-size="16" text-anchor="middle" class="mut">(as regras)</text>
+      <path class="edge" d="M440,215 C480,215 480,70 515,70" marker-end="url(#arr)"/>
+      <path class="edge" d="M440,235 L515,190" marker-end="url(#arr)"/>
+      <path class="edge" d="M440,250 L515,300" marker-end="url(#arr)"/>
+      <path class="edge" d="M440,265 C480,265 480,410 515,410" marker-end="url(#arr)"/>
+      <rect class="box" x="520" y="15" width="330" height="110" rx="12"/>
+      <text x="535" y="44" font-size="18" font-weight="700">1. lê 3 arquivos</text>
+      <text x="535" y="72" font-size="16">carteira.csv (o que você tem)</text>
+      <text x="535" y="95" font-size="16">carteira-log.md (última rodada)</text>
+      <text x="535" y="118" font-size="16">proximos-passos.md (pendências)</text>
+      <rect class="box" x="520" y="140" width="330" height="95" rx="12"/>
+      <text x="535" y="170" font-size="18" font-weight="700">2. fundamentus.sh</text>
+      <text x="535" y="198" font-size="16">cotação, P/L, P/VP, DY, ROE, cres5a</text>
+      <text x="535" y="222" font-size="16" class="mut">fonte: fundamentus.com.br</text>
+      <rect class="box" x="520" y="250" width="330" height="95" rx="12"/>
+      <text x="535" y="280" font-size="18" font-weight="700">3. historico.sh</text>
+      <text x="535" y="308" font-size="16">5 anos de dividendos e de lucro</text>
+      <text x="535" y="332" font-size="16" class="mut">fontes: fundamentus + dados.cvm.gov.br</text>
+      <rect class="box" x="520" y="360" width="330" height="95" rx="12"/>
+      <text x="535" y="390" font-size="18" font-weight="700">4. WebSearch</text>
+      <text x="535" y="418" font-size="16">2 buscas por ticker, últimos 30 dias</text>
+      <text x="535" y="442" font-size="16" class="mut">oficial (RI, CVM, B3) + imprensa</text>
+      <path class="edge" d="M850,70 C890,70 890,215 925,225" marker-end="url(#arr)"/>
+      <path class="edge" d="M850,190 L925,230" marker-end="url(#arr)"/>
+      <path class="edge" d="M850,300 L925,245" marker-end="url(#arr)"/>
+      <path class="edge" d="M850,410 C890,410 890,260 925,250" marker-end="url(#arr)"/>
+      <rect class="box" x="930" y="170" width="170" height="130" rx="12" style="stroke:var(--accent)"/>
+      <text x="1015" y="205" font-size="18" font-weight="700" text-anchor="middle">5. regras</text>
+      <text x="1015" y="233" font-size="16" text-anchor="middle">qualidade</text>
+      <text x="1015" y="256" font-size="16" text-anchor="middle">preço, limites</text>
+      <text x="1015" y="279" font-size="16" text-anchor="middle">alvo 40/40/20</text>
+      <path class="edge" d="M1100,215 L1135,170" marker-end="url(#arr)"/>
+      <path class="edge" d="M1100,255 L1135,300" marker-end="url(#arr)"/>
+      <rect class="box" x="1140" y="100" width="150" height="100" rx="12"/>
+      <text x="1215" y="135" font-size="17" font-weight="700" text-anchor="middle">terminal</text>
+      <text x="1215" y="160" font-size="16" text-anchor="middle">veredito</text>
+      <text x="1215" y="183" font-size="16" text-anchor="middle">lista de compra</text>
+      <rect class="box" x="1140" y="260" width="150" height="100" rx="12"/>
+      <text x="1215" y="295" font-size="17" font-weight="700" text-anchor="middle">log</text>
+      <text x="1215" y="320" font-size="16" text-anchor="middle">carteira-log.md</text>
+      <text x="1215" y="343" font-size="16" text-anchor="middle">git push</text>
+    </svg>
+    <figcaption>Os passos 2, 3 e 4 rodam em paralelo. As regras do passo 5 estão todas escritas em <code>SKILL.md</code>; o Claude faz as contas e a escolha seguindo esse texto.</figcaption>
+  </figure>
+  <p>Os arquivos ficam em dois lugares:</p>
+  <table>
+    <tr><th>arquivo</th><th>onde</th><th>o que guarda</th></tr>
+    <tr><td><code>SKILL.md</code>, <code>fundamentus.sh</code>, <code>historico.sh</code></td><td><code>~/dotfiles/claude/skills/carteira/</code> (o link <code>~/.claude/skills/carteira</code> aponta para lá)</td><td>regras e scripts</td></tr>
+    <tr><td><code>carteira.csv</code></td><td><code>~/workspace/finances/resources/investimentos/</code></td><td>uma linha por papel: <code>ticker,qtd,classe,pm</code></td></tr>
+    <tr><td><code>carteira-log.md</code></td><td>mesma pasta</td><td>um bloco por dia rodado: total, veredito, compras, sobra</td></tr>
+    <tr><td><code>proximos-passos.md</code></td><td>mesma pasta</td><td>pendências com data ou evento ("após 3T26 da Taesa...")</td></tr>
+    <tr><td>cache dos downloads</td><td><code>~/.cache/carteira/</code></td><td>páginas de proventos e zips da CVM</td></tr>
+  </table>
+  <p>No <code>carteira.csv</code>, <dfn>classe</dfn> é uma de cinco: <span class="tag div">dividendo</span> (empresa madura que paga bem), <span class="tag cre">crescimento</span> (empresa que reinveste para crescer), <span class="tag fii">fii-tijolo</span> (<dfn>FII</dfn>, fundo imobiliário, dono de imóveis de verdade: galpões, shoppings, escritórios), <code>fii-papel</code> (FII que empresta dinheiro via títulos imobiliários) e <span class="tag out">outro</span> (cíclica ou especulativa). <dfn>pm</dfn> é o preço médio que você pagou por ação.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>O menor exemplo: um ticker pelos dois scripts</h2>
+  <div class="split">
+    <div>
+      <p><code>fundamentus.sh</code> baixa a página do papel em <code>fundamentus.com.br/detalhes.php</code>, converte de latin1 para UTF-8, apaga as tags HTML e pega o valor que vem depois de cada rótulo ("Cotação", "P/L"...). Sai uma linha <dfn>TSV</dfn> (valores separados por tab):</p>
+      <div class="term"><span class="cmd">fundamentus.sh TAEE11</span>
+<span class="out"><mark>TAEE11  39.60  05/11/2026  8.39  1.69  7.6  Energia Elétrica  20.1  13.0</mark></span></div>
+      <table>
+        <tr><th>campo</th><th>valor</th><th>o que é</th></tr>
+        <tr><td>cotacao</td><td class="n">39.60</td><td>preço de hoje, R$</td></tr>
+        <tr><td>pl</td><td class="n">8.39</td><td><dfn>P/L</dfn>: preço ÷ lucro por ação. Anos de lucro para pagar o preço</td></tr>
+        <tr><td>pvp</td><td class="n">1.69</td><td><dfn>P/VP</dfn>: preço ÷ valor patrimonial por cota/ação</td></tr>
+        <tr><td>dy</td><td class="n">7.6</td><td><dfn>DY</dfn> (dividend yield): proventos de 12 meses ÷ preço, %</td></tr>
+        <tr><td>roe</td><td class="n">20.1</td><td><dfn>ROE</dfn>: lucro ÷ patrimônio, %. Quanto a empresa rende sobre o dinheiro dos sócios</td></tr>
+        <tr><td>cres5a</td><td class="n">13.0</td><td>crescimento da receita em 5 anos, % ao ano</td></tr>
+      </table>
+    </div>
+    <div>
+      <p><code>historico.sh</code> devolve os 5 anos fechados. Para cada ticker ele procura o <dfn>CNPJ</dfn> no cadastro da <dfn>CVM</dfn> (Comissão de Valores Mobiliários, o regulador; o arquivo é o <dfn>FCA</dfn>, formulário cadastral). Achou: é ação, e ele soma o lucro de cada ano na <dfn>DFP</dfn> (demonstrações financeiras anuais que a empresa entrega à CVM). Não achou: é FII, e só tem dividendos.</p>
+      <div class="term"><span class="cmd">historico.sh TAEE11 BTLG11</span>
+<span class="out">ticker  tipo   2021     2022     2023     2024     2025
+<mark>TAEE11  div    4.504    4.855    2.915    3.532    3.229</mark>
+<mark>TAEE11  lucro  2213714  1449215  1367834  1693915  1579863</mark>
+BTLG11  div    8.150    8.840    9.000    9.270    9.490</span></div>
+      <p><code>div</code> = proventos por ação em R$, somados pelo ano da <dfn>data-com</dfn> (último dia em que comprar ainda dá direito ao provento). <code>lucro</code> = lucro líquido em R$ mil. <code>-</code> = sem dado naquele ano.</p>
+    </div>
+  </div>
+  <h3>Quando algo dá errado, o script avisa em vez de inventar</h3>
+  <div class="term"><span class="cmd">fundamentus.sh TIMS3 XXXX9</span>
+<span class="err">TIMS3   aviso: lucro 12m do Fundamentus inconsistente, P/L e ROE recalculados com lucro CVM 2025</span>
+<span class="out">TIMS3   19.96  05/11/2026  11.01  1.90  7.5  Telecomunicações  17.2  -53.4</span>
+<span class="err">XXXX9   erro: papel não encontrado</span></div>
+  <p><code>aviso</code>: o lucro de 12 meses do site estava quebrado (o do último trimestre × 4 passava de 10 vezes ele), então o script recalcula P/L e ROE com o lucro da DFP e o Claude diz isso na linha do ticker; o <code>cres5a</code> desse ticker não entra na conta. <code>erro</code>: o Claude diz que não tem preço e não chuta um.</p>
+  <p>O cache em <code>~/.cache/carteira/</code> evita baixar tudo de novo: páginas de proventos valem 1 dia, o FCA e a DFP do último ano valem 30 dias, as DFPs de anos antigos não são baixadas de novo.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>A carteira de exemplo</h2>
+  <p>13 papéis, total <b>R$ 12.500,15</b>. Aporte: R$ 2.000.</p>
+  <div class="split">
+    <table>
+      <tr><th>ticker</th><th>classe</th><th>qtd</th><th>cotação</th><th>R$</th><th>%</th></tr>
+      <tr><td>TAEE11</td><td><span class="tag div">dividendo</span></td><td class="n">30</td><td class="n">39,60</td><td class="n">1.188,00</td><td class="n">9,5</td></tr>
+      <tr><td>VIVT3</td><td><span class="tag div">dividendo</span></td><td class="n">30</td><td class="n">31,12</td><td class="n">933,60</td><td class="n">7,5</td></tr>
+      <tr><td>ITUB4</td><td><span class="tag div">dividendo</span></td><td class="n">30</td><td class="n">39,97</td><td class="n">1.199,10</td><td class="n">9,6</td></tr>
+      <tr><td>BBAS3</td><td><span class="tag div">dividendo</span></td><td class="n">50</td><td class="n">16,49</td><td class="n">824,50</td><td class="n">6,6</td></tr>
+      <tr><td>TOTS3</td><td><span class="tag cre">crescimento</span></td><td class="n">20</td><td class="n">32,65</td><td class="n">653,00</td><td class="n">5,2</td></tr>
+      <tr><td>LREN3</td><td><span class="tag cre">crescimento</span></td><td class="n">60</td><td class="n">9,53</td><td class="n">571,80</td><td class="n">4,6</td></tr>
+      <tr><td>PRIO3</td><td><span class="tag out">outro</span></td><td class="n">10</td><td class="n">61,54</td><td class="n">615,40</td><td class="n">4,9</td></tr>
+    </table>
+    <table>
+      <tr><th>ticker</th><th>classe</th><th>qtd</th><th>cotação</th><th>R$</th><th>%</th></tr>
+      <tr><td>BTLG11</td><td><span class="tag fii">fii-tijolo</span></td><td class="n">25</td><td class="n">97,51</td><td class="n">2.437,75</td><td class="n">19,5</td></tr>
+      <tr><td>XPML11</td><td><span class="tag fii">fii-tijolo</span></td><td class="n">12</td><td class="n">96,00</td><td class="n">1.152,00</td><td class="n">9,2</td></tr>
+      <tr><td>PVBI11</td><td><span class="tag fii">fii-tijolo</span></td><td class="n">15</td><td class="n">60,76</td><td class="n">911,40</td><td class="n">7,3</td></tr>
+      <tr><td>TRXF11</td><td><span class="tag fii">fii-tijolo</span></td><td class="n">12</td><td class="n">64,90</td><td class="n">778,80</td><td class="n">6,2</td></tr>
+      <tr><td>RBRP11</td><td><span class="tag fii">fii-tijolo</span></td><td class="n">15</td><td class="n">42,52</td><td class="n">637,80</td><td class="n">5,1</td></tr>
+      <tr><td>VINO11</td><td><span class="tag fii">fii-tijolo</span></td><td class="n">150</td><td class="n">3,98</td><td class="n">597,00</td><td class="n">4,8</td></tr>
+    </table>
+  </div>
+  <p>Por classe: dividendo R$ 4.145,20 (33,2%), crescimento R$ 1.224,80 (9,8%), fii-tijolo R$ 6.514,75 (52,1%), outro R$ 615,40 (4,9%). O alvo padrão é <b>40% dividendo / 40% fii-tijolo / 20% crescimento</b>, e você pode trocar no pedido ("50/35/15").</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Teste 1: qualidade (decide se o papel presta)</h2>
+  <p><dfn>Qualidade</dfn> olha 5 anos de história. Preço nunca muda esse teste. Cada classe tem a sua régua:</p>
+  <table>
+    <tr><th>classe</th><th>passa quando</th></tr>
+    <tr><td><span class="tag div">dividendo</span></td><td>setor <dfn>BESST</dfn> (bancos, energia, saneamento, seguros, telecom: setores perenes, com demanda estável); lucro &gt; 0 nos 5 anos e último ≥ 70% da média; dividendo &gt; 0 nos 5 anos e último ≥ 70% da média</td></tr>
+    <tr><td><span class="tag cre">crescimento</span></td><td>ROE ≥ 15; cres5a ≥ 10; lucro &gt; 0 nos 5 anos</td></tr>
+    <tr><td><span class="tag fii">fii-tijolo</span></td><td>dividendo &gt; 0 nos 5 anos e último ≥ 80% da média; sem notícia de vacância subindo (<dfn>vacância</dfn>: % do imóvel sem inquilino)</td></tr>
+  </table>
+  <div class="split">
+    <figure>
+      <svg class="diagram" viewBox="0 0 620 330" role="img" aria-label="TAEE11 e BBAS3: último dividendo contra a média">
+        <text x="10" y="26" font-size="19" font-weight="700">dividendo por ano, R$ (70% da média tracejado)</text>
+        <text x="150" y="62" font-size="18" font-weight="700" text-anchor="middle">TAEE11</text>
+        <line x1="20" x2="290" y1="290" y2="290" stroke="var(--muted)" stroke-width="2"/>
+        <rect x="30"  y="182" width="40" height="108" fill="var(--div)" fill-opacity=".75"/>
+        <rect x="80"  y="173" width="40" height="117" fill="var(--div)" fill-opacity=".75"/>
+        <rect x="130" y="220" width="40" height="70"  fill="var(--div)" fill-opacity=".75"/>
+        <rect x="180" y="205" width="40" height="85"  fill="var(--div)" fill-opacity=".75"/>
+        <rect x="230" y="212" width="40" height="78"  fill="var(--add)"/>
+        <line x1="20" x2="290" y1="226" y2="226" stroke="var(--ink)" stroke-width="2" stroke-dasharray="7 5"/>
+        <text x="250" y="205" font-size="16" text-anchor="middle" font-weight="700">3,23</text>
+        <text x="150" y="318" font-size="16" text-anchor="middle" class="mut">2021 → 2025 · média 3,81</text>
+        <text x="460" y="62" font-size="18" font-weight="700" text-anchor="middle">BBAS3</text>
+        <line x1="330" x2="600" y1="290" y2="290" stroke="var(--muted)" stroke-width="2"/>
+        <rect x="340" y="236" width="40" height="54"  fill="var(--div)" fill-opacity=".75"/>
+        <rect x="390" y="191" width="40" height="99"  fill="var(--div)" fill-opacity=".75"/>
+        <rect x="440" y="181" width="40" height="109" fill="var(--div)" fill-opacity=".75"/>
+        <rect x="490" y="213" width="40" height="77"  fill="var(--div)" fill-opacity=".75"/>
+        <rect x="540" y="262" width="40" height="28"  fill="var(--del)"/>
+        <line x1="330" x2="600" y1="239" y2="239" stroke="var(--ink)" stroke-width="2" stroke-dasharray="7 5"/>
+        <text x="560" y="254" font-size="16" text-anchor="middle" font-weight="700">1,17</text>
+        <text x="460" y="318" font-size="16" text-anchor="middle" class="mut">2021 → 2025 · média 3,07</text>
+      </svg>
+      <figcaption>Escala: 24 px por R$ 1. TAEE11 fica acima da linha de 70%; BBAS3 cai bem abaixo.</figcaption>
+    </figure>
+    <div>
+      <table>
+        <tr><th>ticker</th><th>conta</th><th>qualidade</th></tr>
+        <tr><td>TAEE11</td><td>lucro 2025 = 95% da média; div 3,229 ÷ 3,807 = 85%</td><td class="ok">passa</td></tr>
+        <tr><td>VIVT3</td><td>lucro 114%; div 89%</td><td class="ok">passa</td></tr>
+        <tr><td>BBAS3</td><td>lucro 16,8 bi ÷ média 25,7 bi = <b>65%</b>; div 1,17 ÷ 3,07 = <b>38%</b></td><td class="no">reprova</td></tr>
+        <tr><td>TOTS3</td><td>ROE 26,7; cres5a 16,3; lucro &gt; 0 em 5/5</td><td class="ok">passa</td></tr>
+        <tr><td>LREN3</td><td>ROE <b>14,3 &lt; 15</b>; cres5a <b>5,5 &lt; 10</b></td><td class="no">reprova</td></tr>
+        <tr><td>BTLG11</td><td>div 9,49 ÷ 8,95 = 106%</td><td class="ok">passa</td></tr>
+        <tr><td>PVBI11</td><td>div 5,80 ÷ 6,87 = 84% (raspando os 80%)</td><td class="ok">passa</td></tr>
+        <tr><td>VINO11</td><td>div 5,98 → 0,64; 0,64 ÷ 2,77 = <b>23%</b></td><td class="no">reprova</td></tr>
+        <tr><td>PRIO3</td><td>classe <code>outro</code>: nunca recebe compra</td><td class="no">fora</td></tr>
+      </table>
+    </div>
+  </div>
+  <h3>Ano extraordinário: ITUB4</h3>
+  <div class="split">
+    <div class="term"><span class="cmd">historico.sh ITUB4</span>
+<span class="out">ticker  tipo   2021     2022     2023     2024     2025
+ITUB4   div    0.909    1.018    1.257    2.413    <mark>4.732</mark>
+ITUB4   lucro  28384000 30737000 33877000 42128000 45849000</span></div>
+    <div>
+      <p>Um ano acima de 2× a média dos outros quatro é <dfn>extraordinário</dfn>: média dos outros = (0,909 + 1,018 + 1,257 + 2,413) ÷ 4 = 1,399; 2 × 1,399 = 2,80; e 4,732 &gt; 2,80. Dividendo declarado em dezembro e pago ao longo dos anos seguintes infla um ano só. A tendência é julgada sem ele: 2,413 ÷ 1,399 = 172%, passa.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Teste 2: preço (só decide a ordem das compras)</h2>
+  <p>Passou em qualidade mas está caro? Continua ✅ e mostra "<span class="caro">caro: aporte espera</span>". Reprovou em qualidade mas está barato? Não compra nunca.</p>
+  <table>
+    <tr><th>classe</th><th>barato quando</th></tr>
+    <tr><td><span class="tag div">dividendo</span></td><td>cotação ≤ teto e P/L entre 0 e 15</td></tr>
+    <tr><td><span class="tag cre">crescimento</span></td><td>P/L entre 0 e 35</td></tr>
+    <tr><td><span class="tag fii">fii-tijolo</span></td><td>P/VP ≤ 1,10</td></tr>
+  </table>
+  <p>O <dfn>teto</dfn> (preço máximo a pagar) segue <a href="../metodo-barsi/">Bazin</a>: o dividendo que você exige render 6% ao ano. A skill usa o <b>menor</b> entre a média de 5 anos e o último ano, para um dividendo em queda não parecer barato pelos anos velhos. <dfn>Margem</dfn> = teto ÷ cotação − 1.</p>
+  <pre>teto = min(média, último) ÷ 0,06
+
+TAEE11: min(3,807; 3,229) ÷ 0,06 = <mark>R$ 53,82</mark>   cotação 39,60 ≤ 53,82, P/L 8,4  → barato, margem 36%
+VIVT3:  min(2,769; 2,465) ÷ 0,06 = R$ 41,08   cotação 31,12 ok, mas <mark>P/L 15,2 &gt; 15</mark>  → caro
+ITUB4:  min(1,399; ...)   ÷ 0,06 = R$ 23,32   <mark>cotação 39,97 &gt; 23,32</mark>   → caro
+BBAS3:  min(3,066; 1,170) ÷ 0,06 = R$ 19,50   cotação 16,49 ≤ 19,50 → "barato", mas reprovou em qualidade</pre>
+  <p>BBAS3 mostra por que o teto usa o menor valor: pela média de 3,07 o teto seria R$ 51,10 e a ação pareceria 3× mais barata do que é.</p>
+  <p>Crescimento e FII: TOTS3 P/L 13,3 ≤ 35, barato. BTLG11 P/VP 0,92 ≤ 1,10, barato. VINO11 tem P/VP 0,41, o mais "barato" da carteira, e reprova em qualidade: é a <dfn>armadilha de valor</dfn>, preço baixo porque o rendimento desabou.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Veredito: ✅ ⚠️ ❌</h2>
+  <p>Responde "meus papéis são bons?". Decidem só a qualidade e notícias <dfn>oficiais</dfn> (site de RI da empresa, documento da CVM, B3/FundosNet). Notícia de imprensa é contexto: uma grave manda procurar o documento oficial, e sem ele a linha diz "só imprensa, não confirmado".</p>
+  <table>
+    <tr><th>veredito</th><th>quando</th><th>no exemplo</th></tr>
+    <tr><td class="ok">✅ sólido</td><td>passa qualidade, notícia neutra ou boa</td><td>TAEE11, VIVT3, ITUB4, TOTS3, BTLG11, XPML11, PVBI11, TRXF11, RBRP11 (se as buscas não trouxerem nada ruim)</td></tr>
+    <tr><td class="warn">⚠️ observar</td><td>dividendo acima do lucro, vacância subindo, erra uma régua por pouco, ou uma notícia ruim com dados bons</td><td>LREN3 erra ROE por pouco (14,3 vs 15), mas também o cres5a por muito: as notícias decidem entre ⚠️ e ❌</td></tr>
+    <tr><td class="no">❌ fraco</td><td>classe <code>outro</code>, ou reprova qualidade E tem notícia ruim (lucro caindo, corte de dividendo)</td><td>PRIO3 (outro); BBAS3 e VINO11 se a busca oficial confirmar a queda</td></tr>
+  </table>
+  <h3>Venda: só em abril</h3>
+  <p>A rodada do mês só decide onde entra o dinheiro novo. Um ❌ mostra "congelar aportes, revisar em abril". Abril é a <dfn>revisão anual</dfn>: as DFPs saem até 31 de março, então o ano inteiro está publicado. Lá um ❌ cuja <dfn>tese quebrou</dfn> (lucro caindo há anos, dívida explodindo, corte estrutural de dividendo, fraude; no FII, vacância alta sem recuperar) vira "candidata a venda", com a linha de imposto:</p>
+  <table>
+    <tr><th>ativo</th><th>IR sobre o lucro</th></tr>
+    <tr><td>ações</td><td>isento se as vendas do mês somam até R$ 20 mil; acima, 15%</td></tr>
+    <tr><td>FII</td><td>20%, sem isenção</td></tr>
+  </table>
+  <p>Exceção, em qualquer mês: fraude, recuperação judicial, corte grande de dividendo ou FII perdendo o inquilino principal. Preço caindo nunca é motivo de venda.</p>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Limites: quem pode entrar</h2>
+  <table>
+    <tr><th>regra</th><th>no exemplo</th></tr>
+    <tr><td>no máximo <b>10 ações</b> (dividendo + crescimento + outro) e <b>6 FIIs</b></td><td>ações 7/10: cabe papel novo. FIIs 6/6: só compra FII que já tem</td></tr>
+    <tr><td>no limite: o melhor candidato aparece como "entraria se você vender X", X = o mais fraco (<code>outro</code> primeiro, depois quem reprova)</td><td>HGRU11 (div 109% da média, P/VP 0,89, DY 10,4) <b>entraria se você vender VINO11</b>. A venda é decisão sua; nunca entra na lista de compra</td></tr>
+    <tr><td>papel acima de <b>15%</b> do total não recebe compra</td><td>BTLG11 = 19,5%: sem compra</td></tr>
+    <tr><td>nenhum setor acima de <b>35%</b> depois da compra (bancos + seguros contam juntos como financeiro)</td><td>bancos (ITUB4 + BBAS3) = R$ 2.023,60 = 16,2%: ok</td></tr>
+    <tr><td><dfn>Oportunidade</dfn>: candidato novo muito barato entra na lista mesmo com os papéis atuais passando, no máximo 1 por rodada. Dividendo: cotação ≤ dividendo-base ÷ 0,08 e P/L 0 a 10; crescimento: ROE ≥ 20 e P/L 0 a 25; FII: P/VP ≤ 0,95 e DY ≥ 9</td><td>CMIG4: 0,898 ÷ 0,08 = 11,22 ≥ cotação 10,16; P/L 6,3. Passa qualidade (lucro 96%, div 75%). Entra.</td></tr>
+  </table>
+  <p>Os candidatos vêm de uma lista fixa em <code>SKILL.md</code> (TAEE11, CPLE3, CMIG4... RADL3, TOTS3... HGRU11, XPML11, BTLG11...), editada à mão. A skill diz que são exemplos, não indicação.</p>
+</section>
+
+<section>
+  <h2><span class="num">9</span>A lista de compra</h2>
+  <div class="split">
+    <div>
+      <p>Novo total = 12.500,15 + 2.000 = R$ 14.500,15. Alvo em R$ e quanto falta:</p>
+      <table>
+        <tr><th>classe</th><th>tem</th><th>alvo</th><th>falta</th></tr>
+        <tr><td><span class="tag div">dividendo</span> 40%</td><td class="n">4.145,20</td><td class="n">5.800,06</td><td class="n">1.654,86</td></tr>
+        <tr><td><span class="tag cre">crescimento</span> 20%</td><td class="n">1.224,80</td><td class="n">2.900,03</td><td class="n">1.675,23</td></tr>
+        <tr><td><span class="tag fii">fii-tijolo</span> 40%</td><td class="n">6.514,75</td><td class="n">5.800,06</td><td class="n">−714,69</td></tr>
+      </table>
+      <p>FII já passou do alvo: o dinheiro vai para crescimento e dividendo, as duas classes mais longe do alvo, metade para cada. Dentro de cada uma, primeiro quem passa qualidade e está barato.</p>
+    </div>
+    <div>
+      <table>
+        <tr><th>ticker</th><th>qtd</th><th>≈ R$</th><th>por quê</th></tr>
+        <tr><td>TOTS3</td><td class="n">30</td><td class="n">979,50</td><td>único crescimento que passa; P/L 13,3</td></tr>
+        <tr><td>TAEE11</td><td class="n">12</td><td class="n">475,20</td><td>dividendo barato, margem 36%</td></tr>
+        <tr><td>CMIG4</td><td class="n">53</td><td class="n">538,48</td><td>Oportunidade, ações 8/10</td></tr>
+        <tr><td colspan="2">total</td><td class="n">1.993,18</td><td>sobra R$ 6,82</td></tr>
+      </table>
+      <p>Fica de fora: VIVT3 e ITUB4 (caro: aporte espera), BBAS3 e LREN3 (reprovam), PRIO3 (outro), BTLG11 (acima de 15%). Cotas inteiras só. A sobra nunca vai para um papel caro; fica anotada no log e soma no próximo aporte.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">10</span>Depois da resposta: log e próximos passos</h2>
+  <div class="split">
+    <pre>## 2026-11-06 (mensal)
+total: R$ 12.500,15
+✅ TAEE11, VIVT3, ITUB4, TOTS3, BTLG11, ...
+⚠️ LREN3 (ROE 14,3 &lt; 15)
+❌ PRIO3 (outro), BBAS3 (div 2025 = 38% da média)
+deep research: nenhum
+sobra: R$ 6,82</pre>
+    <div>
+      <p>No fim, o Claude escreve um bloco assim em <code>carteira-log.md</code> (substitui o bloco se já rodou hoje), faz <code>git add</code> só desse arquivo e de <code>proximos-passos.md</code>, commita "carteira: log AAAA-MM-DD" e dá <code>git push origin HEAD:main</code> em <code>~/workspace/finances</code>.</p>
+      <p>A próxima rodada lê esse bloco: compara o veredito (um ✅ que virou ⚠️ é "recém-sinalizado") e soma a sobra ao aporte. <code>proximos-passos.md</code> guarda o que ficou para depois ("após o 3T26: TAEE11 entra?"); quando o mês ou o evento chega, o item é checado com os dados do dia e apagado.</p>
+      <p><dfn>Deep research</dfn> (busca longa, várias fontes) custa várias vezes mais; o Claude só oferece, nunca roda sozinho: para papel novo na lista de compra, papel que piorou de veredito, ou resultado trimestral saído nos últimos 30 dias.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">11</span>Erros comuns</h2>
+  <p class="mistake">Comprar o que está mais barato. VINO11 (P/VP 0,41) e BBAS3 (P/L 6,5) são os mais baratos da carteira e os dois reprovam em qualidade. A skill testa qualidade primeiro; preço só ordena quem passou.</p>
+  <p class="mistake">Calcular o teto pela média com dividendo em queda. BBAS3 daria R$ 51,10; com o último ano dá R$ 19,50. Use <code>min(média, último)</code>.</p>
+  <p class="mistake">Contar o ano extraordinário como tendência. ITUB4 2025 (4,73) é mais que o dobro dos outros anos; julgue sem ele.</p>
+  <p class="mistake">Vender porque caiu ou porque veio uma notícia de jornal. Mês comum: congela aporte. Venda só em abril, com tese quebrada e documento oficial.</p>
+  <p class="mistake">Confiar em quantidades de uma conversa antiga. A skill relê <code>carteira.csv</code> toda vez: atualize a <code>qtd</code> depois de comprar.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Pedido → Claude lê <code>SKILL.md</code> → lê 3 arquivos → <code>fundamentus.sh</code> + <code>historico.sh</code> + 2 buscas por ticker em paralelo → regras → resposta → log com git push.</li>
+    <li>Qualidade (5 anos de lucro e dividendo, ROE, setor) decide se presta; preço (teto, P/L, P/VP) só decide a ordem de compra.</li>
+    <li>Teto = min(média, último dividendo) ÷ 0,06; ano acima de 2× os outros é extraordinário e sai da conta.</li>
+    <li>Limites: 10 ações, 6 FIIs, 15% por papel, 35% por setor, 1 Oportunidade por rodada, cotas inteiras, sobra fica para o próximo aporte.</li>
+    <li>Mês comum só aplica dinheiro novo; venda só na revisão anual de abril ou em evento grave.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
