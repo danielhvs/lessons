@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emissão de FII e diluição</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --old: #2f6fde; --new: #e07b1a; --cash: #8a8a80;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --old: #6ea0ff; --new: #ffa94d; --cash: #9a998f;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.home { color: var(--accent); font-size: .9rem; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+  background: var(--code-bg);
+}
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .muted { fill: var(--muted); }
+svg.diagram .old { fill: var(--old); }
+svg.diagram .new { fill: var(--new); }
+svg.diagram .cash { fill: var(--cash); }
+svg.diagram .neg { fill: var(--del); }
+svg.diagram .pos { fill: var(--add); }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram .ref { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+svg.diagram marker path { fill: var(--muted); }
+table { border-collapse: collapse; margin: 0 0 10px; width: 100%; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+td.neg { color: var(--del); font-weight: 600; } td.pos { color: var(--add); font-weight: 600; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<a class="home" href="../">← todas as aulas</a>
+<h1>Emissão de cotas em FII: quando dilui</h1>
+<p class="lead">Um FII que emite cotas novas pode diluir três coisas diferentes: a sua fatia, o patrimônio por cota e o rendimento por cota. Esta aula mostra quando cada uma acontece e como se proteger.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p>Um <dfn>FII</dfn> (fundo de investimento imobiliário) é dividido em <dfn>cotas</dfn>. Para crescer (comprar mais imóveis ou CRIs), ele faz uma <dfn>emissão</dfn>: cria cotas novas e vende aos investidores. Comprar essas cotas novas se chama <dfn>subscrever</dfn>.</p>
+  <p><dfn>Diluir</dfn> é a mesma coisa sendo dividida por mais cotas. Três coisas podem ser diluídas, e cada uma tem uma causa própria:</p>
+  <ol>
+    <li>Sua <dfn>participação</dfn> (%) no fundo: dilui sempre que você não subscreve.</li>
+    <li>O <dfn>VP por cota</dfn> (valor patrimonial: <dfn>PL</dfn>, o patrimônio líquido do fundo, dividido pelo número de cotas): dilui só quando o fundo vende cota abaixo do VP.</li>
+    <li>O <dfn>rendimento por cota</dfn> (o "dividendo" mensal): dilui enquanto o dinheiro novo fica parado em caixa, rendendo menos que os imóveis.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: emissão no VP</h2>
+  <div class="split">
+    <div>
+      <p>O fundo fictício XPTO11 tem 1.000.000 de cotas e PL de R$ 100 milhões, então VP = R$ 100 por cota. Ele emite 500.000 cotas novas a R$ 100.</p>
+<pre>antes:  PL 100.000.000 / 1.000.000 cotas = R$ 100,00
+entra:  500.000 × R$ 100 = R$ 50.000.000
+depois: PL 150.000.000 / 1.500.000 cotas = <mark>R$ 100,00</mark></pre>
+      <p>O VP por cota não mudou: cada cota nova trouxe exatamente o que vale. Mas se você tem 1.000 cotas e não subscreve, sua fatia cai de 0,1% para 0,0667%. Você tem o mesmo dinheiro, só que dono de um pedaço menor de um fundo maior.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 260" role="img" aria-label="PL antes e depois da emissão no VP">
+        <text x="20" y="28" font-size="18" font-weight="600">antes</text>
+        <rect class="old" x="20" y="44" width="240" height="120" rx="6"/>
+        <text x="140" y="100" font-size="18" text-anchor="middle" fill="#fff" style="fill:#fff">1,0 mi cotas</text>
+        <text x="140" y="124" font-size="16" text-anchor="middle" style="fill:#fff">R$ 100 mi</text>
+        <text x="20" y="194" font-size="18">VP = <tspan font-weight="700">R$ 100,00</tspan></text>
+        <text x="320" y="28" font-size="18" font-weight="600">depois</text>
+        <rect class="old" x="320" y="44" width="180" height="120" rx="6"/>
+        <rect class="new" x="500" y="44" width="90" height="120" rx="6"/>
+        <text x="410" y="100" font-size="16" text-anchor="middle" style="fill:#fff">1,0 mi cotas</text>
+        <text x="410" y="124" font-size="16" text-anchor="middle" style="fill:#fff">R$ 100 mi</text>
+        <text x="545" y="100" font-size="16" text-anchor="middle" style="fill:#fff">+0,5 mi</text>
+        <text x="545" y="124" font-size="16" text-anchor="middle" style="fill:#fff">R$ 50 mi</text>
+        <text x="320" y="194" font-size="18">VP = <tspan font-weight="700">R$ 100,00</tspan></text>
+        <text x="20" y="238" font-size="16" class="muted">sua fatia (1.000 cotas): 0,1% → 0,0667% se não subscrever</text>
+      </svg>
+      <figcaption>Azul: cotas antigas. Laranja: cotas novas. Mesma altura = mesmo valor por cota.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>O preço de emissão decide se o VP dilui</h2>
+  <div class="split">
+    <div>
+      <p>A mesma emissão de 500.000 cotas, com três <dfn>preços de emissão</dfn> (o preço que o fundo recebe por cota nova):</p>
+<pre>VP novo = (PL + cotas novas × preço) / (cotas antigas + cotas novas)
+
+R$  90: (100 mi + 45 mi) / 1,5 mi = <mark>R$  96,67</mark>  (−3,33%)
+R$ 100: (100 mi + 50 mi) / 1,5 mi =  R$ 100,00   (0%)
+R$ 110: (100 mi + 55 mi) / 1,5 mi =  R$ 103,33   (+3,33%)</pre>
+      <p>Abaixo do VP, quem já era cotista perde: o cotista novo leva por R$ 90 uma cota que vale R$ 100. Acima do VP, quem já era cotista ganha.</p>
+      <p>Isso se liga ao <dfn>P/VP</dfn> (preço na bolsa dividido pelo VP). Ninguém subscreve a R$ 100 se a cota está a R$ 85 na bolsa. Então um fundo com P/VP abaixo de 1 só consegue emitir abaixo do VP, e diluindo. Por isso gestores bons evitam emitir quando o P/VP está baixo.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 270" role="img" aria-label="VP por cota após emissão em três preços">
+        <line class="ref" x1="40" y1="110" x2="580" y2="110"/>
+        <text x="40" y="100" font-size="15" class="muted">VP antes = R$ 100</text>
+        <rect class="neg" x="80" y="114" width="110" height="116" rx="4"/>
+        <rect class="cash" x="250" y="110" width="110" height="120" rx="4"/>
+        <rect class="pos" x="420" y="106" width="110" height="124" rx="4"/>
+        <text x="135" y="60" font-size="18" text-anchor="middle" font-weight="700" class="neg">96,67</text>
+        <text x="305" y="60" font-size="18" text-anchor="middle" font-weight="700">100,00</text>
+        <text x="475" y="60" font-size="18" text-anchor="middle" font-weight="700" class="pos">103,33</text>
+        <text x="135" y="82" font-size="15" text-anchor="middle" class="neg">−3,33%</text>
+        <text x="305" y="82" font-size="15" text-anchor="middle" class="muted">0%</text>
+        <text x="475" y="82" font-size="15" text-anchor="middle" class="pos">+3,33%</text>
+        <text x="135" y="256" font-size="16" text-anchor="middle">emite a R$ 90</text>
+        <text x="305" y="256" font-size="16" text-anchor="middle">emite a R$ 100</text>
+        <text x="475" y="256" font-size="16" text-anchor="middle">emite a R$ 110</text>
+      </svg>
+      <figcaption>VP por cota depois da emissão. A linha tracejada é o VP de antes; as diferenças de altura estão em escala (±3,33%).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>O rendimento dilui enquanto o dinheiro está parado</h2>
+  <div class="split">
+    <div>
+      <p>Antes da emissão, XPTO11 distribui R$ 800 mil por mês: R$ 0,80 por cota. Os R$ 50 mi novos ainda não viraram imóvel: ficam em <dfn>caixa</dfn> (renda fixa) e rendem, digamos, R$ 300 mil por mês. Os imóveis que o gestor vai comprar rendem R$ 400 mil.</p>
+<pre>antes:            800 mil / 1,0 mi cotas = R$ 0,80
+caixa parado:   1.100 mil / 1,5 mi cotas = <mark>R$ 0,733</mark>  (−8,3%)
+dinheiro alocado: 1.200 mil / 1,5 mi cotas = R$ 0,80</pre>
+      <p>Esse buraco tem nome: <dfn>cash drag</dfn> (o caixa "arrastando" o rendimento para baixo). Ele dura até o gestor comprar os ativos. Uma emissão sem destino definido para o dinheiro pode deixar o rendimento baixo por meses.</p>
+      <p>Para não punir os antigos, as cotas novas costumam ficar como <dfn>recibo</dfn> até a conversão, recebendo só o rendimento do caixa no período; confira as regras no prospecto ou fato relevante de cada emissão.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 270" role="img" aria-label="rendimento por cota antes, durante e depois da alocação">
+        <line class="ref" x1="30" y1="70" x2="590" y2="70"/>
+        <text x="30" y="60" font-size="15" class="muted">R$ 0,80</text>
+        <rect class="old" x="60" y="70" width="120" height="150" rx="4"/>
+        <rect class="cash" x="240" y="83" width="120" height="137" rx="4"/>
+        <rect class="pos" x="420" y="70" width="120" height="150" rx="4"/>
+        <text x="300" y="112" font-size="18" text-anchor="middle" font-weight="700" style="fill:#fff">0,733</text>
+        <text x="120" y="112" font-size="18" text-anchor="middle" font-weight="700" style="fill:#fff">0,80</text>
+        <text x="480" y="112" font-size="18" text-anchor="middle" font-weight="700" style="fill:#fff">0,80</text>
+        <text x="120" y="246" font-size="16" text-anchor="middle">1 antes</text>
+        <text x="300" y="246" font-size="16" text-anchor="middle">2 caixa parado</text>
+        <text x="480" y="246" font-size="16" text-anchor="middle">3 alocado</text>
+      </svg>
+      <figcaption>Rendimento mensal por cota em três momentos (alturas em escala).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>O direito de preferência: como não ser diluído</h2>
+  <p>Na emissão, cada cotista recebe o <dfn>direito de preferência</dfn>: prioridade para subscrever na proporção do que tem. A proporção se chama <dfn>fator de proporção</dfn>; aqui é 500.000 / 1.000.000 = 0,5, ou seja, 1.000 cotas dão direito a 500 novas.</p>
+  <p>Na corretora o direito aparece com final 12 (XPTO12). Ao exercer e pagar, ele vira um <dfn>recibo de subscrição</dfn>, final 13 (às vezes 14 ou 15), que se converte em cota normal, final 11, depois da oferta.</p>
+  <div class="split">
+    <div>
+      <p>Agora o caso com preço de bolsa acima do preço de emissão. A cota negocia a R$ 110. A emissão sai a R$ 100 mais R$ 3 de <dfn>custo unitário de distribuição</dfn> (taxa paga pelo subscritor para os bancos que fazem a oferta; não entra no fundo). Você paga R$ 103 por algo que a bolsa compra a R$ 110, então o direito tem valor.</p>
+      <p>Depois da emissão, o preço teórico da cota mistura as cotas velhas (R$ 110) e as novas (R$ 103):</p>
+<pre>preço teórico = (1,0 mi × 110 + 0,5 mi × 103) / 1,5 mi
+              = <mark>R$ 107,67</mark>
+valor do direito = (107,67 − 103) × 0,5 = R$ 2,33 por cota que você tem</pre>
+      <p>É um modelo: o preço real na bolsa pode ir para outro lado. Mas ele mostra o que está em jogo.</p>
+    </div>
+    <div>
+      <p>Suas 1.000 cotas valem R$ 110.000. As três escolhas:</p>
+      <table>
+        <tr><th>Escolha</th><th>Fica com</th><th>vs. pôr R$ 0</th></tr>
+        <tr><td>Subscrever 500 (paga R$ 51.500)</td><td>1.500 × 107,67 = 161.500</td><td class="pos">0</td></tr>
+        <tr><td>Vender os 1.000 direitos a R$ 2,33</td><td>107.667 + 2.333 = 110.000</td><td class="pos">0</td></tr>
+        <tr><td>Ignorar</td><td>1.000 × 107,67 = 107.667</td><td class="neg">−2.333</td></tr>
+      </table>
+      <p>Subscrever: os R$ 161.500 são exatamente os R$ 110.000 de antes + R$ 51.500 pagos. Vender o direito também te deixa inteiro. Só quem ignora perde: os R$ 2.333 passam para quem subscreveu.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Erros comuns</h2>
+  <p class="mistake">Ignorar o direito quando a bolsa está acima do preço de emissão. O direito vence sem valor e o ganho vai para outros (−R$ 2.333 no exemplo). Correção: subscreva ou venda o XPTO12 antes do fim do prazo de negociação.</p>
+  <p class="mistake">Comprar direito (final 12) e não exercer. O direito comprado vira pó no fim do período de preferência e você perde o que pagou nele. Correção: comprar o 12 só se for exercer, e pedir o exercício na corretora dentro do prazo.</p>
+  <p class="mistake">Achar que toda emissão dilui. No VP ou acima dele, o VP por cota não cai (R$ 100,00 e R$ 103,33 no exemplo). Correção: compare o preço de emissão (sem o custo de distribuição) com o VP do último relatório.</p>
+  <p class="mistake">Ver o rendimento cair de R$ 0,80 para R$ 0,733 e concluir que o fundo piorou. Pode ser só cash drag. Correção: olhe quanto do dinheiro da emissão já foi alocado (relatório gerencial).</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Sua fatia dilui sempre que você não subscreve; o direito de preferência (final 12) é o que te protege.</li>
+    <li>O VP por cota só dilui se o preço de emissão estiver abaixo do VP: VP novo = (PL + novas × preço) / total de cotas.</li>
+    <li>P/VP abaixo de 1 empurra o fundo a emitir abaixo do VP, por isso emissão com P/VP baixo é sinal ruim.</li>
+    <li>O rendimento por cota cai enquanto o dinheiro novo está em caixa (cash drag) e volta quando é alocado.</li>
+    <li>Se a bolsa paga mais que o preço de emissão + custo, o direito vale dinheiro: exerça ou venda, nunca ignore.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
