@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tesouro Prefixado</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6; --o: #e8590c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6; --o: #ff922b;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .9rem; }
+.links a { color: var(--accent); }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+section h3 { margin: 10px 0 4px; font-size: 1.08rem; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+.term mark { background: #ffffff2e; color: #fff; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; font-size: 17px; }
+svg.diagram .m { fill: var(--muted); }
+svg.diagram .b { fill: var(--accent); font-weight: 700; }
+svg.diagram .o { fill: var(--o); font-weight: 700; }
+svg.diagram .g { fill: var(--add); font-weight: 700; }
+svg.diagram .r { fill: var(--del); font-weight: 700; }
+svg.diagram .axis { stroke: var(--muted); stroke-width: 2; }
+svg.diagram .grid { stroke: var(--line); stroke-width: 1.5; }
+svg.diagram .ln { fill: none; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; }
+svg.diagram .lb { stroke: var(--accent); } svg.diagram .lg { stroke: var(--add); }
+svg.diagram .lr { stroke: var(--del); } svg.diagram .lm { stroke: var(--muted); stroke-dasharray: 3 8; }
+svg.diagram .db { fill: var(--accent); } svg.diagram .dg { fill: var(--add); } svg.diagram .dr { fill: var(--del); }
+table { border-collapse: collapse; margin: 0 0 10px; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 14px 4px 0; text-align: left; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.up { color: var(--add); font-weight: 600; } .down { color: var(--del); font-weight: 600; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<nav class="links"><a href="../">← todas as aulas</a><a href="animate.html">animação</a></nav>
+<h1>Tesouro Prefixado</h1>
+<p class="lead">O título que diz hoje quantos reais você vai ter no vencimento: como o preço é calculado, o que a inflação e a marcação a mercado fazem com ele, e para que ele serve (e não serve).</p>
+
+<section>
+  <h2><span class="num">1</span>O problema: quantos reais vou ter naquela data?</h2>
+  <p>Você tem uma meta com valor em reais e data marcada: a entrada de um imóvel em 5 anos, uma dívida que vence em 3. Os outros títulos do Tesouro não respondem "quantos reais vou ter": o Tesouro Selic rende a taxa que o Banco Central decidir no caminho, e o Tesouro IPCA+ depende da inflação que vier.</p>
+  <p>O <dfn>Tesouro Prefixado</dfn> responde. Cada título devolve exatamente R$ 1.000 no <dfn>vencimento</dfn> (a data final do título), e a taxa, fixa e em reais, é combinada no dia da compra.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: um título de 1 ano</h2>
+  <p>Um título que devolve R$ 1.000 daqui a 1 ano, comprado a 14% ao ano:</p>
+  <pre>preço hoje = 1.000 ÷ 1,14 = <mark>R$ 877,19</mark>
+
+877,19 × 1,14 = 1.000,00</pre>
+  <p>Você paga R$ 877,19 e recebe R$ 1.000. Os 14% são <dfn>juro nominal</dfn>: rendimento em reais, sem descontar a inflação.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Crescendo: 5 anos</h2>
+  <div class="split">
+    <div>
+      <p>O mesmo título com vencimento em 5 anos e a mesma taxa de 14% ao ano:</p>
+      <pre>preço hoje = 1.000 ÷ 1,14^5 = <mark>R$ 519,37</mark>
+
+519,37 × 1,14^5 = 1.000
+seus reais multiplicados por 1,93</pre>
+      <p>A fórmula geral, com o prazo em anos:</p>
+      <pre>preço = 1.000 ÷ (1 + taxa)^anos</pre>
+      <p>Se a taxa de mercado nunca mudasse, o preço subiria 14% ao ano até chegar em R$ 1.000. Esse caminho é a <dfn>curva contratada</dfn>.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Curva do preço de 519,37 hoje até 1.000 em 5 anos">
+        <line class="grid" x1="70" x2="610" y1="275" y2="275"/><line class="grid" x1="70" x2="610" y1="200" y2="200"/>
+        <line class="grid" x1="70" x2="610" y1="125" y2="125"/><line class="grid" x1="70" x2="610" y1="50" y2="50"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="281" text-anchor="end">250</text><text class="m" x="62" y="206" text-anchor="end">500</text>
+        <text class="m" x="62" y="131" text-anchor="end">750</text><text class="m" x="62" y="56" text-anchor="end">1.000</text>
+        <text class="m" x="70" y="375" text-anchor="middle">hoje</text><text class="m" x="178" y="375" text-anchor="middle">1</text>
+        <text class="m" x="286" y="375" text-anchor="middle">2</text><text class="m" x="394" y="375" text-anchor="middle">3</text>
+        <text class="m" x="502" y="375" text-anchor="middle">4</text><text class="m" x="600" y="375" text-anchor="middle">5 anos</text>
+        <polyline class="ln lb" points="70.0,194.2 75.4,193.2 80.8,192.1 86.2,191.1 91.6,190.1 97.0,189.0 102.4,187.9 107.8,186.9 113.2,185.8 118.6,184.7 124.0,183.6 129.4,182.5 134.8,181.4 140.2,180.3 145.6,179.2 151.0,178.1 156.4,177.0 161.8,175.8 167.2,174.7 172.6,173.5 178.0,172.4 183.4,171.2 188.8,170.0 194.2,168.9 199.6,167.7 205.0,166.5 210.4,165.3 215.8,164.0 221.2,162.8 226.6,161.6 232.0,160.3 237.4,159.1 242.8,157.8 248.2,156.6 253.6,155.3 259.0,154.0 264.4,152.7 269.8,151.4 275.2,150.1 280.6,148.8 286.0,147.5 291.4,146.2 296.8,144.8 302.2,143.5 307.6,142.1 313.0,140.8 318.4,139.4 323.8,138.0 329.2,136.6 334.6,135.2 340.0,133.8 345.4,132.4 350.8,130.9 356.2,129.5 361.6,128.1 367.0,126.6 372.4,125.1 377.8,123.7 383.2,122.2 388.6,120.7 394.0,119.2 399.4,117.6 404.8,116.1 410.2,114.6 415.6,113.0 421.0,111.5 426.4,109.9 431.8,108.3 437.2,106.7 442.6,105.1 448.0,103.5 453.4,101.9 458.8,100.3 464.2,98.6 469.6,97.0 475.0,95.3 480.4,93.6 485.8,92.0 491.2,90.3 496.6,88.6 502.0,86.8 507.4,85.1 512.8,83.4 518.2,81.6 523.6,79.9 529.0,78.1 534.4,76.3 539.8,74.5 545.2,72.7 550.6,70.9 556.0,69.0 561.4,67.2 566.8,65.3 572.2,63.4 577.6,61.6 583.0,59.7 588.4,57.8 593.8,55.8 599.2,53.9 604.6,52.0 610.0,50.0"/>
+        <circle class="db" cx="70" cy="194.2" r="7"/><circle class="dg" cx="610" cy="50" r="7"/>
+        <text class="b" x="84" y="232">você paga R$ 519,37</text>
+        <text class="g" x="598" y="36" text-anchor="end">o Tesouro devolve R$ 1.000</text>
+        <text class="m" x="330" y="120" text-anchor="end">14% ao ano</text>
+      </svg>
+      <figcaption>Valores em reais. A curva contratada liga o preço pago aos R$ 1.000 do vencimento.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>O risco que fica: a inflação</h2>
+  <p>Os R$ 1.000 são certos. O que eles vão comprar, não. A <dfn>inflação</dfn> (a alta geral dos preços, medida pelo IPCA, o Índice de Preços ao Consumidor Amplo do IBGE) decide o <dfn>juro real</dfn>: o que sobra do rendimento depois de descontá-la.</p>
+  <pre>juro real = (1 + taxa) ÷ (1 + inflação) − 1</pre>
+  <table>
+    <tr><th>inflação nos 5 anos</th><th class="n">o que os R$ 1.000 compram, em dinheiro de hoje</th><th class="n">juro real ao ano</th></tr>
+    <tr><td>4% ao ano</td><td class="n">1.000 ÷ 1,04^5 = R$ 821,93</td><td class="n up">1,14 ÷ 1,04 − 1 = 9,62%</td></tr>
+    <tr><td>6,54% ao ano</td><td class="n">1.000 ÷ 1,0654^5 = R$ 728,51</td><td class="n up">7,00%</td></tr>
+    <tr><td>10% ao ano</td><td class="n">1.000 ÷ 1,10^5 = R$ 620,92</td><td class="n up">3,64%</td></tr>
+    <tr><td>14% ao ano</td><td class="n">1.000 ÷ 1,14^5 = R$ 519,37</td><td class="n down">0%</td></tr>
+  </table>
+  <p>Com inflação de 14% ao ano, os R$ 1.000 do vencimento compram exatamente o que os R$ 519,37 pagos compravam: cinco anos sem ganhar nada. O prefixado é uma aposta de que a inflação vai ficar abaixo do que a taxa já embute.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Marcação a mercado</h2>
+  <p>O Tesouro vende títulos novos todo dia, e a taxa que ele oferece muda todo dia. Essa é a <dfn>taxa de mercado</dfn>. <dfn>Marcação a mercado</dfn> é recalcular o preço do seu título, todo dia, com a taxa de mercado do dia no lugar da taxa que você contratou. É esse preço que aparece no extrato, e é ele que você recebe se vender antes do vencimento.</p>
+  <table>
+    <tr><th>taxa de mercado</th><th class="n">preço do título de 5 anos</th><th class="n">para quem pagou R$ 519,37</th></tr>
+    <tr><td>11%</td><td class="n">1.000 ÷ 1,11^5 = R$ 593,45</td><td class="n up">+14,3%</td></tr>
+    <tr><td>13%</td><td class="n">1.000 ÷ 1,13^5 = R$ 542,76</td><td class="n up">+4,5%</td></tr>
+    <tr><td>14%</td><td class="n">1.000 ÷ 1,14^5 = R$ 519,37</td><td class="n">0%</td></tr>
+    <tr><td>15%</td><td class="n">1.000 ÷ 1,15^5 = R$ 497,18</td><td class="n down">−4,3%</td></tr>
+    <tr><td>17%</td><td class="n">1.000 ÷ 1,17^5 = R$ 456,11</td><td class="n down">−12,2%</td></tr>
+  </table>
+  <p>Taxa e preço andam em sentidos opostos. Se o Tesouro passou a vender títulos novos a 17%, ninguém paga o preço cheio pelo seu, que rende 14%.</p>
+
+  <h3>Os três cenários, um ano depois da compra</h3>
+  <div class="split">
+    <div>
+      <p>Um ano depois, na curva contratada, o título vale <code>1.000 ÷ 1,14^4 = R$ 592,08</code>. Faltam 4 anos.</p>
+      <p>Cenário 1, a taxa sobe para 17%:</p>
+      <pre>1.000 ÷ 1,17^4 = <mark>R$ 533,65</mark>
+contra a curva:  −9,9%
+contra o pago:   +2,7% (no lugar de +14%)</pre>
+      <p>Cenário 2, a taxa cai para 11%:</p>
+      <pre>1.000 ÷ 1,11^4 = <mark>R$ 658,73</mark>
+contra a curva:  +11,3%
+contra o pago:   +26,8% em 1 ano</pre>
+      <p>Cenário 3, você não vende. Nos dois casos o título chega aos mesmos R$ 1.000. O cenário 2 é a aposta clássica do prefixado: comprar com a taxa alta e vender com lucro quando ela cair. No cenário 1 há uma pegadinha: a taxa costuma subir quando a inflação sobe, e aí os R$ 1.000 garantidos compram menos (seção 4).</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Três caminhos de preço que terminam em 1.000 no vencimento">
+        <line class="grid" x1="70" x2="610" y1="275" y2="275"/><line class="grid" x1="70" x2="610" y1="200" y2="200"/>
+        <line class="grid" x1="70" x2="610" y1="125" y2="125"/><line class="grid" x1="70" x2="610" y1="50" y2="50"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="281" text-anchor="end">250</text><text class="m" x="62" y="206" text-anchor="end">500</text>
+        <text class="m" x="62" y="131" text-anchor="end">750</text><text class="m" x="62" y="56" text-anchor="end">1.000</text>
+        <text class="m" x="70" y="375" text-anchor="middle">hoje</text><text class="m" x="178" y="375" text-anchor="middle">1</text>
+        <text class="m" x="286" y="375" text-anchor="middle">2</text><text class="m" x="394" y="375" text-anchor="middle">3</text>
+        <text class="m" x="502" y="375" text-anchor="middle">4</text><text class="m" x="600" y="375" text-anchor="middle">5 anos</text>
+        <polyline class="ln lm" points="70.0,194.2 75.4,193.2 80.8,192.1 86.2,191.1 91.6,190.1 97.0,189.0 102.4,187.9 107.8,186.9 113.2,185.8 118.6,184.7 124.0,183.6 129.4,182.5 134.8,181.4 140.2,180.3 145.6,179.2 151.0,178.1 156.4,177.0 161.8,175.8 167.2,174.7 172.6,173.5 178.0,172.4 183.4,171.2 188.8,170.0 194.2,168.9 199.6,167.7 205.0,166.5 210.4,165.3 215.8,164.0 221.2,162.8 226.6,161.6 232.0,160.3 237.4,159.1 242.8,157.8 248.2,156.6 253.6,155.3 259.0,154.0 264.4,152.7 269.8,151.4 275.2,150.1 280.6,148.8 286.0,147.5 291.4,146.2 296.8,144.8 302.2,143.5 307.6,142.1 313.0,140.8 318.4,139.4 323.8,138.0 329.2,136.6 334.6,135.2 340.0,133.8 345.4,132.4 350.8,130.9 356.2,129.5 361.6,128.1 367.0,126.6 372.4,125.1 377.8,123.7 383.2,122.2 388.6,120.7 394.0,119.2 399.4,117.6 404.8,116.1 410.2,114.6 415.6,113.0 421.0,111.5 426.4,109.9 431.8,108.3 437.2,106.7 442.6,105.1 448.0,103.5 453.4,101.9 458.8,100.3 464.2,98.6 469.6,97.0 475.0,95.3 480.4,93.6 485.8,92.0 491.2,90.3 496.6,88.6 502.0,86.8 507.4,85.1 512.8,83.4 518.2,81.6 523.6,79.9 529.0,78.1 534.4,76.3 539.8,74.5 545.2,72.7 550.6,70.9 556.0,69.0 561.4,67.2 566.8,65.3 572.2,63.4 577.6,61.6 583.0,59.7 588.4,57.8 593.8,55.8 599.2,53.9 604.6,52.0 610.0,50.0"/>
+        <polyline class="ln lb" points="70.0,194.2 75.4,193.2 80.8,192.1 86.2,191.1 91.6,190.1 97.0,189.0 102.4,187.9 107.8,186.9 113.2,185.8 118.6,184.7 124.0,183.6 129.4,182.5 134.8,181.4 140.2,180.3 145.6,179.2 151.0,178.1 156.4,177.0 161.8,175.8 167.2,174.7 172.6,173.5 178.0,172.4"/>
+        <line class="ln lg" x1="178" x2="178" y1="172.4" y2="152.4"/><line class="ln lr" x1="178" x2="178" y1="172.4" y2="189.9"/>
+        <polyline class="ln lg" points="178.0,152.4 183.4,151.3 188.8,150.3 194.2,149.3 199.6,148.2 205.0,147.2 210.4,146.1 215.8,145.0 221.2,144.0 226.6,142.9 232.0,141.8 237.4,140.7 242.8,139.6 248.2,138.5 253.6,137.4 259.0,136.3 264.4,135.2 269.8,134.0 275.2,132.9 280.6,131.8 286.0,130.6 291.4,129.5 296.8,128.3 302.2,127.2 307.6,126.0 313.0,124.8 318.4,123.7 323.8,122.5 329.2,121.3 334.6,120.1 340.0,118.9 345.4,117.7 350.8,116.5 356.2,115.2 361.6,114.0 367.0,112.8 372.4,111.5 377.8,110.3 383.2,109.0 388.6,107.8 394.0,106.5 399.4,105.2 404.8,104.0 410.2,102.7 415.6,101.4 421.0,100.1 426.4,98.8 431.8,97.5 437.2,96.1 442.6,94.8 448.0,93.5 453.4,92.1 458.8,90.8 464.2,89.4 469.6,88.1 475.0,86.7 480.4,85.3 485.8,83.9 491.2,82.5 496.6,81.1 502.0,79.7 507.4,78.3 512.8,76.9 518.2,75.5 523.6,74.0 529.0,72.6 534.4,71.1 539.8,69.7 545.2,68.2 550.6,66.7 556.0,65.3 561.4,63.8 566.8,62.3 572.2,60.8 577.6,59.2 583.0,57.7 588.4,56.2 593.8,54.7 599.2,53.1 604.6,51.6 610.0,50.0"/>
+        <polyline class="ln lr" points="178.0,189.9 183.4,188.6 188.8,187.4 194.2,186.1 199.6,184.8 205.0,183.5 210.4,182.2 215.8,180.9 221.2,179.5 226.6,178.2 232.0,176.8 237.4,175.5 242.8,174.1 248.2,172.7 253.6,171.3 259.0,169.9 264.4,168.5 269.8,167.0 275.2,165.6 280.6,164.2 286.0,162.7 291.4,161.2 296.8,159.7 302.2,158.2 307.6,156.7 313.0,155.2 318.4,153.7 323.8,152.1 329.2,150.5 334.6,149.0 340.0,147.4 345.4,145.8 350.8,144.2 356.2,142.6 361.6,140.9 367.0,139.3 372.4,137.6 377.8,135.9 383.2,134.3 388.6,132.6 394.0,130.8 399.4,129.1 404.8,127.4 410.2,125.6 415.6,123.9 421.0,122.1 426.4,120.3 431.8,118.5 437.2,116.6 442.6,114.8 448.0,112.9 453.4,111.1 458.8,109.2 464.2,107.3 469.6,105.4 475.0,103.5 480.4,101.5 485.8,99.6 491.2,97.6 496.6,95.6 502.0,93.6 507.4,91.6 512.8,89.5 518.2,87.5 523.6,85.4 529.0,83.3 534.4,81.2 539.8,79.1 545.2,77.0 550.6,74.8 556.0,72.6 561.4,70.5 566.8,68.3 572.2,66.0 577.6,63.8 583.0,61.5 588.4,59.3 593.8,57.0 599.2,54.7 604.6,52.3 610.0,50.0"/>
+        <circle class="db" cx="178" cy="172.4" r="6"/><circle class="dg" cx="178" cy="152.4" r="6"/>
+        <circle class="dr" cx="178" cy="189.9" r="6"/><circle class="dg" cx="610" cy="50" r="7"/>
+        <text class="g" x="606" y="262" text-anchor="end">taxa cai para 11%: R$ 658,73</text>
+        <text class="m" x="606" y="296" text-anchor="end">curva contratada, 14%: R$ 592,08</text>
+        <text class="r" x="606" y="330" text-anchor="end">taxa sobe para 17%: R$ 533,65</text>
+        <text class="g" x="596" y="36" text-anchor="end">R$ 1.000</text>
+      </svg>
+      <figcaption>O preço salta no ano 1, para cima ou para baixo. Os três caminhos se encontram no vencimento.</figcaption>
+    </figure>
+  </div>
+
+  <h3>Prazo curto balança menos</h3>
+  <table>
+    <tr><th>prazo</th><th class="n">preço a 14%</th><th class="n">preço a 15%</th><th class="n">queda</th></tr>
+    <tr><td>1 ano</td><td class="n">R$ 877,19</td><td class="n">R$ 869,57</td><td class="n down">−0,9%</td></tr>
+    <tr><td>3 anos</td><td class="n">R$ 674,97</td><td class="n">R$ 657,52</td><td class="n down">−2,6%</td></tr>
+    <tr><td>5 anos</td><td class="n">R$ 519,37</td><td class="n">R$ 497,18</td><td class="n down">−4,3%</td></tr>
+  </table>
+  <p>A mesma alta de 1 <dfn>ponto percentual</dfn> (de 14% para 15%) pesa mais quanto mais longe está o vencimento, porque a taxa entra na conta uma vez para cada ano que falta.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Prefixado ou IPCA+? A inflação implícita</h2>
+  <p>O <dfn>Tesouro IPCA+</dfn> paga a inflação mais uma taxa fixa. No mesmo dia, para o mesmo prazo, dá para comparar os dois: a <dfn>inflação implícita</dfn> é a inflação que faz os dois renderem igual.</p>
+  <pre>Prefixado a 14%, IPCA+ a 7%:
+inflação implícita = 1,14 ÷ 1,07 − 1 = <mark>6,54% ao ano</mark>
+
+inflação abaixo de 6,54%: o prefixado rende mais
+inflação acima de 6,54%:  o IPCA+ rende mais</pre>
+  <p>Com as taxas reais de 11/11/2026 dos títulos com vencimento em 2029 (Prefixado a 14,65%, IPCA+ a 7,46%; os vencimentos diferem em 4 meses, então a conta é aproximada):</p>
+  <pre>1,1465 ÷ 1,0746 − 1 = <mark>6,69% ao ano</mark></pre>
+  <p>Comprar o prefixado hoje é apostar que a inflação até 2029 fica abaixo de 6,69% ao ano. Se ficar acima, o IPCA+ teria sido melhor, e ele não corre esse risco.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Caso real: Tesouro Prefixado 2026</h2>
+  <div class="split">
+    <div>
+      <p>Do histórico diário do Tesouro (arquivo <code>PrecoTaxaTesouroDireto.csv</code>, no portal Tesouro Transparente). Colunas: título; vencimento; data; taxa de compra; taxa de venda; <dfn>PU</dfn> (preço unitário, o preço de um título inteiro) de compra; PU de venda; PU base.</p>
+      <div class="term"><span class="cmd">grep '^Tesouro Prefixado;01/01/2026;\(03/08/2020\|03/11/2021\|30/12/2025\);' PrecoTaxaTesouroDireto.csv</span>
+<span class="out">Tesouro Prefixado;01/01/2026;30/12/2025;14,94;15,06;999,44;<mark>998,88</mark>;998,88
+Tesouro Prefixado;01/01/2026;03/11/2021;<mark>12,68</mark>;12,80;608,67;<mark>605,69</mark>;605,69
+Tesouro Prefixado;01/01/2026;03/08/2020;<mark>5,81</mark>;5,93;<mark>736,95</mark>;732,45;732,28</span></div>
+      <p>Quem comprou em 03/08/2020 pagou R$ 736,95 e travou 5,81% ao ano, com a Selic em 2,25%. Depois a inflação disparou e os juros subiram:</p>
+      <pre>03/11/2021: 605,69 ÷ 736,95 = <mark>−17,8%</mark> para quem vendesse
+01/01/2026: 1.000 ÷ 736,95  = <mark>+35,7%</mark> em reais, no vencimento
+
+IPCA de ago/2020 a dez/2025:  +38,5%
+poder de compra: 1,357 ÷ 1,385 − 1 = <mark>−2,0%</mark></pre>
+      <p>Este é o risco do prefixado em números: o contrato foi cumprido ao centavo, e mesmo assim quem levou até o fim saiu com menos poder de compra do que entrou. Um IPCA+ comprado no mesmo dia teria entregue a inflação inteira mais a taxa.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Preço de venda do Tesouro Prefixado 2026 de 2020 a 2026">
+        <line class="grid" x1="70" x2="610" y1="294" y2="294"/><line class="grid" x1="70" x2="610" y1="182" y2="182"/>
+        <line class="grid" x1="70" x2="610" y1="70" y2="70"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="300" text-anchor="end">600</text><text class="m" x="62" y="188" text-anchor="end">800</text>
+        <text class="m" x="62" y="76" text-anchor="end">1.000</text>
+        <text class="m" x="70" y="375" text-anchor="middle">2020</text><text class="m" x="250" y="375" text-anchor="middle">2022</text>
+        <text class="m" x="430" y="375" text-anchor="middle">2024</text><text class="m" x="600" y="375" text-anchor="middle">2026</text>
+        <polyline class="ln lb" style="stroke-width:2.5" points="79.9,242.8 85.0,238.8 92.4,259.6 100.6,255.3 107.4,238.2 114.9,231.2 123.0,219.8 130.1,232.8 137.6,244.1 145.7,244.1 152.6,242.2 160.7,218.8 167.7,228.6 174.6,244.6 182.2,255.2 190.1,248.5 197.3,245.0 204.6,244.2 212.6,250.2 219.9,259.6 227.3,265.5 235.0,285.4 242.3,270.8 250.5,257.6 257.7,261.3 264.8,261.6 272.2,256.9 279.9,262.7 287.3,262.5 294.6,262.6 302.3,259.4 309.9,246.7 317.8,237.2 325.0,236.6 332.3,247.9 340.3,242.6 347.7,237.7 354.6,233.5 362.7,221.8 369.9,216.6 377.3,203.5 385.1,191.1 392.3,188.3 399.9,185.2 407.6,185.8 415.0,185.4 422.3,172.4 430.3,165.8 437.7,162.0 444.8,159.3 452.4,157.0 460.1,157.2 468.0,155.2 474.9,155.9 482.6,151.1 490.4,147.9 497.6,145.8 505.2,143.2 512.9,143.9 520.3,145.0 528.1,136.9 535.6,131.3 542.2,126.3 549.9,119.8 557.4,114.2 564.6,108.8 572.3,102.2 579.9,95.9 587.3,89.4 595.4,82.6 602.3,76.8 609.5,70.6 610.0,70.0"/>
+        <circle class="db" cx="123" cy="217.3" r="7"/><circle class="dr" cx="235.4" cy="290.8" r="7"/><circle class="dg" cx="610" cy="70" r="7"/>
+        <text class="b" x="82" y="192">ago/2020: R$ 736,95 (taxa de 5,81%)</text>
+        <text class="r" x="260" y="328" text-anchor="middle">nov/2021: R$ 605,69 (−17,8%)</text>
+        <text class="g" x="606" y="46" text-anchor="end">jan/2026: R$ 1.000,00</text>
+      </svg>
+      <figcaption>Preço de venda do Tesouro Prefixado 2026, um ponto por mês, até o vencimento.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Quando usar, e quando não</h2>
+  <ol>
+    <li>Meta de poucos anos, com valor em reais e data marcada. Você compra o título que vence perto da data e sabe hoje o valor final.</li>
+    <li>Você acha que a inflação vai ficar abaixo da implícita (seção 6). Se acertar, ganha mais que no IPCA+.</li>
+    <li>Você acha que os juros vão cair e aceita o risco de errar. Se caírem, dá para vender antes com lucro (cenário 2).</li>
+  </ol>
+  <p>Para aposentadoria ele não é o indicado. Em 20 ou 30 anos a inflação tem tempo de sobra para surpreender, e o caso real acima mostra o estrago em apenas 5. Além disso os prefixados à venda são curtos: o mais longo hoje vence em 2032. Para prazos longos, quem protege o poder de compra é o IPCA+.</p>
+
+  <h3>Os custos</h3>
+  <p><dfn>IR</dfn> (imposto de renda) sobre o ganho: 22,5% até 180 dias, 20% até 360, 17,5% até 720 e 15% acima de 720 dias. No título de 5 anos:</p>
+  <pre>ganho em reais:  1.000 − 519,37 = R$ 480,63
+IR de 15%:                        R$  72,09
+líquido:                          R$ 927,91
+taxa líquida: (927,91 ÷ 519,37)^(1/5) − 1 = <mark>12,31% ao ano</mark></pre>
+  <p>Há ainda a taxa de <dfn>custódia</dfn> da B3 (a bolsa, que guarda o título), de 0,20% ao ano sobre o valor investido.</p>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Erros comuns</h2>
+  <p class="mistake">Olhar só a taxa em reais. 14% parece muito, mas o que importa é 14% contra qual inflação. Conserto: calcule a inflação implícita contra o IPCA+ do mesmo prazo e pergunte se você aposta nela.</p>
+  <p class="mistake">Achar que levar até o vencimento elimina o risco. Elimina o risco de preço, não o de inflação: o Prefixado 2026 pagou tudo e perdeu 2,0% de poder de compra. Conserto: para proteger poder de compra, use IPCA+.</p>
+  <p class="mistake">Comprar um vencimento que não casa com a data do uso. Vender antes é vender pelo preço do dia, que pode estar abaixo da curva. Conserto: escolha o título que vence perto da data em que o dinheiro vai ser usado.</p>
+  <p class="mistake">Usar como reserva de emergência. Uma alta de juros pode derrubar o preço bem no dia em que você precisa. Conserto: reserva vai no Tesouro Selic.</p>
+  <p class="mistake">Comprar o "Prefixado com juros semestrais" para acumular. Ele paga os juros a cada 6 meses, com IR em cada pagamento, e sobra para você reinvestir. Conserto: para acumular, use o Prefixado simples.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Tesouro Prefixado devolve R$ 1.000 por título numa data marcada: <code>preço = 1.000 ÷ (1 + taxa)^anos</code>.</li>
+    <li>Os reais são certos; o poder de compra depende da inflação: <code>juro real = (1 + taxa) ÷ (1 + inflação) − 1</code>.</li>
+    <li>Marcação a mercado: taxa sobe, preço cai; taxa cai, preço sobe. No vencimento o preço é R$ 1.000 de qualquer jeito.</li>
+    <li>Inflação implícita = <code>(1 + taxa do prefixado) ÷ (1 + taxa do IPCA+) − 1</code>. Abaixo dela o prefixado ganha, acima o IPCA+ ganha.</li>
+    <li>Serve para metas de poucos anos em reais. Para aposentadoria, IPCA+; para emergência, Selic.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
