@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tesouro Selic, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+  #links a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+const brl = (v, d = 2) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const pc = v => (v < -1e-9 ? "−" : "+") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
+const tx = (r, d = 2) => (r * 100).toFixed(d).replace(".", ",") + "%";
+// chart: x from 0 to NX, value from V0 to VM (set by the page, with GRID and TICKS); RX is the side panel
+const CH = { x0: 150, y0: 690, w: 860, h: 580 }, RX = 1070;
+const X = x => CH.x0 + x / NX * CH.w, Y = v => CH.y0 - (v - V0) / (VM - V0) * CH.h;
+function axes(ylab) {
+  for (const v of GRID) {
+    add(`<line x1="${CH.x0}" x2="${CH.x0 + CH.w}" y1="${Y(v)}" y2="${Y(v)}" stroke="${COL.l}" stroke-width="2"/>`);
+    text(CH.x0 - 14, Y(v) + 9, [[v.toLocaleString("pt-BR"), "m"]], 26, { anchor: "end" });
+  }
+  add(`<line x1="${CH.x0}" x2="${CH.x0 + CH.w}" y1="${CH.y0}" y2="${CH.y0}" stroke="${COL.m}" stroke-width="3"/>`);
+  for (const [x, l] of TICKS) text(X(x), CH.y0 + 38, [[l, "m"]], 26, { anchor: "middle" });
+  text(CH.x0, 50, [[ylab, "m"]], 26);
+}
+function path(fn, a, b, color, o = {}) {
+  if (b - a < 1e-6) return;
+  const pts = [];
+  for (let x = a; x < b; x += NX / 200) pts.push(`${X(x).toFixed(1)},${Y(fn(x)).toFixed(1)}`);
+  pts.push(`${X(b).toFixed(1)},${Y(fn(b)).toFixed(1)}`);
+  add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL[color]}" stroke-width="${o.sw || 6}" stroke-linejoin="round" stroke-linecap="round"${o.dash ? ` stroke-dasharray="${o.dash}"` : ""}/>`);
+}
+const dot = (x, y, color, r = 12, op = 1) => add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+
+// rate on the left end, price on the right end: one goes up, the other goes down
+function seesaw(t, r0, n, formula, pfx) {
+  const r = r0 + .01 * (P(t, 3, 5) - 2 * P(t, 6.5, 8.5) + P(t, 10.2, 11.6)), p = 1000 / Math.pow(1 + r, n);
+  row(800, 120, formula, 56);
+  const ang = (r - r0) * 1400, a = ang * Math.PI / 180, px = 800, py = 600, h = 430;
+  add(`<polygon points="${px},${py} ${px - 70},${py + 130} ${px + 70},${py + 130}" fill="${COL.m}" opacity=".5"/>`);
+  add(`<line x1="${px - 380}" x2="${px + 380}" y1="${py + 130}" y2="${py + 130}" stroke="${COL.m}" stroke-width="3"/>`);
+  add(`<rect x="${px - h}" y="${py - 14}" width="${2 * h}" height="24" rx="12" fill="${COL.f}" opacity=".75" transform="rotate(${ang} ${px} ${py})"/>`);
+  const lx = px - h * Math.cos(a), ly = py - h * Math.sin(a), rx = px + h * Math.cos(a), ry = py + h * Math.sin(a);
+  text(lx, ly - 110, [["taxa de mercado", "m"]], 28, { anchor: "middle" });
+  text(lx, ly - 40, [[pfx + tx(r), "a", 1]], 56, { anchor: "middle" });
+  text(rx, ry - 110, [["preço do título", "m"]], 28, { anchor: "middle" });
+  text(rx, ry - 40, [[brl(p), "b", 1]], 56, { anchor: "middle" });
+  const d = (p * Math.pow(1 + r0, n) / 1000 - 1) * 100;
+  if (Math.abs(d) > .05) text(rx, ry + 70, [[pc(d), d > 0 ? "c" : "r", 1]], 44, { anchor: "middle" });
+}
+
+// one scenario: xj years on the contracted curve, the market rate jumps from r0 to r2, then the path to maturity
+function scen(t, r0, r2, xj, pfx, col, sell, hold) {
+  const f0 = x => 1000 / Math.pow(1 + r0, NX - x), f2 = x => 1000 / Math.pow(1 + r2, NX - x);
+  path(f0, 0, NX, "m", { dash: "3 14", sw: 4 });
+  const x = xj * P(t, .5, 2.5), k = P(t, 3.5, 5.5), g = xj + (NX - xj) * P(t, 7, 10.5);
+  const vx = t < 3.5 ? x : g, val = t < 3.5 ? f0(x) : g > xj ? f2(g) : L(f0(xj), f2(xj), k);
+  path(f0, 0, x, "b");
+  if (k > 0) add(`<line x1="${X(xj)}" x2="${X(xj)}" y1="${Y(f0(xj))}" y2="${Y(L(f0(xj), f2(xj), k))}" stroke="${COL[col]}" stroke-width="6" stroke-linecap="round"/>`);
+  path(f2, xj, g, col);
+  dot(X(NX), Y(1000), "c", 12);
+  dot(X(vx), Y(val), "b", 14);
+  text(RX, 180, [["taxa de mercado", "m"]], 28);
+  text(RX, 245, [[pfx + tx(L(r0, r2, k)), "a", 1]], 56);
+  text(RX, 335, [["seu título vale", "m"]], 28);
+  text(RX, 400, [[brl(val), "b", 1]], 56);
+  text(RX, 470, [[pc((f2(xj) / f0(xj) - 1) * 100) + " contra a curva", col, 1]], 34, { op: P(t, 5.5, 6.2) });
+  text(RX, 570, [[sell]], 30, { op: P(t, 5.9, 6.6) });
+  text(RX, 630, [[hold, "c", 1]], 30, { op: P(t, 10.5, 11.2) });
+}
+
+// real history: rate on top, price below, same x; D rows are [x, rate, price]
+function realChart(t, D, c) {
+  const XR = x => 150 + (x - c.x0) / (c.x1 - c.x0) * 850, YT = r => 300 - (r - c.r0) / (c.r1 - c.r0) * 210,
+    YP = p => 700 - (p - c.p0) / (c.p1 - c.p0) * 300;
+  const end = c.x0 + (c.x1 - c.x0) * clamp((t - .5) / 5.5), pts = D.filter(d => d[0] <= end);
+  text(150, 50, [[c.rl, "a", 1]], 28);
+  text(150, 372, [["preço de venda (R$)", "b", 1]], 28);
+  for (const [r, l] of c.rg) {
+    add(`<line x1="150" x2="1000" y1="${YT(r)}" y2="${YT(r)}" stroke="${COL.l}" stroke-width="2"/>`);
+    text(136, YT(r) + 9, [[l, "m"]], 26, { anchor: "end" });
+  }
+  for (const p of c.pg) {
+    add(`<line x1="150" x2="1000" y1="${YP(p)}" y2="${YP(p)}" stroke="${COL.l}" stroke-width="2"/>`);
+    text(136, YP(p) + 9, [[p.toLocaleString("pt-BR"), "m"]], 26, { anchor: "end" });
+  }
+  for (const [x, l] of c.xt) text(XR(x), 750, [[l, "m"]], 26, { anchor: "middle" });
+  const line = (fy, col) => add(`<polyline points="${pts.map(d => `${XR(d[0]).toFixed(1)},${fy(d).toFixed(1)}`).join(" ")}" fill="none" stroke="${COL[col]}" stroke-width="4" stroke-linejoin="round"/>`);
+  line(d => YT(d[1]), "a"); line(d => YP(d[2]), "b");
+  c.marks.forEach(([x, r, p, l1, l2, col, at], i) => {
+    const op = P(t, at, at + .7);
+    add(`<line x1="${XR(x)}" x2="${XR(x)}" y1="70" y2="710" stroke="${COL.m}" stroke-width="2" stroke-dasharray="6 8" opacity="${op}"/>`);
+    dot(XR(x), YT(r), "a", 11, op); dot(XR(x), YP(p), col, 13, op);
+    text(RX - 20, 170 + i * 130, [[l1, "m"]], 28, { op });
+    text(RX - 20, 215 + i * 130, [[l2, col, 1]], 34, { op });
+  });
+}
+
+// bullet list, one line per item: [text, color]
+function bullets(t, items) {
+  items.forEach(([s, c], i) => {
+    const op = P(t, .5 + i * .8, 1.2 + i * .8);
+    dot(150, 148 + i * 92, c, 13, op);
+    text(190, 160 + i * 92, [[s]], 36, { op });
+  });
+}
+
+// x in months, value in R$: R$ 10.000 invested for one year
+const NX = 12, V0 = 10000, VM = 11600, GRID = [10400, 10800, 11200, 11600],
+  TICKS = [[0, "hoje"], [3, "3 meses"], [6, "6 meses"], [9, "9 meses"], [12, "1 ano"]];
+const bal = (r, m, from = 10000, m0 = 0) => from * Math.pow(1 + r, (m - m0) / 12), HALF = bal(.14, 6);
+
+// Tesouro Selic 2025 from 03/08/2020 to 31/03/2021: [days since 03/08/2020, sell rate %, sell price R$] (Tesouro Transparente)
+const REAL = [[0,0.04,10655.62],[1,0.04,10656.54],[2,0.04,10657.47],[3,0.04,10658.27],[4,0.04,10659.09],[7,0.04,10659.91],[8,0.04,10660.72],[9,0.04,10661.53],[10,0.04,10662.35],[11,0.04,10663.17],[14,0.04,10663.98],[15,0.04,10664.79],[16,0.04,10665.61],[17,0.04,10666.43],[18,0.04,10667.25],[21,0.04,10668.01],[22,0.04,10668.78],[23,0.04,10669.64],[24,0.04,10670.41],[25,0.04,10671.22],[28,0.04,10672.0],[29,0.04,10672.76],[30,0.04,10673.58],[31,0.05,10674.3],[32,0.05,10675.07],[36,0.05,10675.93],[37,0.05,10676.7],[38,0.05,10677.47],[39,0.05,10677.24],[42,0.06,10673.87],[43,0.07,10670.42],[44,0.08,10664.19],[45,0.09,10660.81],[46,0.09,10659.89],[49,0.1,10656.48],[50,0.11,10655.58],[51,0.11,10655.9],[52,0.11,10655.05],[53,0.12,10651.01],[56,0.14,10642.09],[57,0.16,10634.47],[58,0.18,10626.72],[59,0.21,10610.43],[60,0.26,10588.25],[63,0.32,10564.09],[64,0.36,10544.05],[65,0.38,10536.11],[66,0.38,10536.41],[67,0.36,10549.36],[71,0.28,10588.68],[72,0.21,10618.15],[73,0.2,10625.09],[74,0.2,10627.26],[77,0.22,10618.44],[78,0.21,10624.17],[79,0.21,10625.01],[80,0.21,10624.91],[81,0.21,10626.58],[84,0.21,10627.51],[85,0.2,10631.47],[86,0.2,10633.95],[87,0.2,10635.15],[88,0.2,10634.79],[92,0.2,10636.59],[93,0.2,10636.28],[94,0.2,10636.66],[95,0.21,10636.03],[98,0.21,10636.86],[99,0.2,10638.33],[100,0.2,10639.35],[101,0.22,10634.86],[102,0.22,10632.74],[105,0.23,10631.81],[106,0.23,10632.7],[107,0.23,10633.5],[108,0.23,10633.93],[109,0.23,10633.61],[112,0.23,10634.0],[113,0.23,10634.62],[114,0.23,10635.83],[115,0.23,10636.63],[116,0.23,10637.57],[119,0.23,10638.41],[120,0.23,10639.75],[121,0.23,10639.7],[122,0.23,10641.31],[123,0.23,10642.3],[126,0.23,10643.99],[127,0.22,10648.29],[128,0.21,10652.04],[129,0.21,10654.23],[130,0.21,10657.35],[133,0.2,10660.29],[134,0.2,10662.96],[135,0.19,10667.51],[136,0.19,10669.67],[137,0.18,10673.67],[140,0.18,10675.75],[141,0.17,10678.49],[142,0.17,10682.54],[147,0.16,10685.73],[148,0.16,10688.68],[149,0.16,10691.34],[154,0.15,10692.56],[155,0.15,10694.67],[156,0.15,10695.53],[157,0.15,10697.28],[158,0.15,10698.44],[161,0.15,10700.81],[162,0.15,10701.81],[163,0.15,10701.87],[164,0.15,10702.55],[165,0.15,10703.33],[168,0.15,10704.33],[169,0.15,10705.59],[170,0.14,10707.58],[171,0.14,10708.58],[172,0.14,10710.35],[176,0.14,10711.03],[177,0.14,10711.85],[178,0.15,10712.02],[179,0.15,10713.27],[182,0.15,10714.08],[183,0.15,10713.6],[184,0.15,10714.46],[185,0.15,10714.5],[186,0.15,10714.84],[189,0.15,10714.58],[190,0.16,10714.11],[191,0.16,10714.15],[192,0.16,10714.46],[193,0.16,10713.47],[198,0.17,10713.74],[199,0.17,10714.04],[200,0.17,10714.05],[203,0.17,10713.72],[204,0.17,10714.38],[205,0.18,10713.41],[206,0.18,10712.96],[207,0.18,10712.34],[210,0.19,10712.4],[211,0.19,10712.77],[212,0.19,10714.2],[213,0.18,10715.85],[214,0.18,10716.64],[217,0.18,10717.22],[218,0.18,10717.97],[219,0.19,10718.38],[220,0.19,10718.84],[221,0.19,10718.66],[224,0.19,10718.31],[225,0.2,10716.74],[226,0.2,10716.82],[227,0.2,10717.25],[228,0.2,10717.28],[231,0.2,10719.91],[232,0.2,10721.49],[233,0.2,10721.42],[234,0.21,10721.49],[235,0.21,10722.43],[238,0.22,10719.61],[239,0.23,10716.79],[240,0.23,10715.48]];
+// accumulated in the year, %: [year, Selic, IPCA] (Banco Central, SGS series 4390 and 433)
+const YEARS = [[2019, 5.95, 4.31], [2020, 2.75, 4.52], [2021, 4.44, 10.06], [2022, 12.38, 5.78], [2023, 13.03, 4.62], [2024, 10.89, 4.83], [2025, 14.33, 4.26]];
+
+const GLOSS = {
+  "Selic": "taxa básica de juros do Brasil, definida pelo Copom (Comitê de Política Monetária do Banco Central) a cada 45 dias",
+  "Tesouro Selic": "título público que rende a taxa Selic de cada dia",
+  "pós-fixado": "investimento cuja taxa só se conhece depois, dia a dia; o contrário de prefixado",
+  "p.p.": "ponto percentual; de 14% para 16% são 2 p.p.",
+  "marcação a mercado": "recalcular todo dia o preço do título pelas taxas do dia; é o valor do extrato e o que você recebe se vender",
+  "Prefixado": "título do Tesouro com taxa fixa em reais",
+  "IPCA+": "título do Tesouro que paga a inflação mais uma taxa fixa",
+  "deságio": "desconto, em % ao ano, entre o preço do título e o valor acumulado pela Selic; hoje perto de 0,03%",
+  "IR": "imposto de renda, cobrado sobre o ganho na hora do resgate",
+  "IOF": "Imposto sobre Operações Financeiras: leva parte do ganho de quem resgata em menos de 30 dias",
+  "IPCA": "Índice de Preços ao Consumidor Amplo, a inflação oficial do Brasil, medida pelo IBGE",
+  "ganho real": "o que o investimento rendeu acima da inflação",
+  "reserva de emergência": "dinheiro para imprevistos, que precisa estar disponível em qualquer dia",
+};
+const TERMS = [["Selic", "Tesouro Selic"], ["pós-fixado", "Selic"], ["p.p.", "marcação a mercado", "Prefixado", "IPCA+"],
+  ["deságio", "marcação a mercado"], ["IR", "IOF"], ["IPCA", "ganho real"], ["reserva de emergência", "IPCA+"]];
+
+const SCENES = [
+{ title: "Um saldo que sobe todo dia", dur: 10,
+  cap: [[0, "O <b>Tesouro Selic</b> rende a taxa Selic, um dia útil de cada vez. Com a Selic a 14% ao ano, R$ 10.000 ganham cerca de R$ 5,20 por dia útil."],
+        [6.5, "Em um ano viram <b>R$ 11.400</b>, se a Selic ficar parada. Ela não fica: o Banco Central revê a taxa a cada 45 dias."]],
+  draw(t) {
+    axes("saldo (R$)");
+    const m = 12 * P(t, 1, 6.5), f = m => bal(.14, m);
+    path(f, 0, m, "b");
+    dot(X(m), Y(f(m)), "b", 14);
+    text(RX, 180, [["Selic", "m"]], 28);
+    text(RX, 245, [["14,00% ao ano", "a", 1]], 56);
+    text(RX, 335, [["R$ 10.000 viram", "m"]], 28);
+    text(RX, 400, [[brl(f(m)), "b", 1]], 56);
+    text(RX, 500, [["+ R$ 5,20 por dia útil", "c", 1]], 36, { op: P(t, 2, 2.8) });
+    text(RX, 600, [["10.000 × 1,14 = 11.400", "m"]], 32, { op: P(t, 6.5, 7.3) });
+  } },
+
+{ title: "A taxa é a do dia", dur: 12,
+  cap: [[0, "A taxa não é travada na compra. O título é <b>pós-fixado</b>: rende a Selic que estiver valendo em cada dia."],
+        [3.5, "Se no meio do ano a Selic sobe para 18%, o saldo passa a subir mais rápido, já no dia seguinte."],
+        [7.5, "Se ela cai para 10%, passa a subir mais devagar. Nos dois casos o saldo não dá salto nem tombo: só muda a inclinação."]],
+  draw(t) {
+    axes("saldo (R$)");
+    const m = 6 * P(t, .5, 3), u = 6 + 6 * P(t, 4, 6.5), d = 6 + 6 * P(t, 8, 10.5);
+    path(x => bal(.14, x), 6, 12, "m", { dash: "3 14", sw: 4 });
+    path(x => bal(.14, x), 0, m, "b");
+    path(x => bal(.18, x, HALF, 6), 6, u, "c");
+    path(x => bal(.10, x, HALF, 6), 6, d, "r");
+    dot(X(6), Y(HALF), "b", 12, P(t, 2.8, 3.2));
+    text(RX, 180, [["depois de 6 meses a 14%", "m"]], 28);
+    text(RX, 235, [[brl(HALF), "b", 1]], 48);
+    text(RX, 340, [["Selic sobe para 18%", "m"]], 28, { op: P(t, 4, 4.6) });
+    text(RX, 395, [[brl(bal(.18, u, HALF, 6)), "c", 1]], 48, { op: P(t, 4, 4.6) });
+    text(RX, 470, [["Selic fica em 14%: R$ 11.400,00", "m"]], 28, { op: P(t, 6.5, 7.1) });
+    text(RX, 560, [["Selic cai para 10%", "m"]], 28, { op: P(t, 8, 8.6) });
+    text(RX, 615, [[brl(bal(.10, d, HALF, 6)), "r", 1]], 48, { op: P(t, 8, 8.6) });
+  } },
+
+{ title: "Os juros sobem 2 pontos: quem cai?", dur: 10,
+  cap: [[0, "Três títulos no mesmo dia. O mercado se assusta e os juros sobem 2 pontos percentuais de uma vez."],
+        [3, "O IPCA+ de 20 anos cai 31,0% no extrato e o Prefixado de 5 anos cai 8,3%. O Tesouro Selic não cai: ele não tem taxa travada para ficar defasada."],
+        [7, "Por isso ele é o lugar do dinheiro que pode ser preciso a qualquer momento: o preço de venda fica sempre perto do que foi acumulado."]],
+  draw(t) {
+    const k = P(t, 3, 6.5);
+    text(160, 130, [["juros de mercado: ", "m"], ["+" + (2 * k).toFixed(1).replace(".", ",") + " p.p.", "a", 1]], 48);
+    [["Tesouro Selic", 0, "Selic de 14% para 16%"], ["Prefixado 5 anos", 1 - Math.pow(1.14 / 1.16, 5), "taxa de 14% para 16%"],
+     ["IPCA+ 20 anos", 1 - Math.pow(1.07 / 1.09, 20), "taxa de IPCA + 7% para IPCA + 9%"]].forEach(([l, loss, sub], i) => {
+      const y = 260 + i * 170, d = loss * k, w = 620, x0 = 560;
+      text(160, y + 52, [[l]], 44);
+      add(`<rect x="${x0}" y="${y}" width="${w}" height="80" rx="10" fill="${COL.r}" opacity=".3"/>`);
+      add(`<rect x="${x0}" y="${y}" width="${w * (1 - d)}" height="80" rx="10" fill="${COL.b}" opacity=".8"/>`);
+      text(x0, y + 116, [[sub, "m"]], 28);
+      text(x0 + w + 40, y + 56, [[loss ? pc(-d * 100) : "0,0%", loss ? "r" : "c", 1]], 52, { op: P(t, 3, 3.6) });
+    });
+  } },
+
+{ title: "Caso real: o susto de 2020", dur: 13,
+  cap: [[0, "Dados reais do Tesouro Selic 2025. O preço é o valor acumulado pela Selic com um pequeno desconto, o <b>deságio</b>. Em cima o deságio, embaixo o preço."],
+        [6.5, "Em setembro de 2020 o mercado passou a exigir mais desconto: o deságio foi de 0,05% para 0,38% ao ano, e o preço caiu <b>1,32%</b> em 27 dias."],
+        [10, "Essa é a marcação a mercado do Tesouro Selic: pequena, rara e passageira. Em 22 de dezembro o preço já tinha voltado."]],
+  draw(t) {
+    realChart(t, REAL, { x0: 0, x1: 245, r0: 0, r1: .42, p0: 10500, p1: 10750, rl: "deságio (% ao ano)",
+      rg: [[.1, "0,1%"], [.2, "0,2%"], [.3, "0,3%"], [.4, "0,4%"]], pg: [10550, 10650, 10750],
+      xt: [[0, "ago/20"], [59, "out/20"], [120, "dez/20"], [182, "fev/21"], [241, "abr/21"]],
+      marks: [[38, .05, 10677.47, "10/09/2020: deságio de 0,05%", "R$ 10.677,47", "b", 6.5],
+              [65, .38, 10536.11, "07/10/2020: deságio de 0,38%", "R$ 10.536,11  (−1,32%)", "r", 7.5],
+              [141, .17, 10678.49, "22/12/2020: de volta", "R$ 10.678,49", "c", 10]] });
+  } },
+
+{ title: "O pedágio para sair", dur: 11,
+  cap: [[0, "Sair do Tesouro Selic não derruba o preço, mas tem pedágio. O maior é o imposto de renda, cobrado só sobre o ganho."],
+        [3.5, "A alíquota cai com o tempo: de 22,5% para quem sai em até 180 dias até 15% para quem fica mais de 720."],
+        [7.5, "Há ainda uma pequena diferença entre o preço de compra e o de venda, e IOF para quem resgata em menos de 30 dias."]],
+  draw(t) {
+    const w = 1280, net = .775, k = P(t, 1, 3);
+    text(160, 110, [["R$ 10.000 por 3 meses, Selic a 14%: ganho de ", "m"], ["R$ 332,99", "b", 1]], 40);
+    add(`<rect x="160" y="160" width="${w}" height="90" rx="10" fill="${COL.c}" opacity=".75"/>`);
+    add(`<rect x="${160 + w * (1 - (1 - net) * k)}" y="160" width="${w * (1 - net) * k}" height="90" rx="10" fill="${COL.r}"/>`);
+    text(160, 296, [["líquido: R$ 258,07", "c", 1]], 34, { op: k });
+    text(160 + w, 296, [["IR de 22,5%: R$ 74,92", "r", 1]], 34, { anchor: "end", op: k });
+    [["até 180 dias", "22,5%"], ["181 a 360 dias", "20%"], ["361 a 720 dias", "17,5%"], ["mais de 720 dias", "15%"]].forEach(([l, v], i) => {
+      const x = 160 + i * 326, op = P(t, 3.5 + i * .7, 4.2 + i * .7);
+      add(`<rect x="${x}" y="370" width="300" height="150" rx="14" fill="${COL.p}" stroke="${COL.l}" stroke-width="2" opacity="${op}"/>`);
+      text(x + 150, 418, [[l, "m"]], 28, { anchor: "middle", op });
+      text(x + 150, 490, [[v, i ? "f" : "r", 1]], 56, { anchor: "middle", op });
+    });
+    text(160, 610, [["compra e venda no mesmo dia: −0,064%, ou R$ 6,42 em R$ 10.000", "m"]], 32, { op: P(t, 7.5, 8.2) });
+    text(160, 670, [["resgate em menos de 30 dias: IOF sobre o ganho, além do IR", "m"]], 32, { op: P(t, 8.2, 8.9) });
+  } },
+
+{ title: "Selic × inflação", dur: 11,
+  cap: [[0, "Rendimento da Selic em cada ano contra a inflação do mesmo ano, de 2019 a 2025 (dados do Banco Central)."],
+        [4, "Em 2020 e 2021 a Selic perdeu para a inflação: quem ficou só nela perdeu poder de compra, 1,69% e depois 5,11%."],
+        [7.5, "De 2022 em diante ganhou com folga. O Tesouro Selic não promete ganho real nenhum: entrega o que o Banco Central decidir."]],
+  draw(t) {
+    const base = 560, sc = 27;
+    text(160, 70, [["Selic do ano", "a", 1], ["   ·   ", "m"], ["inflação do ano (IPCA)", "r", 1]], 32);
+    add(`<line x1="150" x2="1500" y1="${base}" y2="${base}" stroke="${COL.m}" stroke-width="3"/>`);
+    YEARS.forEach(([y, s, ip], i) => {
+      const x = 180 + i * 188, k = P(t, .5 + i * .4, 1.3 + i * .4), real = ((1 + s / 100) / (1 + ip / 100) - 1) * 100;
+      const f1 = v => v.toFixed(1).replace(".", ",");
+      add(`<rect x="${x}" y="${base - s * sc * k}" width="68" height="${s * sc * k}" rx="6" fill="${COL.a}" opacity=".85"/>`);
+      add(`<rect x="${x + 76}" y="${base - ip * sc * k}" width="68" height="${ip * sc * k}" rx="6" fill="${COL.r}" opacity=".85"/>`);
+      text(x + 34, base - s * sc * k - 10, [[f1(s), "a", 1]], 24, { anchor: "middle", op: k });
+      text(x + 110, base - ip * sc * k - 10, [[f1(ip), "r", 1]], 24, { anchor: "middle", op: k });
+      text(x + 72, base + 40, [[y, "m"]], 28, { anchor: "middle" });
+      text(x + 72, base + 100, [[(real < 0 ? "−" : "+") + Math.abs(real).toFixed(2).replace(".", ",") + "%", real < 0 ? "r" : "c", 1]], 32, { anchor: "middle", op: P(t, 3.3 + i * .15, 4 + i * .15) });
+    });
+    text(160, base + 160, [["linha de baixo: ganho real, quanto a Selic rendeu acima da inflação", "m"]], 26, { op: P(t, 3.3, 4) });
+  } },
+
+{ title: "Para que serve o Tesouro Selic", dur: 10,
+  cap: [[0, "Cada título do Tesouro resolve um problema. O Selic resolve o de ter o dinheiro disponível sem susto."],
+        [6, "O preço dessa calma é não saber quanto ele vai render. Para metas longas, como aposentadoria, quem trava ganho real é o IPCA+."]],
+  draw(t) {
+    bullets(t, [["reserva de emergência: o preço de venda quase não balança", "c"],
+      ["dinheiro com uso em menos de 2 anos, ou sem data certa", "c"],
+      ["estacionamento: espera aqui até aparecer uma taxa boa em outro título", "b"],
+      ["Selic sobe: rende mais no dia seguinte, sem tombo no extrato", "a"],
+      ["Selic cai: rende menos, e não há taxa travada para proteger", "r"],
+      ["aposentadoria: não garante ganho acima da inflação por décadas", "m"],
+      ["custos: IR de 22,5% a 15% sobre o ganho e a diferença de compra e venda", "m"]]);
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(+location.hash.slice(1) || 0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

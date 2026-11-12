@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tesouro Selic</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6; --o: #e8590c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6; --o: #ff922b;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .9rem; }
+.links a { color: var(--accent); }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+section h3 { margin: 10px 0 4px; font-size: 1.08rem; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+.term mark { background: #ffffff2e; color: #fff; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; font-size: 17px; }
+svg.diagram .m { fill: var(--muted); }
+svg.diagram .b { fill: var(--accent); font-weight: 700; }
+svg.diagram .o { fill: var(--o); font-weight: 700; }
+svg.diagram .g { fill: var(--add); font-weight: 700; }
+svg.diagram .r { fill: var(--del); font-weight: 700; }
+svg.diagram .axis { stroke: var(--muted); stroke-width: 2; }
+svg.diagram .grid { stroke: var(--line); stroke-width: 1.5; }
+svg.diagram .ln { fill: none; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; }
+svg.diagram .lb { stroke: var(--accent); } svg.diagram .lg { stroke: var(--add); }
+svg.diagram .lr { stroke: var(--del); } svg.diagram .lm { stroke: var(--muted); stroke-dasharray: 3 8; }
+svg.diagram .db { fill: var(--accent); } svg.diagram .dg { fill: var(--add); } svg.diagram .dr { fill: var(--del); }
+table { border-collapse: collapse; margin: 0 0 10px; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 14px 4px 0; text-align: left; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.up { color: var(--add); font-weight: 600; } .down { color: var(--del); font-weight: 600; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<nav class="links"><a href="../">← todas as aulas</a><a href="animate.html">animação</a></nav>
+<h1>Tesouro Selic</h1>
+<p class="lead">O título que rende a taxa Selic de cada dia: por que ele quase não tem marcação a mercado, o que acontece quando a Selic sobe ou cai, quanto custa sair, e para que ele serve (e não serve).</p>
+
+<section>
+  <h2><span class="num">1</span>O problema: dinheiro que pode ser preciso amanhã</h2>
+  <p>Títulos com taxa travada, como o Tesouro IPCA+ e o Prefixado, mudam de preço todo dia. Quando os juros sobem, um IPCA+ longo pode aparecer 30% mais barato no extrato. Para quem leva até o vencimento isso não importa; para quem precisa vender naquele dia, a perda é real.</p>
+  <p>O dinheiro da <dfn>reserva de emergência</dfn> (o dinheiro para imprevistos, que precisa estar disponível em qualquer dia) não pode correr esse risco. O <dfn>Tesouro Selic</dfn> existe para ele: é o título público cujo preço de venda fica sempre perto do que você acumulou.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: R$ 10.000 por um ano</h2>
+  <p>A <dfn>Selic</dfn> é a taxa básica de juros do Brasil. Quem define é o <dfn>Copom</dfn> (Comitê de Política Monetária do Banco Central), em reuniões a cada 45 dias. Em 12/11/2026 ela está em 13,75% ao ano; nesta aula as contas usam 14% para ficarem redondas.</p>
+  <p>O Tesouro Selic rende essa taxa um dia útil de cada vez (o ano tem 252 dias úteis):</p>
+  <pre>fator de um dia útil = 1,14^(1/252) = 1,00052
+
+R$ 10.000 em um dia útil:  10.000 × 0,00052    = <mark>+ R$ 5,20</mark>
+em um mês (21 dias úteis): 10.000 × 1,14^(21/252) = R$ 10.109,79
+em um ano:                 10.000 × 1,14         = <mark>R$ 11.400,00</mark></pre>
+  <p>O saldo sobe um pouco todo dia útil. Só que os R$ 11.400 valem apenas se a Selic ficar em 14% o ano inteiro.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Crescendo: a taxa muda no caminho</h2>
+  <div class="split">
+    <div>
+      <p>A taxa não é travada na compra. O título é <dfn>pós-fixado</dfn>: rende a Selic que estiver valendo em cada dia, e você só conhece o resultado depois.</p>
+      <p>Depois de 6 meses a 14%, o saldo é <code>10.000 × 1,14^0,5 = R$ 10.677,08</code>. Daí em diante:</p>
+      <pre>Selic sobe para 18%: 10.677,08 × 1,18^0,5 = <mark>R$ 11.598,28</mark>
+Selic fica em 14%:   10.677,08 × 1,14^0,5 = R$ 11.400,00
+Selic cai para 10%:  10.677,08 × 1,10^0,5 = <mark>R$ 11.198,21</mark></pre>
+      <p>Repare no que não acontece: o saldo não dá salto nem tombo no dia em que a Selic muda. Ele só passa a subir mais rápido ou mais devagar. Selic subindo é boa notícia para quem tem Tesouro Selic; Selic caindo significa render menos, e não há taxa travada para proteger.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Saldo de 10.000 em um ano com a Selic subindo, parada ou caindo no sexto mês">
+        <line class="grid" x1="70" x2="610" y1="278" y2="278"/><line class="grid" x1="70" x2="610" y1="206" y2="206"/>
+        <line class="grid" x1="70" x2="610" y1="134" y2="134"/><line class="grid" x1="70" x2="610" y1="62" y2="62"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="356" text-anchor="end">10.000</text>
+        <text class="m" x="62" y="284" text-anchor="end">10.400</text><text class="m" x="62" y="212" text-anchor="end">10.800</text>
+        <text class="m" x="62" y="140" text-anchor="end">11.200</text><text class="m" x="62" y="68" text-anchor="end">11.600</text>
+        <text class="m" x="74" y="375" text-anchor="middle">hoje</text><text class="m" x="205" y="375" text-anchor="middle">3</text>
+        <text class="m" x="340" y="375" text-anchor="middle">6</text><text class="m" x="475" y="375" text-anchor="middle">9</text>
+        <text class="m" x="590" y="375" text-anchor="middle">12 meses</text>
+        <polyline class="ln lm" points="340.0,228.1 351.2,222.9 362.5,217.6 373.8,212.3 385.0,207.0 396.2,201.7 407.5,196.4 418.8,191.0 430.0,185.7 441.2,180.3 452.5,174.9 463.8,169.5 475.0,164.1 486.2,158.7 497.5,153.3 508.8,147.8 520.0,142.3 531.2,136.8 542.5,131.3 553.8,125.8 565.0,120.3 576.2,114.7 587.5,109.2 598.8,103.6 610.0,98.0"/>
+        <polyline class="ln lb" points="70.0,350.0 81.2,345.1 92.5,340.1 103.8,335.2 115.0,330.2 126.2,325.3 137.5,320.3 148.8,315.3 160.0,310.3 171.2,305.2 182.5,300.2 193.8,295.1 205.0,290.1 216.2,285.0 227.5,279.9 238.8,274.8 250.0,269.6 261.2,264.5 272.5,259.3 283.8,254.2 295.0,249.0 306.2,243.8 317.5,238.6 328.8,233.4 340.0,228.1"/>
+        <polyline class="ln lg" points="340.0,228.1 351.2,221.5 362.5,214.8 373.8,208.1 385.0,201.4 396.2,194.7 407.5,187.9 418.8,181.2 430.0,174.4 441.2,167.5 452.5,160.7 463.8,153.8 475.0,146.9 486.2,140.0 497.5,133.1 508.8,126.1 520.0,119.1 531.2,112.1 542.5,105.1 553.8,98.0 565.0,90.9 576.2,83.8 587.5,76.7 598.8,69.5 610.0,62.3"/>
+        <polyline class="ln lr" points="340.0,228.1 351.2,224.3 362.5,220.5 373.8,216.6 385.0,212.8 396.2,209.0 407.5,205.1 418.8,201.2 430.0,197.4 441.2,193.5 452.5,189.6 463.8,185.7 475.0,181.8 486.2,177.9 497.5,174.0 508.8,170.0 520.0,166.1 531.2,162.1 542.5,158.2 553.8,154.2 565.0,150.3 576.2,146.3 587.5,142.3 598.8,138.3 610.0,134.3"/>
+        <circle class="db" cx="340" cy="228.1" r="6"/>
+        <text class="g" x="82" y="40">Selic sobe para 18%: R$ 11.598,28</text>
+        <text class="m" x="82" y="66">Selic fica em 14%: R$ 11.400,00</text>
+        <text class="r" x="82" y="92">Selic cai para 10%: R$ 11.198,21</text>
+      </svg>
+      <figcaption>Saldo de R$ 10.000 ao longo de um ano. A Selic muda no mês 6: a linha muda de inclinação, sem degrau.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Por que quase não há marcação a mercado</h2>
+  <p><dfn>Marcação a mercado</dfn> é recalcular todo dia o preço do título pelas taxas do dia. Num título de taxa travada, quando os juros sobem a taxa antiga fica defasada e o preço cai para compensar. No Tesouro Selic não há taxa antiga: ele passa a render a taxa nova no dia seguinte, então o preço não precisa cair. Os juros de mercado sobem 2 pontos percentuais de uma vez:</p>
+  <table>
+    <tr><th>título</th><th>o que muda</th><th class="n">preço</th></tr>
+    <tr><td>IPCA+ de 20 anos</td><td>taxa de IPCA + 7% para IPCA + 9%</td><td class="n down">−31,0%</td></tr>
+    <tr><td>Prefixado de 5 anos</td><td>taxa de 14% para 16%</td><td class="n down">−8,3%</td></tr>
+    <tr><td>Tesouro Selic</td><td>Selic de 14% para 16%</td><td class="n up">0,0%</td></tr>
+  </table>
+  <p>O "quase" vem de um detalhe. O preço do Tesouro Selic é o valor acumulado pela Selic com um pequeno desconto, o <dfn>deságio</dfn>, que é uma taxa em % ao ano e aparece nas colunas de taxa do histórico do Tesouro (arquivo <code>PrecoTaxaTesouroDireto.csv</code>, portal Tesouro Transparente). Colunas: título; vencimento; data; taxa de compra; taxa de venda; <dfn>PU</dfn> (preço unitário, o preço de um título inteiro) de compra; PU de venda; PU base.</p>
+  <div class="term"><span class="cmd">grep '^Tesouro Selic;01/03/2028;11/11/2026;' PrecoTaxaTesouroDireto.csv</span>
+<span class="out">Tesouro Selic;01/03/2028;11/11/2026;<mark>0,03</mark>;<mark>0,04</mark>;<mark>20275,31</mark>;<mark>20262,29</mark>;20262,29</span></div>
+  <p>Quem compra leva Selic + 0,03% ao ano; quem vende, vende a Selic + 0,04%. Essa diferença de 0,01 ponto vira uma diferença de preço: comprar a R$ 20.275,31 e vender no mesmo dia a R$ 20.262,29 custa <code>1 − 20.262,29 ÷ 20.275,31 = 0,064%</code>, ou R$ 6,42 em R$ 10.000. Se o deságio mudar, o preço muda um pouco. É a única marcação a mercado do título.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Caso real: o susto de setembro de 2020</h2>
+  <div class="split">
+    <div>
+      <p>Em setembro de 2020 o mercado passou a exigir mais desconto para comprar esse tipo de título. O deságio do Tesouro Selic 2025 saiu de 0,05% e chegou a 0,38% ao ano:</p>
+      <div class="term"><span class="cmd">grep '^Tesouro Selic;01/03/2025;\(10/09/2020\|07/10/2020\|22/12/2020\);' PrecoTaxaTesouroDireto.csv</span>
+<span class="out">Tesouro Selic;01/03/2025;22/12/2020;0,16;<mark>0,17</mark>;10682,94;<mark>10678,49</mark>;10677,58
+Tesouro Selic;01/03/2025;07/10/2020;0,37;<mark>0,38</mark>;10540,71;<mark>10536,11</mark>;10535,12
+Tesouro Selic;01/03/2025;10/09/2020;0,04;<mark>0,05</mark>;10682,23;<mark>10677,47</mark>;10676,61</span></div>
+      <pre>10/09/2020 → 07/10/2020:
+10.536,11 ÷ 10.677,47 = <mark>−1,32%</mark> em 27 dias
+
+22/12/2020: R$ 10.678,49, de volta ao nível de antes</pre>
+      <p>Foi a primeira vez que muita gente viu o Tesouro Selic "render negativo". O tamanho do estrago dá a medida do título: no pior momento, 1,32% abaixo, e recuperado em três meses e meio. Um deságio que sobe 0,33 ponto pesou isso porque ainda faltavam mais de 4 anos para o vencimento; quanto mais curto o Tesouro Selic, menor esse efeito.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Preço de venda do Tesouro Selic 2025 de agosto de 2020 a março de 2021">
+        <line class="grid" x1="70" x2="610" y1="295" y2="295"/><line class="grid" x1="70" x2="610" y1="185" y2="185"/>
+        <line class="grid" x1="70" x2="610" y1="75" y2="75"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="301" text-anchor="end">10.550</text><text class="m" x="62" y="191" text-anchor="end">10.650</text>
+        <text class="m" x="62" y="81" text-anchor="end">10.750</text>
+        <text class="m" x="84" y="375" text-anchor="middle">ago/20</text><text class="m" x="203" y="375" text-anchor="middle">out/20</text>
+        <text class="m" x="340" y="375" text-anchor="middle">dez/20</text><text class="m" x="480" y="375" text-anchor="middle">fev/21</text>
+        <polyline class="ln lb" style="stroke-width:2.5" points="70.0,178.8 72.2,177.8 74.5,176.8 76.8,175.9 79.0,175.0 85.8,174.1 88.0,173.2 90.2,172.3 92.5,171.4 94.8,170.5 101.5,169.6 103.8,168.7 106.0,167.8 108.2,166.9 110.5,166.0 117.2,165.2 119.5,164.3 121.8,163.4 124.0,162.5 126.2,161.7 133.0,160.8 135.2,160.0 137.5,159.1 139.8,158.3 142.0,157.4 151.0,156.5 153.2,155.6 155.5,154.8 157.8,155.0 164.5,158.7 166.8,162.5 169.0,169.4 171.2,173.1 173.5,174.1 180.2,177.9 182.5,178.9 184.8,178.5 187.0,179.4 189.2,183.9 196.0,193.7 198.2,202.1 200.5,210.6 202.8,228.5 205.0,252.9 211.8,279.5 214.0,301.5 216.2,310.3 218.5,309.9 220.8,295.7 229.8,252.5 232.0,220.0 234.2,212.4 236.5,210.0 243.2,219.7 245.5,213.4 247.8,212.5 250.0,212.6 252.2,210.8 259.0,209.7 261.2,205.4 263.5,202.7 265.8,201.3 268.0,201.7 277.0,199.8 279.2,200.1 281.5,199.7 283.8,200.4 290.5,199.5 292.8,197.8 295.0,196.7 297.2,201.7 299.5,204.0 306.2,205.0 308.5,204.0 310.8,203.1 313.0,202.7 315.2,203.0 322.0,202.6 324.2,201.9 326.5,200.6 328.8,199.7 331.0,198.7 337.8,197.7 340.0,196.3 342.2,196.3 344.5,194.6 346.8,193.5 353.5,191.6 355.8,186.9 358.0,182.8 360.2,180.3 362.5,176.9 369.2,173.7 371.5,170.7 373.8,165.7 376.0,163.4 378.2,159.0 385.0,156.7 387.2,153.7 389.5,149.2 400.8,145.7 403.0,142.5 405.2,139.5 416.5,138.2 418.8,135.9 421.0,134.9 423.2,133.0 425.5,131.7 432.2,129.1 434.5,128.0 436.8,127.9 439.0,127.2 441.2,126.3 448.0,125.2 450.2,123.9 452.5,121.7 454.8,120.6 457.0,118.6 466.0,117.9 468.2,117.0 470.5,116.8 472.8,115.4 479.5,114.5 481.8,115.0 484.0,114.1 486.2,114.0 488.5,113.7 495.2,114.0 497.5,114.5 499.8,114.4 502.0,114.1 504.2,115.2 515.5,114.9 517.8,114.6 520.0,114.5 526.8,114.9 529.0,114.2 531.2,115.2 533.5,115.7 535.8,116.4 542.5,116.4 544.8,116.0 547.0,114.4 549.2,112.6 551.5,111.7 558.2,111.1 560.5,110.2 562.8,109.8 565.0,109.3 567.2,109.5 574.0,109.9 576.2,111.6 578.5,111.5 580.8,111.0 583.0,111.0 589.8,108.1 592.0,106.4 594.2,106.4 596.5,106.4 598.8,105.3 605.5,108.4 607.8,111.5 610.0,113.0"/>
+        <circle class="db" cx="155.5" cy="154.8" r="7"/><circle class="dr" cx="216.3" cy="310.3" r="7"/><circle class="dg" cx="387.3" cy="153.7" r="7"/>
+        <text class="b" x="74" y="128">10/09: R$ 10.677,47</text>
+        <text class="r" x="232" y="336">07/10: R$ 10.536,11 (−1,32%)</text>
+        <text class="g" x="387" y="100" text-anchor="middle">22/12: R$ 10.678,49</text>
+      </svg>
+      <figcaption>Preço de venda diário do Tesouro Selic 2025, de 03/08/2020 a 31/03/2021.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Selic contra a inflação</h2>
+  <p>O Tesouro Selic não promete nada acima da inflação. O <dfn>ganho real</dfn> (o que o investimento rende acima da inflação, medida pelo <dfn>IPCA</dfn>, o Índice de Preços ao Consumidor Amplo do IBGE) é o que sobrar. Selic e IPCA acumulados em cada ano, pelas séries 4390 e 433 do Banco Central:</p>
+  <table>
+    <tr><th>ano</th><th class="n">Selic</th><th class="n">IPCA</th><th class="n">ganho real</th></tr>
+    <tr><td>2019</td><td class="n">5,95%</td><td class="n">4,31%</td><td class="n up">+1,57%</td></tr>
+    <tr><td>2020</td><td class="n">2,75%</td><td class="n">4,52%</td><td class="n down">−1,69%</td></tr>
+    <tr><td>2021</td><td class="n">4,44%</td><td class="n">10,06%</td><td class="n down">−5,11%</td></tr>
+    <tr><td>2022</td><td class="n">12,38%</td><td class="n">5,78%</td><td class="n up">+6,24%</td></tr>
+    <tr><td>2023</td><td class="n">13,03%</td><td class="n">4,62%</td><td class="n up">+8,04%</td></tr>
+    <tr><td>2024</td><td class="n">10,89%</td><td class="n">4,83%</td><td class="n up">+5,78%</td></tr>
+    <tr><td>2025</td><td class="n">14,33%</td><td class="n">4,26%</td><td class="n up">+9,66%</td></tr>
+  </table>
+  <pre>ganho real de 2021 = 1,0444 ÷ 1,1006 − 1 = −5,11%</pre>
+  <p>Em 2020 e 2021 quem ficou só na Selic perdeu poder de compra. De 2022 em diante ganhou com folga. O título entrega o que o Banco Central decidir, e o Banco Central já decidiu 2% ao ano com inflação de 10%.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>O pedágio para sair</h2>
+  <p>O preço não cai, mas sair tem custo. O maior é o <dfn>IR</dfn> (imposto de renda), cobrado só sobre o ganho, com alíquota que cai com o tempo:</p>
+  <table>
+    <tr><th>tempo investido</th><th class="n">IR sobre o ganho</th></tr>
+    <tr><td>até 180 dias</td><td class="n">22,5%</td></tr>
+    <tr><td>181 a 360 dias</td><td class="n">20%</td></tr>
+    <tr><td>361 a 720 dias</td><td class="n">17,5%</td></tr>
+    <tr><td>mais de 720 dias</td><td class="n">15%</td></tr>
+  </table>
+  <pre>R$ 10.000 por 3 meses, Selic a 14%:
+ganho:        10.000 × (1,14^0,25 − 1) = R$ 332,99
+IR de 22,5%:                             R$  74,92
+líquido:                                 <mark>R$ 258,07</mark></pre>
+  <ol>
+    <li><dfn>IOF</dfn> (Imposto sobre Operações Financeiras): quem resgata em menos de 30 dias paga IOF sobre o ganho, além do IR. A partir do 30º dia ele é zero.</li>
+    <li>Diferença entre compra e venda: 0,064% no Tesouro Selic 2028 (seção 4).</li>
+    <li>Custódia da B3 (a bolsa, que guarda o título): 0,20% ao ano, cobrada no Tesouro Selic só sobre o que passar de R$ 10.000 investidos.</li>
+  </ol>
+  <p>O dinheiro da venda cai na conta em até 1 dia útil.</p>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Para que serve, e para que não serve</h2>
+  <ol>
+    <li>Reserva de emergência: é o uso principal. O preço de venda quase não balança e a venda pode ser feita em qualquer dia útil.</li>
+    <li>Dinheiro com uso em menos de 2 anos, ou sem data certa.</li>
+    <li>Estacionamento: o dinheiro espera aqui, rendendo, até aparecer uma taxa boa num IPCA+ ou num Prefixado.</li>
+  </ol>
+  <p>Para aposentadoria ele não é o indicado. Em 20 ou 30 anos o que importa é ganhar da inflação com certeza, e o Tesouro Selic não trava ganho real nenhum (seção 6). Quem trava é o Tesouro IPCA+. O Selic continua tendo um papel na aposentadoria: é onde fica a reserva que evita vender o IPCA+ na hora errada.</p>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Erros comuns</h2>
+  <p class="mistake">Deixar todo o dinheiro de longo prazo no Tesouro Selic porque "não cai". Não cair no extrato não é o mesmo que ganhar da inflação: em 2021 ele perdeu 5,11% de poder de compra. Conserto: Selic para a reserva; metas longas em IPCA+.</p>
+  <p class="mistake">Achar que a Selic de hoje vale para o ano todo. 14% hoje não garante R$ 11.400 em um ano; a taxa é revista a cada 45 dias. Conserto: se você precisa de um valor certo numa data, é caso de Prefixado.</p>
+  <p class="mistake">Entrar e sair toda hora. Cada resgate curto paga 22,5% de IR, a diferença de compra e venda e, antes de 30 dias, IOF. Conserto: deixe a reserva parada; a alíquota cai sozinha com o tempo.</p>
+  <p class="mistake">Vender no susto num episódio como o de 2020. Quem vendeu em outubro realizou uma perda de 1,32% que sumiu sozinha até dezembro. Conserto: se não precisa do dinheiro naquele dia, espere.</p>
+  <p class="mistake">Escolher o Tesouro Selic mais longo para a reserva. O deságio pesa mais quanto mais longe o vencimento, tanto na diferença de compra e venda quanto num susto. Conserto: para reserva, prefira o vencimento mais curto à venda.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Tesouro Selic rende a Selic de cada dia útil: a 14% ao ano, R$ 10.000 ganham cerca de R$ 5,20 por dia útil.</li>
+    <li>É pós-fixado: Selic sobe, rende mais; Selic cai, rende menos. O saldo muda de inclinação, sem degrau.</li>
+    <li>Quase não tem marcação a mercado. O pior caso real, em 2020, foi −1,32%, recuperado em três meses e meio.</li>
+    <li>Sair custa IR de 22,5% a 15% sobre o ganho, uma diferença de compra e venda de cerca de 0,06% e IOF antes de 30 dias.</li>
+    <li>Serve para reserva de emergência e curto prazo. Não garante ganho real: para aposentadoria, IPCA+.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
