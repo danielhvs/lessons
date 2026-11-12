@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tesouro IPCA+ e marcação a mercado, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+  #links a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+const brl = (v, d = 2) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const pc = v => (v < 0 ? "−" : "+") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
+const tx = r => (r * 100).toFixed(2).replace(".", ",") + "%";
+// chart: years 0..20 on x, value 0..1000 (today's money) on y; RX is the side panel
+const CH = { x0: 150, y0: 690, w: 860, h: 580 }, RX = 1070;
+const X = y => CH.x0 + y / 20 * CH.w, Y = v => CH.y0 - v / 1000 * CH.h;
+const price = (r, y) => 1000 / Math.pow(1 + r, 20 - y);
+function axes(ylab = "valor em dinheiro de hoje (R$)") {
+  for (const v of [250, 500, 750, 1000]) {
+    add(`<line x1="${CH.x0}" x2="${CH.x0 + CH.w}" y1="${Y(v)}" y2="${Y(v)}" stroke="${COL.l}" stroke-width="2"/>`);
+    text(CH.x0 - 14, Y(v) + 9, [[v.toLocaleString("pt-BR"), "m"]], 26, { anchor: "end" });
+  }
+  add(`<line x1="${CH.x0}" x2="${CH.x0 + CH.w}" y1="${CH.y0}" y2="${CH.y0}" stroke="${COL.m}" stroke-width="3"/>`);
+  for (const y of [0, 5, 10, 15, 20]) text(X(y), CH.y0 + 38, [[y ? y + " anos" : "hoje", "m"]], 26, { anchor: "middle" });
+  text(CH.x0, 50, [[ylab, "m"]], 26);
+}
+function path(fn, ya, yb, color, o = {}) {
+  if (yb - ya < 1e-6) return;
+  const pts = [];
+  for (let y = ya; y < yb; y += .1) pts.push(`${X(y).toFixed(1)},${Y(fn(y)).toFixed(1)}`);
+  pts.push(`${X(yb).toFixed(1)},${Y(fn(yb)).toFixed(1)}`);
+  add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL[color]}" stroke-width="${o.sw || 6}" stroke-linejoin="round" stroke-linecap="round"${o.dash ? ` stroke-dasharray="${o.dash}"` : ""}/>`);
+}
+const dot = (x, y, color, r = 12, op = 1) => add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const f7 = y => price(.07, y);
+
+// one scenario: 2 years on the contracted curve, the market rate jumps to r2, then the path to maturity
+function scen(t, r2, col, sell, hold) {
+  axes();
+  const f2 = y => price(r2, y);
+  path(f7, 0, 20, "m", { dash: "3 14", sw: 4 });
+  const y = 2 * P(t, .5, 2.5), k = P(t, 3.5, 5.5), g = 2 + 18 * P(t, 7, 10.5);
+  const vy = t < 3.5 ? y : g, val = t < 3.5 ? f7(y) : g > 2 ? f2(g) : L(f7(2), f2(2), k);
+  path(f7, 0, y, "b");
+  if (k > 0) add(`<line x1="${X(2)}" x2="${X(2)}" y1="${Y(f7(2))}" y2="${Y(L(f7(2), f2(2), k))}" stroke="${COL[col]}" stroke-width="6" stroke-linecap="round"/>`);
+  path(f2, 2, g, col);
+  dot(X(20), Y(1000), "c", 12);
+  dot(X(vy), Y(val), "b", 14);
+  text(RX, 180, [["taxa de mercado", "m"]], 28);
+  text(RX, 245, [["IPCA + " + tx(L(.07, r2, k)), "a", 1]], 56);
+  text(RX, 335, [["seu título vale", "m"]], 28);
+  text(RX, 400, [[brl(val), "b", 1]], 56);
+  text(RX, 470, [[pc((f2(2) / f7(2) - 1) * 100) + " contra a curva", col, 1]], 34, { op: P(t, 5.5, 6.2) });
+  text(RX, 570, [[sell]], 30, { op: P(t, 5.9, 6.6) });
+  text(RX, 630, [[hold, "c", 1]], 30, { op: P(t, 10.5, 11.2) });
+}
+
+// Tesouro IPCA+ 2045, one point per month: [year, buy rate %, sell price R$] (Tesouro Transparente)
+const REAL = [[2017.104,5.34,664.14],[2017.162,5.13,706.51],[2017.252,5.13,711.59],[2017.332,5.38,669.66],[2017.414,5.52,650.5],[2017.501,5.56,646.15],[2017.581,5.26,701.83],[2017.666,5.18,723.26],[2017.751,5.07,747.36],[2017.833,5.24,720.87],[2017.915,5.48,682.63],[2018.003,5.44,694.14],[2018.085,5.04,777.62],[2018.162,5.15,760.0],[2018.249,5.19,757.14],[2018.332,5.31,738.74],[2018.414,5.68,676.71],[2018.499,5.79,667.82],[2018.581,5.76,680.93],[2018.671,5.85,670.23],[2018.748,5.95,657.43],[2018.833,5.16,810.23],[2018.921,5.06,834.46],[2019.003,4.95,860.33],[2019.085,4.46,979.92],[2019.162,4.46,986.36],[2019.247,4.4,1009.98],[2019.332,4.45,1009.0],[2019.419,3.97,1145.06],[2019.496,3.55,1274.24],[2019.581,3.58,1270.94],[2019.668,3.68,1245.65],[2019.748,3.45,1322.96],[2019.833,2.94,1504.72],[2019.918,3.37,1361.25],[2020.003,3.33,1390.98],[2020.09,3.38,1388.04],[2020.167,3.29,1423.49],[2020.249,4.56,1054.16],[2020.34,4.41,1095.07],[2020.416,4.25,1136.68],[2020.499,4.01,1208.15],[2020.589,3.4,1406.84],[2020.668,3.75,1301.57],[2020.751,4.1,1207.03],[2020.841,4.13,1213.35],[2020.918,4.0,1264.66],[2021.008,3.38,1485.88],[2021.085,3.51,1455.52],[2021.162,3.9,1338.5],[2021.247,4.06,1310.28],[2021.334,4.13,1298.85],[2021.414,4.13,1310.38],[2021.496,4.15,1318.72],[2021.584,4.3,1289.06],[2021.666,4.67,1199.43],[2021.748,4.93,1148.65],[2021.833,5.41,1047.26],[2021.915,5.06,1151.03],[2022.005,5.24,1119.58],[2022.085,5.56,1054.88],[2022.164,5.68,1039.49],[2022.247,5.46,1109.19],[2022.332,5.63,1088.9],[2022.414,5.72,1082.26],[2022.496,5.86,1060.76],[2022.581,6.21,988.18],[2022.666,5.93,1049.54],[2022.753,5.52,1146.65],[2022.833,5.8,1086.73],[2022.915,6.06,1040.05],[2023.003,6.28,1002.02],[2023.085,6.49,970.83],[2023.162,6.56,967.05],[2023.252,6.36,1023.2],[2023.332,6.03,1106.46],[2023.414,5.79,1174.52],[2023.501,5.47,1260.37],[2023.581,5.44,1274.16],[2023.666,5.71,1214.29],[2023.751,5.9,1176.67],[2023.833,5.94,1175.54],[2023.915,5.78,1222.87],[2024.003,5.58,1288.43],[2024.085,5.73,1262.42],[2024.164,5.75,1270.69],[2024.249,5.92,1240.85],[2024.334,6.11,1204.1],[2024.422,6.14,1208.35],[2024.499,6.47,1142.65],[2024.584,6.36,1176.95],[2024.671,6.29,1201.93],[2024.751,6.39,1187.73],[2024.836,6.77,1116.39],[2024.921,6.75,1131.3],[2025.003,7.33,1024.8],[2025.09,7.52,998.2],[2025.173,7.5,1016.77],[2025.247,7.27,1075.46],[2025.332,7.32,1076.9],[2025.416,7.05,1143.24],[2025.496,6.84,1196.92],[2025.581,7.15,1141.49],[2025.666,7.13,1152.28],[2025.748,7.12,1164.34],[2025.838,7.13,1172.99],[2025.915,6.93,1223.8],[2026.003,6.93,1234.44],[2026.088,7.07,1214.69],[2026.164,6.89,1266.59],[2026.247,7.06,1245.48],[2026.337,7.05,1266.05],[2026.414,7.21,1244.17],[2026.496,7.5,1195.49],[2026.586,7.37,1231.17],[2026.666,7.42,1226.54],[2026.748,7.05,1318.08],[2026.838,7.48,1238.41],[2026.86,7.44,1249.76]];
+
+const GLOSS = {
+  "IPCA": "Índice de Preços ao Consumidor Amplo, a inflação oficial do Brasil, medida pelo IBGE",
+  "poder de compra": "quanto o dinheiro compra; \"R$ 1.000 em dinheiro de hoje\" é uma quantia futura que compra o mesmo que R$ 1.000 compram agora",
+  "Tesouro IPCA+": "título público que devolve o valor corrigido pelo IPCA mais uma taxa fixa combinada na compra",
+  "juro real": "o que o investimento rende acima da inflação",
+  "vencimento": "data em que o Tesouro devolve o dinheiro e o título acaba",
+  "taxa de mercado": "taxa que o Tesouro oferece hoje em títulos novos iguais ao seu; muda todo dia",
+  "marcação a mercado": "recalcular todo dia o preço do título pela taxa de mercado do dia; é o valor do extrato e o que você recebe se vender",
+  "curva contratada": "a linha pontilhada: o caminho do preço se a taxa nunca mudasse desde a compra",
+  "p.p.": "ponto percentual; de 7% para 8% é 1 p.p.",
+  "prazo": "tempo que falta até o vencimento",
+  "IR": "imposto de renda: 15% do ganho para quem fica mais de 720 dias, cobrado sobre o ganho em reais, inflação incluída",
+  "custódia": "taxa da B3 (a bolsa) para guardar o título",
+  "Tesouro Nacional": "o caixa do governo federal, que emite os títulos",
+};
+const TERMS = [["IPCA", "poder de compra"], ["Tesouro IPCA+", "juro real", "vencimento"], ["taxa de mercado", "marcação a mercado"],
+  ["curva contratada", "taxa de mercado"], ["curva contratada", "taxa de mercado"], ["marcação a mercado", "vencimento"],
+  ["p.p.", "prazo"], ["Tesouro IPCA+", "taxa de mercado"], ["IR", "custódia", "Tesouro Nacional"]];
+
+const SCENES = [
+{ title: "A inflação come o dinheiro parado", dur: 9,
+  cap: [[0, "R$ 1.000 guardados hoje continuam sendo R$ 1.000 daqui a 20 anos. O que encolhe é o que eles compram."],
+        [6, "Com inflação de 5% ao ano, em 20 anos eles compram só o que <b>R$ 376,89</b> compram hoje. Aposentadoria é uma conta desse tamanho."]],
+  draw(t) {
+    axes("o que R$ 1.000 parados compram (R$ de hoje)");
+    const y = 20 * P(t, 1, 6), f = y => 1000 / Math.pow(1.05, y);
+    path(f, 0, y, "r");
+    dot(X(y), Y(f(y)), "r", 14);
+    text(RX, 180, [["inflação de 5% ao ano", "r", 1]], 40);
+    text(RX, 290, [["ano " + Math.round(y), "m"]], 40);
+    text(RX, 380, [[brl(f(y)), "r", 1]], 72);
+    text(RX, 430, [["de poder de compra", "m"]], 28);
+    text(RX, 560, [["−62,3%", "r", 1]], 64, { op: P(t, 6, 6.8) });
+  } },
+
+{ title: "O contrato do Tesouro IPCA+", dur: 10,
+  cap: [[0, "No <b>Tesouro IPCA+</b> você empresta ao governo hoje e recebe de volta, no vencimento, o valor corrigido pela inflação mais uma taxa fixa."],
+        [3, "A <b>IPCA + 7%</b>, pagar R$ 258,42 hoje compra R$ 1.000 em dinheiro de hoje daqui a 20 anos, seja qual for a inflação."],
+        [7.5, "O poder de compra multiplica por <b>3,87</b>. Esse caminho, 7% ao ano acima da inflação, é a curva contratada."]],
+  draw(t) {
+    axes();
+    const g = 20 * P(t, 3, 7.5);
+    path(f7, 0, g, "b");
+    dot(X(20), Y(1000), "c", 14, P(t, 1.5, 2.3));
+    text(X(20) - 6, Y(1000) - 24, [["o Tesouro devolve R$ 1.000", "c", 1]], 30, { anchor: "end", op: P(t, 1.5, 2.3) });
+    dot(X(g), Y(f7(g)), "b", 14, P(t, .3, 1));
+    text(X(0) + 24, Y(f7(0)) + 56, [["você paga ", "m"], [brl(f7(0)), "b", 1]], 30, { op: P(t, .3, 1) });
+    text(RX, 200, [["IPCA + 7% ao ano", "a", 1]], 52, { op: P(t, 2.4, 3.2) });
+    text(RX, 250, [["acima da inflação, por 20 anos", "m"]], 28, { op: P(t, 2.4, 3.2) });
+    text(RX, 390, [["258,42", "b", 1], [" × 1,07²⁰ = "], ["1.000", "c", 1]], 44, { op: P(t, 7.5, 8.3) });
+    text(RX, 470, [["poder de compra × 3,87", "c", 1]], 36, { op: P(t, 8.3, 9.1) });
+  } },
+
+{ title: "Taxa e preço: uma gangorra", dur: 12,
+  cap: [[0, "O preço de hoje sai de uma conta: os R$ 1.000 do vencimento trazidos para hoje pela taxa. O Tesouro muda a taxa dos títulos novos todo dia."],
+        [3, "Taxa de mercado sobe para 8%: o mesmo título passa a custar <b>R$ 214,55</b>. Quem pagou R$ 258,42 vê −17,0% no extrato."],
+        [6.5, "Taxa cai para 6%: ele passa a custar <b>R$ 311,80</b>, +20,7%. Refazer essa conta todo dia é a <b>marcação a mercado</b>."]],
+  draw(t) {
+    const r = .07 + .01 * (P(t, 3, 5) - 2 * P(t, 6.5, 8.5) + P(t, 10.2, 11.6)), p = price(r, 0);
+    row(800, 120, [["preço", "b", 1], [" = 1.000 ÷ (1 + "], ["taxa", "a", 1], [")²⁰"]], 56);
+    const ang = (r - .07) * 1400, a = ang * Math.PI / 180, px = 800, py = 600, h = 430;
+    add(`<polygon points="${px},${py} ${px - 70},${py + 130} ${px + 70},${py + 130}" fill="${COL.m}" opacity=".5"/>`);
+    add(`<line x1="${px - 380}" x2="${px + 380}" y1="${py + 130}" y2="${py + 130}" stroke="${COL.m}" stroke-width="3"/>`);
+    add(`<rect x="${px - h}" y="${py - 14}" width="${2 * h}" height="24" rx="12" fill="${COL.f}" opacity=".75" transform="rotate(${ang} ${px} ${py})"/>`);
+    const lx = px - h * Math.cos(a), ly = py - h * Math.sin(a), rx = px + h * Math.cos(a), ry = py + h * Math.sin(a);
+    text(lx, ly - 110, [["taxa de mercado", "m"]], 28, { anchor: "middle" });
+    text(lx, ly - 40, [["IPCA + " + tx(r), "a", 1]], 56, { anchor: "middle" });
+    text(rx, ry - 110, [["preço do título", "m"]], 28, { anchor: "middle" });
+    text(rx, ry - 40, [[brl(p), "b", 1]], 56, { anchor: "middle" });
+    const d = (p / price(.07, 0) - 1) * 100;
+    if (Math.abs(d) > .05) text(rx, ry + 70, [[pc(d), d > 0 ? "c" : "r", 1]], 44, { anchor: "middle" });
+  } },
+
+{ title: "Cenário 1: a taxa sobe", dur: 12,
+  cap: [[0, "Dois anos depois da compra, o título vale R$ 295,86 e segue a curva contratada de IPCA + 7%."],
+        [3.5, "A taxa de mercado sobe para 9%. Ninguém paga mais que <b>R$ 211,99</b> pelo seu: um título novo rende 9%, o seu rende 7%."],
+        [7, "Quem não vende não realiza a perda. O preço passa a subir mais rápido e encontra os mesmos <b>R$ 1.000</b> no vencimento."]],
+  draw(t) { scen(t, .09, "r", "vendeu agora: −18,0% sobre o pago", "segurou: os mesmos R$ 1.000"); } },
+
+{ title: "Cenário 2: a taxa cai", dur: 12,
+  cap: [[0, "Mesma compra, mesmo ponto: dois anos depois, R$ 295,86 na curva de IPCA + 7%."],
+        [3.5, "A taxa de mercado cai para 5%. O seu título, que paga 7%, fica disputado e sobe para <b>R$ 415,52</b>."],
+        [7, "Vender agora embolsa +60,8% em 2 anos. Segurar leva aos mesmos R$ 1.000: a queda da taxa só <b>antecipou</b> parte do ganho."]],
+  draw(t) { scen(t, .05, "c", "vendeu agora: +60,8% em 2 anos", "segurou: os mesmos R$ 1.000"); } },
+
+{ title: "Cenário 3: levar até o vencimento", dur: 11,
+  cap: [[0, "Na vida real a taxa de mercado sobe e desce o tempo todo, e o preço do título balança em volta da curva contratada."],
+        [5, "O balanço diminui conforme o vencimento chega: falta cada vez menos tempo para a taxa agir."],
+        [9, "No último dia, todos os caminhos dão no mesmo lugar: <b>R$ 1.000</b> em dinheiro de hoje, IPCA + 7% ao ano, como contratado."]],
+  draw(t) {
+    axes();
+    const rr = y => .07 + .02 * Math.sin(y * 1.3) + .012 * Math.sin(y * 3.1), f = y => price(rr(y), y);
+    path(f7, 0, 20, "m", { dash: "3 14", sw: 4 });
+    const y = 20 * clamp((t - 1) / 8);
+    path(f, 0, y, "b");
+    dot(X(20), Y(1000), "c", 12);
+    dot(X(y), Y(f(y)), "b", 14);
+    text(RX, 180, [["taxa de mercado", "m"]], 28);
+    text(RX, 245, [["IPCA + " + tx(rr(y)), "a", 1]], 56);
+    text(RX, 335, [["seu título vale", "m"]], 28);
+    text(RX, 400, [[brl(f(y)), "b", 1]], 56);
+    text(RX, 470, [["na curva contratada: " + brl(f7(y)), "m"]], 28);
+    text(RX, 600, [["R$ 1.000, como contratado", "c", 1]], 34, { op: P(t, 9, 9.8) });
+  } },
+
+{ title: "Prazo longo balança mais", dur: 10,
+  cap: [[0, "Três títulos iguais, só o prazo muda: faltam 5, 20 e 30 anos para o vencimento."],
+        [3, "A taxa sobe 1 ponto percentual. Ela entra na conta uma vez para cada ano que falta, então quanto mais longo, maior a queda."],
+        [7, "Vale para os dois lados: o título longo cai mais quando a taxa sobe e sobe mais quando a taxa cai."]],
+  draw(t) {
+    const k = P(t, 3, 6.5);
+    text(160, 130, [["taxa de mercado: ", "m"], ["IPCA + " + tx(L(.07, .08, k)), "a", 1]], 48);
+    [5, 20, 30].forEach((n, i) => {
+      const y = 260 + i * 170, p7 = 1000 / Math.pow(1.07, n), p8 = 1000 / Math.pow(1.08, n), d = (1 - p8 / p7) * k, w = 760;
+      text(160, y + 52, [[n + " anos"]], 44);
+      add(`<rect x="400" y="${y}" width="${w}" height="80" rx="10" fill="${COL.r}" opacity=".3"/>`);
+      add(`<rect x="400" y="${y}" width="${w * (1 - d)}" height="80" rx="10" fill="${COL.b}" opacity=".8"/>`);
+      text(400, y + 116, [[brl(L(p7, p8, k)), "b", 1], ["  (era " + brl(p7) + ")", "m"]], 28);
+      text(1200, y + 56, [[pc(-d * 100), "r", 1]], 52, { op: P(t, 3, 3.6) });
+    });
+  } },
+
+{ title: "Caso real: Tesouro IPCA+ 2045", dur: 13,
+  cap: [[0, "Dados reais do Tesouro IPCA+ 2045, de 2017 a novembro de 2026: em cima a taxa, embaixo o preço. Um é o espelho do outro."],
+        [6.5, "Quem comprou em janeiro de 2021 a IPCA + 3,38% viu o título valer <b>34,4% menos</b> dois anos depois, e ainda 18,2% menos hoje."],
+        [10, "Só perde quem vende: levado até 2045, ele paga IPCA + 3,38% ao ano. O custo real foi ficar preso a 3,38% enquanto títulos novos pagam 7,44%."]],
+  draw(t) {
+    const XR = y => 150 + (y - 2017) / 10 * 850, YT = r => 300 - (r - 2.5) / 5.5 * 210, YP = p => 700 - (p - 500) / 1100 * 300;
+    const end = 2017.1 + 9.77 * clamp((t - .5) / 5.5), pts = REAL.filter(d => d[0] <= end);
+    text(150, 50, [["taxa de mercado (IPCA + %)", "a", 1]], 28);
+    text(150, 372, [["preço de venda (R$)", "b", 1]], 28);
+    for (const r of [3, 5, 7]) {
+      add(`<line x1="150" x2="1000" y1="${YT(r)}" y2="${YT(r)}" stroke="${COL.l}" stroke-width="2"/>`);
+      text(136, YT(r) + 9, [[r + "%", "m"]], 26, { anchor: "end" });
+    }
+    for (const p of [600, 1000, 1400]) {
+      add(`<line x1="150" x2="1000" y1="${YP(p)}" y2="${YP(p)}" stroke="${COL.l}" stroke-width="2"/>`);
+      text(136, YP(p) + 9, [[p.toLocaleString("pt-BR"), "m"]], 26, { anchor: "end" });
+    }
+    for (const y of [2017, 2019, 2021, 2023, 2025, 2027]) text(XR(y), 750, [[y, "m"]], 26, { anchor: "middle" });
+    const line = (fy, c) => add(`<polyline points="${pts.map(d => `${XR(d[0]).toFixed(1)},${fy(d).toFixed(1)}`).join(" ")}" fill="none" stroke="${COL[c]}" stroke-width="4" stroke-linejoin="round"/>`);
+    line(d => YT(d[1]), "a"); line(d => YP(d[2]), "b");
+    [[2021.008, 3.38, 1528.34, "jan/2021: compra", "R$ 1.528,34 a IPCA + 3,38%", "b", 6.5],
+     [2023.003, 6.28, 1002.02, "jan/2023: taxa em 6,28%", "R$ 1.002,02  (−34,4%)", "r", 7.5],
+     [2026.86, 7.44, 1249.76, "nov/2026: taxa em 7,44%", "R$ 1.249,76  (−18,2%)", "r", 8.5]].forEach(([y, r, p, l1, l2, c, at], i) => {
+      const op = P(t, at, at + .7);
+      add(`<line x1="${XR(y)}" x2="${XR(y)}" y1="70" y2="710" stroke="${COL.m}" stroke-width="2" stroke-dasharray="6 8" opacity="${op}"/>`);
+      dot(XR(y), YT(r), "a", 11, op); dot(XR(y), YP(p), c, 13, op);
+      text(RX - 20, 170 + i * 130, [[l1, "m"]], 28, { op });
+      text(RX - 20, 215 + i * 130, [[l2, c, 1]], 34, { op });
+    });
+    text(RX - 20, 580, [["até 2045: IPCA + 3,38% ao ano,", "c", 1]], 32, { op: P(t, 10, 10.8) });
+    text(RX - 20, 624, [["como contratado", "c", 1]], 32, { op: P(t, 10, 10.8) });
+  } },
+
+{ title: "Por que serve para aposentadoria", dur: 10,
+  cap: [[0, "Para um dinheiro que só vai ser usado daqui a décadas, o Tesouro IPCA+ entrega o que importa: poder de compra conhecido na data certa."],
+        [6, "As condições: casar o vencimento com a data do uso, não vender no caminho, e descontar imposto e custódia da conta."]],
+  draw(t) {
+    [["IPCA: o poder de compra fica protegido por décadas", "r"],
+     ["juro real travado: IPCA + 7% multiplica o poder de compra por 3,87 em 20 anos", "a"],
+     ["Tesouro Nacional: o menor risco de crédito do país", "b"],
+     ["vencimento na data do uso: a marcação a mercado deixa de importar", "c"],
+     ["taxa alta no caminho: os aportes novos compram o mesmo futuro mais barato", "c"],
+     ["custos: IR de 15% sobre o ganho em reais e 0,20% ao ano de custódia", "m"],
+     ["reserva de emergência não entra aqui: ela vai no Tesouro Selic", "m"]].forEach(([s, c], i) => {
+      const op = P(t, .5 + i * .8, 1.2 + i * .8);
+      dot(150, 148 + i * 92, c, 13, op);
+      text(190, 160 + i * 92, [[s]], 36, { op });
+    });
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(+location.hash.slice(1) || 0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

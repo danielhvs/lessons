@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tesouro IPCA+ e marcação a mercado</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6; --o: #e8590c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6; --o: #ff922b;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .9rem; }
+.links a { color: var(--accent); }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+section h3 { margin: 10px 0 4px; font-size: 1.08rem; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+.term mark { background: #ffffff2e; color: #fff; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; font-size: 17px; }
+svg.diagram .m { fill: var(--muted); }
+svg.diagram .b { fill: var(--accent); font-weight: 700; }
+svg.diagram .o { fill: var(--o); font-weight: 700; }
+svg.diagram .g { fill: var(--add); font-weight: 700; }
+svg.diagram .r { fill: var(--del); font-weight: 700; }
+svg.diagram .axis { stroke: var(--muted); stroke-width: 2; }
+svg.diagram .grid { stroke: var(--line); stroke-width: 1.5; }
+svg.diagram .ln { fill: none; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; }
+svg.diagram .lb { stroke: var(--accent); } svg.diagram .lg { stroke: var(--add); }
+svg.diagram .lr { stroke: var(--del); } svg.diagram .lm { stroke: var(--muted); stroke-dasharray: 3 8; }
+svg.diagram .db { fill: var(--accent); } svg.diagram .dg { fill: var(--add); } svg.diagram .dr { fill: var(--del); }
+table { border-collapse: collapse; margin: 0 0 10px; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 14px 4px 0; text-align: left; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.up { color: var(--add); font-weight: 600; } .down { color: var(--del); font-weight: 600; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<nav class="links"><a href="../">← todas as aulas</a><a href="animate.html">animação</a></nav>
+<h1>Tesouro IPCA+ e marcação a mercado</h1>
+<p class="lead">Como o título funciona, por que o preço dele sobe e desce todo dia, e por que isso some para quem leva até o vencimento - o motivo de ele ser tão indicado para aposentadoria.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema: a inflação come o dinheiro</h2>
+  <p>Aposentadoria é uma conta de 20, 30 anos. Nesse prazo o inimigo é a <dfn>inflação</dfn>: a alta geral dos preços, que no Brasil é medida pelo <dfn>IPCA</dfn> (Índice de Preços ao Consumidor Amplo, calculado pelo IBGE).</p>
+  <pre>R$ 1.000 parados por 20 anos, inflação de 5% ao ano:
+1.000 ÷ 1,05^20 = <mark>R$ 376,89</mark> de poder de compra
+
+com inflação de 8% ao ano:
+1.000 ÷ 1,08^20 = R$ 214,55</pre>
+  <p><dfn>Poder de compra</dfn> é quanto o dinheiro compra. Nesta aula, "R$ 1.000 em dinheiro de hoje" quer dizer: uma quantia futura que compra o mesmo que R$ 1.000 compram agora.</p>
+  <p>Um investimento de taxa fixa (prefixado) tem o mesmo problema: ele promete um número em reais, e ninguém sabe quanto esse número vai comprar daqui a 20 anos. O Tesouro IPCA+ promete poder de compra.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: um título de 1 ano</h2>
+  <p>O <dfn>Tesouro IPCA+</dfn> é um título público: você empresta dinheiro ao <dfn>Tesouro Nacional</dfn> (o caixa do governo federal) e ele devolve, no <dfn>vencimento</dfn> (a data final do título), o valor corrigido pelo IPCA mais uma taxa fixa combinada no dia da compra. Essa taxa fixa é o <dfn>juro real</dfn>: o que você ganha acima da inflação.</p>
+  <p>Exemplo com números redondos: um título que devolve R$ 1.000 em dinheiro de hoje daqui a 1 ano, comprado a IPCA + 7%.</p>
+  <pre>preço hoje = 1.000 ÷ 1,07 = <mark>R$ 934,58</mark>
+
+se o IPCA do ano for 5%, você recebe em reais:
+1.000 × 1,05 = R$ 1.050,00
+(que compram o mesmo que R$ 1.000 compravam na compra)</pre>
+  <p>Você não sabe quantos reais vai receber, porque isso depende da inflação. Sabe o que importa: vai ter 7% a mais de poder de compra, com inflação de 2% ou de 20%.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Crescendo: 20 anos</h2>
+  <div class="split">
+    <div>
+      <p>O mesmo título, agora com vencimento em 20 anos e a mesma taxa de IPCA + 7%:</p>
+      <pre>preço hoje = 1.000 ÷ 1,07^20 = <mark>R$ 258,42</mark>
+
+258,42 × 1,07^20 = 1.000
+poder de compra multiplicado por 3,87</pre>
+      <p>A fórmula geral, com o prazo em anos:</p>
+      <pre>preço = valor no vencimento ÷ (1 + taxa)^anos</pre>
+      <p>Se a taxa nunca mudasse, o preço subiria 7% ao ano acima da inflação, todo ano, até chegar em R$ 1.000. Esse caminho é a <dfn>curva contratada</dfn>.</p>
+      <p>Na prática: R$ 10.000 aplicados hoje a IPCA + 7% viram R$ 38.696,84 em dinheiro de hoje em 20 anos, e R$ 76.122,55 em 30 anos (antes do imposto, seção 7).</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Curva do preço de 258,42 hoje até 1.000 em 20 anos">
+        <line class="grid" x1="70" x2="610" y1="275" y2="275"/><line class="grid" x1="70" x2="610" y1="200" y2="200"/>
+        <line class="grid" x1="70" x2="610" y1="125" y2="125"/><line class="grid" x1="70" x2="610" y1="50" y2="50"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="281" text-anchor="end">250</text><text class="m" x="62" y="206" text-anchor="end">500</text>
+        <text class="m" x="62" y="131" text-anchor="end">750</text><text class="m" x="62" y="56" text-anchor="end">1.000</text>
+        <text class="m" x="70" y="375" text-anchor="middle">hoje</text><text class="m" x="205" y="375" text-anchor="middle">5</text>
+        <text class="m" x="340" y="375" text-anchor="middle">10</text><text class="m" x="475" y="375" text-anchor="middle">15</text>
+        <text class="m" x="600" y="375" text-anchor="middle">20 anos</text>
+        <polyline class="ln lb" points="70.0,272.5 76.8,271.2 83.5,269.8 90.2,268.4 97.0,267.0 103.8,265.6 110.5,264.2 117.2,262.7 124.0,261.2 130.8,259.7 137.5,258.2 144.2,256.6 151.0,255.0 157.8,253.4 164.5,251.8 171.2,250.1 178.0,248.4 184.8,246.6 191.5,244.9 198.2,243.1 205.0,241.3 211.8,239.4 218.5,237.5 225.2,235.6 232.0,233.7 238.8,231.7 245.5,229.7 252.2,227.6 259.0,225.5 265.8,223.4 272.5,221.2 279.2,219.0 286.0,216.8 292.8,214.5 299.5,212.2 306.2,209.9 313.0,207.5 319.8,205.0 326.5,202.6 333.2,200.1 340.0,197.5 346.8,194.9 353.5,192.2 360.2,189.6 367.0,186.8 373.8,184.0 380.5,181.2 387.2,178.3 394.0,175.4 400.8,172.4 407.5,169.4 414.2,166.3 421.0,163.2 427.8,160.0 434.5,156.7 441.2,153.5 448.0,150.1 454.8,146.7 461.5,143.2 468.2,139.7 475.0,136.1 481.8,132.5 488.5,128.7 495.2,125.0 502.0,121.1 508.8,117.2 515.5,113.3 522.2,109.2 529.0,105.1 535.8,100.9 542.5,96.7 549.2,92.4 556.0,88.0 562.8,83.5 569.5,79.0 576.2,74.3 583.0,69.6 589.8,64.8 596.5,60.0 603.2,55.0 610.0,50.0"/>
+        <circle class="db" cx="70" cy="272.5" r="7"/><circle class="dg" cx="610" cy="50" r="7"/>
+        <text class="b" x="82" y="300">você paga R$ 258,42</text>
+        <text class="g" x="598" y="36" text-anchor="end">o Tesouro devolve R$ 1.000</text>
+        <text class="m" x="330" y="150" text-anchor="end">IPCA + 7% ao ano</text>
+      </svg>
+      <figcaption>Valores em dinheiro de hoje. A curva contratada liga o preço pago ao valor do vencimento.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Marcação a mercado: o preço muda todo dia</h2>
+  <p>O Tesouro vende títulos novos todo dia, e a taxa que ele oferece muda todo dia. Essa é a <dfn>taxa de mercado</dfn>. <dfn>Marcação a mercado</dfn> é recalcular o preço do seu título, todo dia, usando a taxa de mercado do dia no lugar da taxa que você contratou. É esse preço que aparece no extrato, e é ele que você recebe se vender antes do vencimento.</p>
+  <p>O valor do vencimento não muda. Só a taxa da conta muda, então taxa e preço andam em sentidos opostos, como uma gangorra:</p>
+  <table>
+    <tr><th>taxa de mercado</th><th class="n">preço do título de 20 anos</th><th class="n">para quem pagou R$ 258,42</th></tr>
+    <tr><td>IPCA + 5%</td><td class="n">1.000 ÷ 1,05^20 = R$ 376,89</td><td class="n up">+45,8%</td></tr>
+    <tr><td>IPCA + 6%</td><td class="n">1.000 ÷ 1,06^20 = R$ 311,80</td><td class="n up">+20,7%</td></tr>
+    <tr><td>IPCA + 7%</td><td class="n">1.000 ÷ 1,07^20 = R$ 258,42</td><td class="n">0%</td></tr>
+    <tr><td>IPCA + 8%</td><td class="n">1.000 ÷ 1,08^20 = R$ 214,55</td><td class="n down">−17,0%</td></tr>
+    <tr><td>IPCA + 9%</td><td class="n">1.000 ÷ 1,09^20 = R$ 178,43</td><td class="n down">−31,0%</td></tr>
+  </table>
+  <p>O motivo: se o Tesouro passou a vender títulos novos a IPCA + 9%, ninguém compra o seu, que rende 7%, pelo preço cheio. Ele só encontra comprador com desconto. Com a taxa em 5% acontece o inverso: o seu título de 7% vale mais que os novos.</p>
+
+  <h3>Os três cenários, dois anos depois da compra</h3>
+  <div class="split">
+    <div>
+      <p>Dois anos depois, na curva contratada, o título vale <code>1.000 ÷ 1,07^18 = R$ 295,86</code>. Faltam 18 anos.</p>
+      <p>Cenário 1, a taxa sobe para 9%:</p>
+      <pre>1.000 ÷ 1,09^18 = <mark>R$ 211,99</mark>
+contra a curva:  −28,3%
+contra o pago:   −18,0%</pre>
+      <p>Cenário 2, a taxa cai para 5%:</p>
+      <pre>1.000 ÷ 1,05^18 = <mark>R$ 415,52</mark>
+contra a curva:  +40,4%
+contra o pago:   +60,8% em 2 anos</pre>
+      <p>Cenário 3, você não vende. Nos dois casos o título continua indo para os mesmos R$ 1.000. No cenário 1 o preço passa a subir mais rápido (9% ao ano a partir do fundo); no cenário 2, mais devagar (5% ao ano a partir do topo). A alta da taxa não tirou nada de quem segura, e a queda só antecipou parte do ganho.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Três caminhos de preço que terminam em 1.000 no vencimento">
+        <line class="grid" x1="70" x2="610" y1="275" y2="275"/><line class="grid" x1="70" x2="610" y1="200" y2="200"/>
+        <line class="grid" x1="70" x2="610" y1="125" y2="125"/><line class="grid" x1="70" x2="610" y1="50" y2="50"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="281" text-anchor="end">250</text><text class="m" x="62" y="206" text-anchor="end">500</text>
+        <text class="m" x="62" y="131" text-anchor="end">750</text><text class="m" x="62" y="56" text-anchor="end">1.000</text>
+        <text class="m" x="70" y="375" text-anchor="middle">hoje</text><text class="m" x="124" y="375" text-anchor="middle">2</text>
+        <text class="m" x="340" y="375" text-anchor="middle">10</text><text class="m" x="475" y="375" text-anchor="middle">15</text>
+        <text class="m" x="600" y="375" text-anchor="middle">20 anos</text>
+        <polyline class="ln lm" points="70.0,272.5 76.8,271.2 83.5,269.8 90.2,268.4 97.0,267.0 103.8,265.6 110.5,264.2 117.2,262.7 124.0,261.2 130.8,259.7 137.5,258.2 144.2,256.6 151.0,255.0 157.8,253.4 164.5,251.8 171.2,250.1 178.0,248.4 184.8,246.6 191.5,244.9 198.2,243.1 205.0,241.3 211.8,239.4 218.5,237.5 225.2,235.6 232.0,233.7 238.8,231.7 245.5,229.7 252.2,227.6 259.0,225.5 265.8,223.4 272.5,221.2 279.2,219.0 286.0,216.8 292.8,214.5 299.5,212.2 306.2,209.9 313.0,207.5 319.8,205.0 326.5,202.6 333.2,200.1 340.0,197.5 346.8,194.9 353.5,192.2 360.2,189.6 367.0,186.8 373.8,184.0 380.5,181.2 387.2,178.3 394.0,175.4 400.8,172.4 407.5,169.4 414.2,166.3 421.0,163.2 427.8,160.0 434.5,156.7 441.2,153.5 448.0,150.1 454.8,146.7 461.5,143.2 468.2,139.7 475.0,136.1 481.8,132.5 488.5,128.7 495.2,125.0 502.0,121.1 508.8,117.2 515.5,113.3 522.2,109.2 529.0,105.1 535.8,100.9 542.5,96.7 549.2,92.4 556.0,88.0 562.8,83.5 569.5,79.0 576.2,74.3 583.0,69.6 589.8,64.8 596.5,60.0 603.2,55.0 610.0,50.0"/>
+        <polyline class="ln lb" points="70.0,272.5 76.8,271.2 83.5,269.8 90.2,268.4 97.0,267.0 103.8,265.6 110.5,264.2 117.2,262.7 124.0,261.2"/>
+        <line class="ln lg" x1="124" x2="124" y1="261.2" y2="225.3"/><line class="ln lr" x1="124" x2="124" y1="261.2" y2="286.4"/>
+        <polyline class="ln lg" points="124.0,225.3 130.8,223.8 137.5,222.3 144.2,220.7 151.0,219.1 157.8,217.5 164.5,215.9 171.2,214.2 178.0,212.6 184.8,210.9 191.5,209.2 198.2,207.4 205.0,205.7 211.8,203.9 218.5,202.1 225.2,200.3 232.0,198.5 238.8,196.6 245.5,194.7 252.2,192.8 259.0,190.9 265.8,189.0 272.5,187.0 279.2,185.0 286.0,182.9 292.8,180.9 299.5,178.8 306.2,176.7 313.0,174.6 319.8,172.4 326.5,170.3 333.2,168.1 340.0,165.8 346.8,163.6 353.5,161.3 360.2,159.0 367.0,156.6 373.8,154.2 380.5,151.8 387.2,149.4 394.0,146.9 400.8,144.5 407.5,141.9 414.2,139.4 421.0,136.8 427.8,134.2 434.5,131.5 441.2,128.8 448.0,126.1 454.8,123.4 461.5,120.6 468.2,117.8 475.0,114.9 481.8,112.1 488.5,109.1 495.2,106.2 502.0,103.2 508.8,100.2 515.5,97.1 522.2,94.0 529.0,90.8 535.8,87.7 542.5,84.4 549.2,81.2 556.0,77.9 562.8,74.6 569.5,71.2 576.2,67.7 583.0,64.3 589.8,60.8 596.5,57.2 603.2,53.6 610.0,50.0"/>
+        <polyline class="ln lr" points="124.0,286.4 130.8,285.0 137.5,283.6 144.2,282.2 151.0,280.7 157.8,279.2 164.5,277.6 171.2,276.0 178.0,274.4 184.8,272.8 191.5,271.1 198.2,269.4 205.0,267.6 211.8,265.8 218.5,264.0 225.2,262.1 232.0,260.2 238.8,258.3 245.5,256.3 252.2,254.2 259.0,252.1 265.8,250.0 272.5,247.8 279.2,245.6 286.0,243.3 292.8,241.0 299.5,238.6 306.2,236.2 313.0,233.7 319.8,231.2 326.5,228.6 333.2,226.0 340.0,223.3 346.8,220.5 353.5,217.7 360.2,214.8 367.0,211.9 373.8,208.9 380.5,205.8 387.2,202.6 394.0,199.4 400.8,196.2 407.5,192.8 414.2,189.4 421.0,185.9 427.8,182.3 434.5,178.7 441.2,174.9 448.0,171.1 454.8,167.2 461.5,163.2 468.2,159.2 475.0,155.0 481.8,150.8 488.5,146.4 495.2,142.0 502.0,137.5 508.8,132.8 515.5,128.1 522.2,123.3 529.0,118.3 535.8,113.3 542.5,108.1 549.2,102.9 556.0,97.5 562.8,92.0 569.5,86.4 576.2,80.6 583.0,74.8 589.8,68.8 596.5,62.7 603.2,56.4 610.0,50.0"/>
+        <circle class="db" cx="124" cy="261.2" r="6"/><circle class="dg" cx="124" cy="225.3" r="6"/>
+        <circle class="dr" cx="124" cy="286.4" r="6"/><circle class="dg" cx="610" cy="50" r="7"/>
+        <text class="g" x="82" y="40">taxa cai para 5%: R$ 415,52</text>
+        <text class="m" x="82" y="66">curva contratada, 7%: R$ 295,86</text>
+        <text class="r" x="82" y="92">taxa sobe para 9%: R$ 211,99</text>
+        <text class="g" x="606" y="36" text-anchor="end">R$ 1.000</text>
+      </svg>
+      <figcaption>O preço salta no ano 2, para cima ou para baixo. Os três caminhos se encontram no vencimento.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Quanto mais longo o prazo, mais o preço balança</h2>
+  <p>A taxa entra na conta uma vez para cada ano que falta. Por isso a mesma alta de 1 <dfn>ponto percentual</dfn> (p.p.: de 7% para 8% é 1 p.p.) pesa pouco num título curto e muito num longo:</p>
+  <table>
+    <tr><th>prazo</th><th class="n">preço a 7%</th><th class="n">preço a 8%</th><th class="n">queda</th></tr>
+    <tr><td>5 anos</td><td class="n">R$ 712,99</td><td class="n">R$ 680,58</td><td class="n down">−4,5%</td></tr>
+    <tr><td>20 anos</td><td class="n">R$ 258,42</td><td class="n">R$ 214,55</td><td class="n down">−17,0%</td></tr>
+    <tr><td>30 anos</td><td class="n">R$ 131,37</td><td class="n">R$ 99,38</td><td class="n down">−24,4%</td></tr>
+  </table>
+  <p>Vale para os dois lados: o título longo cai mais quando a taxa sobe e sobe mais quando a taxa cai. E conforme o vencimento chega perto, o balanço diminui até sumir.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Caso real: Tesouro IPCA+ 2045</h2>
+  <div class="split">
+    <div>
+      <p>O Tesouro publica o histórico diário de taxas e preços (arquivo <code>PrecoTaxaTesouroDireto.csv</code>, no portal Tesouro Transparente). As colunas são: título; vencimento; data; taxa de compra; taxa de venda; <dfn>PU</dfn> (preço unitário, o preço de um título inteiro) de compra; PU de venda; PU base.</p>
+      <div class="term"><span class="cmd">grep '^Tesouro IPCA+;15/05/2045;\(04/01/2021\|02/01/2023\|11/11/2026\);' PrecoTaxaTesouroDireto.csv</span>
+<span class="out">Tesouro IPCA+;15/05/2045;11/11/2026;<mark>7,44</mark>;7,56;1276,14;<mark>1249,76</mark>;1249,76
+Tesouro IPCA+;15/05/2045;02/01/2023;<mark>6,28</mark>;6,40;1027,94;<mark>1002,02</mark>;1002,02
+Tesouro IPCA+;15/05/2045;04/01/2021;<mark>3,38</mark>;3,50;<mark>1528,34</mark>;1485,88;1485,11</span></div>
+      <p>Quem comprou em 04/01/2021 pagou R$ 1.528,34 e travou IPCA + 3,38%. A taxa de mercado subiu, e o preço de venda caiu:</p>
+      <pre>02/01/2023: 1.002,02 ÷ 1.528,34 = <mark>−34,4%</mark>
+11/11/2026: 1.249,76 ÷ 1.528,34 = <mark>−18,2%</mark></pre>
+      <p>Quase 6 anos depois o extrato ainda mostra menos reais do que foi pago, apesar de toda a inflação do período. Mesmo assim, quem segurar até maio de 2045 recebe exatamente IPCA + 3,38% ao ano. O custo real dessa compra foi outro: ficar preso a 3,38% enquanto os títulos novos pagam 7,44%.</p>
+      <p>O lado bom existe na mesma série: quem comprou em 01/10/2018 a IPCA + 5,95% por R$ 677,47 podia vender em 04/11/2019, com a taxa em 2,89%, por R$ 1.523,63: +124,9% em 13 meses.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 640 400" role="img" aria-label="Preço de venda do Tesouro IPCA+ 2045 de 2017 a 2026">
+        <line class="grid" x1="70" x2="610" y1="323" y2="323"/><line class="grid" x1="70" x2="610" y1="215" y2="215"/>
+        <line class="grid" x1="70" x2="610" y1="107" y2="107"/>
+        <line class="axis" x1="70" x2="610" y1="350" y2="350"/>
+        <text class="m" x="62" y="329" text-anchor="end">600</text><text class="m" x="62" y="221" text-anchor="end">1.000</text>
+        <text class="m" x="62" y="113" text-anchor="end">1.400</text>
+        <text class="m" x="70" y="375" text-anchor="middle">2017</text><text class="m" x="178" y="375" text-anchor="middle">2019</text>
+        <text class="m" x="286" y="375" text-anchor="middle">2021</text><text class="m" x="394" y="375" text-anchor="middle">2023</text>
+        <text class="m" x="502" y="375" text-anchor="middle">2025</text><text class="m" x="598" y="375" text-anchor="middle">2027</text>
+        <polyline class="ln lb" style="stroke-width:2.5" points="75.6,305.7 78.7,294.2 83.6,292.9 87.9,304.2 92.4,309.4 97.1,310.5 101.4,295.5 106.0,289.7 110.6,283.2 115.0,290.4 119.4,300.7 124.2,297.6 128.6,275.0 132.7,279.8 137.4,280.6 141.9,285.5 146.4,302.3 150.9,304.7 155.4,301.1 160.2,304.0 164.4,307.5 169.0,266.2 173.7,259.7 178.2,252.7 182.6,220.4 186.7,218.7 191.3,212.3 195.9,212.6 200.6,175.8 204.8,141.0 209.4,141.8 214.1,148.7 218.4,127.8 223.0,78.7 227.6,117.5 232.2,109.4 236.9,110.2 241.0,100.7 245.4,200.4 250.4,189.3 254.5,178.1 258.9,158.8 263.8,105.2 268.1,133.6 272.6,159.1 277.4,157.4 281.6,143.5 286.4,83.8 290.6,92.0 294.7,123.6 299.3,131.2 304.0,134.3 308.4,131.2 312.8,128.9 317.5,137.0 322.0,161.2 326.4,174.9 331.0,202.2 335.4,174.2 340.3,182.7 344.6,200.2 348.9,204.3 353.3,185.5 357.9,191.0 362.4,192.8 366.8,198.6 371.4,218.2 376.0,201.6 380.7,175.4 385.0,191.6 389.4,204.2 394.2,214.5 398.6,222.9 402.7,223.9 407.6,208.7 411.9,186.3 416.4,167.9 421.1,144.7 425.4,141.0 430.0,157.1 434.6,167.3 439.0,167.6 443.4,154.8 448.2,137.1 452.6,144.1 456.9,141.9 461.4,150.0 466.0,159.9 470.8,158.7 474.9,176.5 479.5,167.2 484.2,160.5 488.6,164.3 493.1,183.6 497.7,179.5 502.2,208.3 506.9,215.5 511.3,210.5 515.3,194.6 519.9,194.2 524.5,176.3 528.8,161.8 533.4,176.8 538.0,173.9 542.4,170.6 547.3,168.3 551.4,154.6 556.2,151.7 560.8,157.0 564.9,143.0 569.3,148.7 574.2,143.2 578.4,149.1 582.8,162.2 587.6,152.6 592.0,153.8 596.4,129.1 601.3,150.6 602.4,147.6"/>
+        <circle class="db" cx="286.4" cy="72.3" r="7"/><circle class="dr" cx="394.2" cy="214.5" r="7"/><circle class="dr" cx="602.4" cy="147.6" r="7"/>
+        <text class="b" x="286" y="48" text-anchor="middle">jan/2021: R$ 1.528,34 (IPCA + 3,38%)</text>
+        <text class="r" x="394" y="250" text-anchor="middle">jan/2023: R$ 1.002,02 (−34,4%)</text>
+        <text class="r" x="610" y="102" text-anchor="end">nov/2026: R$ 1.249,76 (−18,2%)</text>
+      </svg>
+      <figcaption>Preço de venda do Tesouro IPCA+ 2045, um ponto por mês, em reais da época (a inflação empurra a série para cima; a taxa de mercado faz o sobe e desce).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Por que ele é indicado para aposentadoria</h2>
+  <ol>
+    <li>Protege o poder de compra por décadas. A correção pelo IPCA tira da conta o maior risco de um prazo de 20 ou 30 anos (seção 1).</li>
+    <li>Trava um juro real conhecido. A IPCA + 7%, o poder de compra multiplica por 3,87 em 20 anos e por 7,61 em 30, aconteça o que acontecer com a inflação.</li>
+    <li>Tem o menor risco de crédito do país. Quem paga é o Tesouro Nacional, o mesmo devedor que está por trás de bancos e fundos.</li>
+    <li>A marcação a mercado deixa de importar. Se o vencimento do título é a data em que você vai precisar do dinheiro, o sobe e desce do caminho não muda o que você recebe (seções 4 e 6).</li>
+    <li>Juro alto no caminho ajuda quem ainda está comprando. A taxa subiu e o extrato ficou vermelho? Os aportes novos compram o mesmo R$ 1.000 futuro mais barato: R$ 214,55 no lugar de R$ 258,42.</li>
+  </ol>
+  <p>O Tesouro também vende o <dfn>Tesouro RendA+</dfn>, um IPCA+ desenhado para isso: você acumula até a data escolhida e depois recebe o valor em 240 parcelas mensais (20 anos) corrigidas pelo IPCA, em vez de tudo de uma vez.</p>
+
+  <h3>Os custos</h3>
+  <p><dfn>IR</dfn> (imposto de renda): 15% do ganho para quem fica mais de 720 dias (22,5% até 180 dias, 20% até 360, 17,5% até 720). Ele é cobrado sobre o ganho em reais, com a inflação incluída. No título de 20 anos, com IPCA de 5% ao ano:</p>
+  <pre>recebe no vencimento: 1.000 × 1,05^20     = R$ 2.653,30
+ganho em reais:       2.653,30 − 258,42   = R$ 2.394,88
+IR de 15%:                                  R$   359,23
+líquido:                                    R$ 2.294,07
+em dinheiro de hoje:  2.294,07 ÷ 1,05^20  = <mark>R$ 864,61</mark>
+juro real líquido:    (864,61 ÷ 258,42)^(1/20) − 1 = <mark>6,22% ao ano</mark></pre>
+  <p>Os 7% viram 6,22% reais depois do imposto, e quanto maior a inflação, maior essa mordida. Há ainda a taxa de <dfn>custódia</dfn> da B3 (a bolsa, que guarda o título), de 0,20% ao ano sobre o valor investido.</p>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Erros comuns</h2>
+  <p class="mistake">Vender no susto quando o extrato fica negativo. A perda da marcação a mercado só vira perda de verdade na venda. Conserto: antes de comprar, decida que o título vai até o vencimento, e não olhe o extrato como se fosse saldo de conta.</p>
+  <p class="mistake">Comprar um prazo que não casa com a data do uso. Um título 2050 para um dinheiro que você precisa em 2030 obriga a vender no meio do caminho, pelo preço do dia. Conserto: escolha o vencimento mais próximo da data em que o dinheiro vai ser usado.</p>
+  <p class="mistake">Pôr a reserva de emergência em IPCA+ longo. Emergência não avisa, e a venda pode cair num dia de −30%. Conserto: reserva vai no Tesouro Selic, que quase não balança.</p>
+  <p class="mistake">Achar que "a taxa subiu" é boa notícia para o título que você já tem. Ela é boa para a próxima compra; o título antigo cai de preço e continua rendendo a taxa antiga. Conserto: leia taxa alta como "título novo barato".</p>
+  <p class="mistake">Acumular com o IPCA+ com juros semestrais. Ele paga parte dos juros a cada 6 meses, com IR em cada pagamento, e sobra para você reinvestir. Conserto: para acumular, use o IPCA+ sem cupom (o "Tesouro IPCA+" simples) ou o RendA+.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Tesouro IPCA+ devolve inflação mais um juro real fixo, travado no dia da compra: <code>preço = valor no vencimento ÷ (1 + taxa)^anos</code>.</li>
+    <li>Marcação a mercado é refazer essa conta todo dia com a taxa do dia. Taxa sobe, preço cai; taxa cai, preço sobe.</li>
+    <li>Quanto mais longo o título, maior o balanço: +1 p.p. tira 4,5% de um título de 5 anos e 24,4% de um de 30.</li>
+    <li>No vencimento todos os caminhos chegam ao mesmo valor. Só perde com a alta da taxa quem vende antes.</li>
+    <li>Para aposentadoria: case o vencimento com a data do uso, não venda no caminho, e desconte IR (15% do ganho nominal) e custódia (0,20% ao ano).</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
