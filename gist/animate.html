@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gist, animated</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  @media (pointer: coarse) { #bar button[data-k]::after { content: none; } }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← all lessons</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="restart (H)">⏮</button>
+  <button id="prev" data-k="h" title="previous scene (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="play / pause (space)">▶</button>
+  <button id="next" data-k="l" title="next scene (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="replay this scene (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+// stick figure, y = feet. o: label, sleep, talk (0..1), op
+function person(x, y, c, o = {}) {
+  const op = o.op ?? 1;
+  if (op <= 0) return;
+  const hy = y - 150;
+  add(`<g stroke="${COL[c]}" stroke-width="5" fill="none" stroke-linecap="round" opacity="${op}">
+    <circle cx="${x}" cy="${hy}" r="34" fill="${COL.p}"/>
+    <path d="M${x} ${y - 116}V${y - 50}M${x} ${y - 50}L${x - 28} ${y}M${x} ${y - 50}L${x + 28} ${y}M${x} ${y - 100}L${x - 36} ${y - 72}M${x} ${y - 100}L${x + 36} ${y - 72}"/>
+    ${o.sleep ? `<path d="M${x - 18} ${hy - 6}h12M${x + 6} ${hy - 6}h12"/>`
+      : `<circle cx="${x - 12}" cy="${hy - 6}" r="3" fill="${COL[c]}"/><circle cx="${x + 12}" cy="${hy - 6}" r="3" fill="${COL[c]}"/>`}
+    <ellipse cx="${x}" cy="${hy + 14}" rx="9" ry="${1 + 7 * (o.talk || 0)}"/>
+  </g>`);
+  if (o.label) text(x, y + 40, [[o.label, "m"]], 28, { anchor: "middle", op });
+}
+// speech bubble with the tail on side "l", "r" or "b"
+function bubble(x, y, w, h, c, op = 1, side = "l") {
+  if (op <= 0) return;
+  const my = y + h / 2, mx = x + w / 2;
+  const pts = side === "l" ? `${x},${my - 14} ${x - 34},${my + 12} ${x},${my + 14}`
+    : side === "r" ? `${x + w},${my - 14} ${x + w + 34},${my + 12} ${x + w},${my + 14}`
+    : `${mx - 14},${y + h} ${mx},${y + h + 34} ${mx + 14},${y + h}`;
+  add(`<polygon points="${pts}" fill="${COL[c]}" opacity="${op}"/>`);
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="22" fill="${COL.p}" stroke="${COL[c]}" stroke-width="3" opacity="${op}"/>`);
+}
+const say = (x, y, w, h, c, s, size, op, side) => {
+  bubble(x, y, w, h, c, op, side);
+  text(x + w / 2, y + h / 2 + size * .35, [[s, "f", 1]], size, { anchor: "middle", op });
+};
+const talk = (t, a, b) => t > a && t < b ? (Math.sin(t * 11) + 1) / 2 : 0;
+
+const WALL = [
+  [["So there is this guy, Jack, he wins a ticket in a poker game,"]],
+  [["and there is a girl, Rose, she is rich but sad, she has a hat,"]],
+  [["and they are on a huge "], ["ship"], [", the biggest ever, very fancy,"]],
+  [["and Jack draws her, and there is a blue necklace, very expensive,"]],
+  [["then the ship "], ["hits an iceberg"], [", at night, nobody saw it,"]],
+  [["and there is a band, they keep playing, and a door, a big door,"]],
+  [["and the ship "], ["sinks"], [", and Jack... no wait, I forgot the car part..."]],
+];
+// the friend's speech. shown(i) = opacity of line i, dim = opacity of the non-key words, hi = key words coloured
+function wall(shown, dim = 1, hi = 0) {
+  bubble(220, 50, 1060, 470, "b", 1, "l");
+  return WALL.map((ln, i) => {
+    const y = 122 + i * 58, s = shown(i);
+    const c = row(750, y, ln, 30, { op: ln.map((_, k) => s * (k === 1 ? 1 - hi : dim)) });
+    if (hi > 0 && ln.length > 1) row(750, y, ln.map((tk, k) => k === 1 ? [tk[0], "a"] : tk), 30, { op: ln.map((_, k) => k === 1 ? hi : 0) });
+    return { x: c[1], y };
+  });
+}
+
+const GLOSS = {
+  "gist": "the main point of something, without the details. In Portuguese: o essencial, a ideia geral",
+  "give me the gist": "a request: skip the details and tell me the main point",
+  "get the gist": "to understand the main idea of something, but not every detail",
+  "skim": "to read fast, looking only at the main parts",
+  "/dʒɪst/": "how dictionaries write the sound of gist: dʒ is the j of jeans, ɪ is the i of list",
+  "the gist of X": "the main point of X, where X is the long thing: a book, a meeting, an email",
+  "terms and conditions": "the long legal text you accept before using an app",
+  "repository": "on GitHub, the folder that holds all the files and history of a project",
+  "snippet": "a small piece of code or text",
+  "GitHub Gist": "gist.github.com: a page where you share one snippet or a few small files by link",
+};
+const TERMS = [["gist"], ["gist"], ["give me the gist"], ["get the gist", "skim"], ["/dʒɪst/"], ["the gist of X"],
+  ["the gist of X", "terms and conditions"], ["repository", "snippet", "GitHub Gist"], ["gist", "get the gist"]];
+
+const SCENES = [
+{ title: "Your friend saw a movie", dur: 10,
+  cap: [[0, "Your friend watched Titanic and now tells you about it. All of it."],
+        [7, "You only wanted one thing, and it has a name: the <b>gist</b>."]],
+  draw(t) {
+    const min = Math.round(40 * clamp((t - .5) / 6));
+    wall(i => P(t, .3 + i * .85, .9 + i * .85));
+    person(110, 470, "b", { label: "friend", talk: talk(t, .3, 7) });
+    person(1440, 470, "c", { label: "you", sleep: min >= 25 });
+    text(1440, 200, [["listening for", "m"]], 28, { anchor: "middle" });
+    text(1440, 250, [[min + " min", "c", 1]], 44, { anchor: "middle" });
+    text(1490, 300, [["z z z", "m", 1]], 30, { op: P(t, 5, 6) });
+    text(800, 690, [["...so what is the movie about?", "c", 1]], 48, { anchor: "middle", op: P(t, 7, 7.8) });
+  } },
+
+{ title: "The gist", dur: 11,
+  cap: [[0, "Drop the hat, the necklace, the band and the door."],
+        [3, "What is left is the <b>gist</b>: the main point, without the details."],
+        [7.5, "A gist is short enough to say in one breath."]],
+  draw(t) {
+    const w = wall(() => 1, L(1, .18, P(t, .5, 2.5)), P(t, .5, 2));
+    person(110, 470, "b", { label: "friend" });
+    person(1440, 470, "c", { label: "you" });
+    text(800, 610, [["the gist", "m"]], 32, { anchor: "middle", op: P(t, 3, 3.6) });
+    const land = [3.2, 4.4, 5.6].map(a => t >= a + 1.2 ? 1 : 0);
+    const g = row(800, 700, [["Ship ", "a", 1], ["hits iceberg. ", "a", 1], ["Ship ", "a", 1], ["sinks.", "a", 1]], 64,
+      { op: [land[0], land[1], land[2], land[2]] });
+    fly(w[2].x, w[2].y, g[0], 700, P(t, 3.2, 4.4), "ship", "a", 44);
+    fly(w[4].x, w[4].y, g[1], 700, P(t, 4.4, 5.6), "hits an iceberg", "a", 44);
+    fly(w[6].x, w[6].y, g[3], 700, P(t, 5.6, 6.8), "sinks", "a", 44);
+    text(800, 790, [["40 minutes of talking  →  5 words", "f", 1]], 34, { anchor: "middle", op: P(t, 7.5, 8.3) });
+  } },
+
+{ title: "Give me the gist", dur: 11,
+  cap: [[0, "Monday. Your boss opens a presentation."],
+        [2.5, "<b>Give me the gist</b> asks for the main point and nothing else."],
+        [5.5, "The answer to that request is one sentence."]],
+  draw(t) {
+    const n = 1 + Math.floor(clamp(t / 2.4) * 2.99), so = L(1, .3, P(t, 5.5, 6.2));
+    person(170, 640, "b", { label: "boss", talk: talk(t, 0, 2.5) + talk(t, 5.6, 7.5) });
+    box(320, 130, 560, 320, "b", so, .12);
+    text(600, 230, [["Q3 synergy roadmap", "b", 1]], 40, { anchor: "middle", op: so });
+    text(600, 285, [["overview, part " + n, "b"]], 34, { anchor: "middle", op: so });
+    text(600, 400, [["slide " + n + " of 47", "m"]], 30, { anchor: "middle", op: so });
+    person(1430, 640, "c", { label: "you", talk: talk(t, 2.5, 4.5) });
+    say(900, 300, 460, 100, "c", "Just give me the gist.", 36, P(t, 2.5, 3.1), "r");
+    say(290, 500, 480, 100, "b", "We are out of money.", 38, P(t, 5.6, 6.2), "l");
+    text(800, 770, [["47 slides  →  5 words", "a", 1]], 44, { anchor: "middle", op: P(t, 8, 8.8) });
+  } },
+
+{ title: "I got the gist", dur: 12,
+  cap: [[0, "A shelf arrives with a 30-page manual. You <b>skim</b> page 1 for ten seconds."],
+        [3, "<b>I got the gist</b> = I understood the main idea, not every detail."],
+        [8, "The details were on the other 29 pages."]],
+  draw(t) {
+    box(110, 180, 300, 420, "b", 1, .12, 8);
+    text(260, 250, [["MANUAL", "b", 1]], 40, { anchor: "middle" });
+    for (let i = 0; i < 6; i++) line(150, 300 + i * 40, 370 - (i % 3) * 40, 300 + i * 40, "m", 5, .6);
+    text(260, 575, [["page 1 of 30", "m"]], 28, { anchor: "middle" });
+    person(700, 640, "c", { label: "you", talk: talk(t, 3, 5) });
+    say(510, 300, 380, 100, "c", "I got the gist.", 38, P(t, 3, 3.6), "b");
+    const b = P(t, 5.5, 7), tilt = 16 * P(t, 8, 9.5), x0 = 1080, x1 = 1440, base = 640;
+    if (b > 0) {
+      line(x0, base, x0, base - 440 * b, "a", 8);
+      line(x1, base, x1, base - 440 * b, "a", 8);
+      line(x0, 560, x1, 560, "a", 8, P(t, 6.2, 6.8));
+      line(x0, 240, x1, 240, "a", 8, P(t, 6.6, 7.2));
+      const o = P(t, 6.4, 7);
+      if (o > 0) add(`<g transform="rotate(${tilt} ${x0} 400)" opacity="${o}"><line x1="${x0}" y1="400" x2="${x1}" y2="400" stroke="${COL.r}" stroke-width="8" stroke-linecap="round"/>
+        <rect x="${x0 + 60 + 200 * P(t, 8.3, 9.8)}" y="340" width="34" height="56" rx="4" fill="${COL.d}"/></g>`);
+      text(1260, 160, [["the shelf", "m"]], 30, { anchor: "middle", op: b });
+    }
+    const s = P(t, 9.5, 10.3);
+    for (let i = 0; i < 5; i++) dot(1150 + i * 36, 730, "r", 9, s);
+    text(1260, 790, [["5 screws left over", "r", 1]], 34, { anchor: "middle", op: s });
+  } },
+
+{ title: "Say it: jist", dur: 10,
+  cap: [[0, "The <b>g</b> of gist sounds like the j of jeans."],
+        [4.5, "It rhymes with list, mist and twist."],
+        [7, "It is not the hard g of gift."]],
+  draw(t) {
+    const c = row(800, 300, [["g", "a", 1], ["ist", "f", 1]], 200);
+    arrow(c[0], 340, c[0], 440, "a", P(t, 1, 1.8));
+    row(800, 600, [["j", "a", 1], ["ist", "f", 1]], 150, { op: P(t, 1.6, 2.4) });
+    text(800, 700, [["sounds like this", "m"]], 32, { anchor: "middle", op: P(t, 1.6, 2.4) });
+    text(240, 170, [["rhymes with", "m"]], 32, { anchor: "middle", op: P(t, 4.5, 5) });
+    ["list", "mist", "twist"].forEach((s, i) => chip(240, 270 + i * 120, s, "b", 48, P(t, 4.6 + i * .5, 5.2 + i * .5)));
+    const o = P(t, 7, 7.6);
+    text(1360, 170, [["not like", "m"]], 32, { anchor: "middle", op: o });
+    chip(1360, 270, "gift", "r", 48, o);
+    line(1280, 310, 1440, 230, "r", 6, P(t, 7.5, 8.1));
+  } },
+
+{ title: "Always the gist", dur: 13,
+  cap: [[0, "In everyday English the word comes with <b>the</b>, after <b>get</b> or <b>give</b>."],
+        [5, "Add <b>of</b> to name the long thing."],
+        [8, "Not <b>a</b> gist, and not a verb."]],
+  draw(t) {
+    const rows = [
+      [0.3, 1, [["I get "], ["the", "d", 1], [" gist."]]],
+      [2.3, 1, [["Give me "], ["the", "d", 1], [" gist."]]],
+      [5, 1, [["The", "d", 1], [" gist "], ["of", "d", 1], [" the email: we are late."]]],
+      [8, 0, [["I got "], ["a", "r", 1], [" gist."]], "→  I got the gist."],
+      [10, 0, [["She "], ["gisted", "r", 1], [" the meeting."]], "→  She gave me the gist."],
+    ];
+    rows.forEach(([a, ok, tk, fix], i) => {
+      const y = 170 + i * 125, o = P(t, a, a + .7);
+      text(130, y, [[ok ? "✓" : "✗", ok ? "c" : "r", 1]], 50, { op: o });
+      text(210, y, tk, 46, { op: o });
+      if (fix) text(880, y, [[fix, "c", 1]], 42, { op: P(t, a + 1, a + 1.7) });
+    });
+  } },
+
+{ title: "The gist of anything", dur: 16,
+  cap: [[0, "Anything long has a gist. The pattern: <b>the gist of</b> + the long thing."],
+        [12, "A gist throws details away on purpose. Shakespeare would complain."]],
+  draw(t) {
+    [["Terms and conditions", "84 pages", "We keep your data."],
+     ["The team meeting", "2 hours", "This was an email."],
+     ["Voice message from mom", "6 minutes", "Call your mother."],
+     ["Romeo and Juliet", "5 acts", "Bad communication. Both die."]].forEach(([s, n, g], i) => {
+      const a = .3 + i * 3.6, y = 110 + i * 170, o = P(t, a, a + .7);
+      box(70, y - 60, 560, 120, "b", o, .12);
+      text(350, y - 6, [[s, "b", 1]], 36, { anchor: "middle", op: o });
+      text(350, y + 36, [[n, "m"]], 28, { anchor: "middle", op: o });
+      arrow(650, y, 800, y, "m", P(t, a + .8, a + 1.6));
+      text(725, y - 18, [["gist", "m"]], 26, { anchor: "middle", op: P(t, a + .8, a + 1.4) });
+      text(830, y + 14, [[g, "a", 1]], 44, { op: P(t, a + 1.5, a + 2.2) });
+    });
+  } },
+
+{ title: "A gist on GitHub", dur: 11,
+  cap: [[0, "On GitHub, a <b>repository</b> holds a whole project."],
+        [4, "A <b>Gist</b> there is one small <b>snippet</b> shared by link: only the piece that matters."],
+        [7.5, "Here it is a thing you can count, so <b>a</b> gist is fine."]],
+  draw(t) {
+    add(`<pattern id="files" width="30" height="30" patternUnits="userSpaceOnUse"><rect x="3" y="3" width="24" height="24" rx="3" fill="${COL.b}" fill-opacity=".5"/></pattern>`);
+    const o = P(t, 0, .8), g = P(t, 4, 4.8);
+    text(450, 150, [["repository", "b", 1]], 40, { anchor: "middle", op: o });
+    if (o > 0) add(`<rect x="150" y="180" width="${600 * P(t, .2, 2.2)}" height="420" fill="url(#files)" opacity="${o}"/>`);
+    text(450, 660, [["2,000 files", "m"]], 32, { anchor: "middle", op: P(t, 2, 2.6) });
+    text(1200, 290, [["gist", "a", 1]], 40, { anchor: "middle", op: g });
+    box(980, 320, 440, 110, "a", g, .15);
+    if (g > 0) add(`<text x="1200" y="388" font-size="32" font-family="ui-monospace, monospace" text-anchor="middle" opacity="${g}">alias gs="git status"</text>`);
+    text(1200, 490, [["1 file, 1 link", "m"]], 32, { anchor: "middle", op: P(t, 4.6, 5.2) });
+    text(800, 770, [["\"I made a gist\"  =  I shared a small snippet", "f", 1]], 38, { anchor: "middle", op: P(t, 7.5, 8.3) });
+  } },
+
+{ title: "The gist of this video", dur: 10,
+  cap: [[0, "Eight scenes go in. Three lines come out."]],
+  draw(t) {
+    const d = L(1, .25, P(t, 2, 3));
+    SCENES.slice(0, 8).forEach((s, i) => text(i % 2 ? 1000 : 600, 90 + (i >> 1) * 50, [[s.title, "m"]], 30,
+      { anchor: "middle", op: P(t, i * .15, i * .15 + .5) * d }));
+    arrow(800, 290, 800, 350, "m", P(t, 2, 2.8));
+    const o = i => P(t, 2.8 + i * 1.2, 3.6 + i * 1.2);
+    text(800, 430, [["gist", "a", 1], [" = the main point, without the details"]], 46, { anchor: "middle", op: o(0) });
+    text(800, 520, [["say "], ["jist", "a", 1], [", and say "], ["the", "d", 1], [" gist"]], 46, { anchor: "middle", op: o(1) });
+    text(800, 610, [["get the gist  ·  give me the gist  ·  the gist of X", "b", 1]], 42, { anchor: "middle", op: o(2) });
+    text(800, 750, [["Jumped straight to this scene? Then you got the gist.", "c", 1]], 40, { anchor: "middle", op: P(t, 7, 7.8) });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
