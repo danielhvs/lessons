@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PGBL versus VGBL</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --pg: #7b4fd6; --vg: #d9822b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --pg: #a98bff; --vg: #f0a050;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+.nav a { color: var(--accent); font-size: .9rem; margin-right: 14px; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+dfn { font-style: normal; font-weight: 600; }
+.pg { color: var(--pg); font-weight: 600; }
+.vg { color: var(--vg); font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre { margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace; background: var(--code-bg); }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .muted { fill: var(--muted); }
+svg.diagram .box { fill: var(--code-bg); stroke: var(--line); stroke-width: 2; }
+svg.diagram .contrib { fill: var(--code-bg); stroke: var(--muted); stroke-width: 2; }
+svg.diagram .gain { fill: var(--add-bg); stroke: var(--add); stroke-width: 2; }
+svg.diagram .tax { fill: url(#hatch); }
+svg.diagram .taxline { stroke: var(--del); stroke-width: 3; fill: none; }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram .pgf { fill: var(--pg); }
+svg.diagram .vgf { fill: var(--vg); }
+svg.diagram .red { fill: var(--del); }
+svg.diagram .grn { fill: var(--add); }
+svg.diagram marker path { fill: var(--muted); }
+svg.diagram .hatchline { stroke: var(--del); stroke-width: 3; }
+table { border-collapse: collapse; width: 100%; margin: 0 0 10px; }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tr.best td { background: var(--add-bg); font-weight: 600; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+.src { color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+<div class="nav"><a href="../">← todas as aulas</a></div>
+<h1>PGBL versus VGBL</h1>
+<p class="lead">Os dois são previdência privada com o mesmo investimento por dentro. A diferença é só uma: <b>sobre qual pedaço do dinheiro o imposto de renda cai</b>, e quando.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p><dfn>Previdência privada</dfn> é um investimento de longo prazo vendido por seguradoras e bancos: você faz <dfn>aportes</dfn> (depósitos), um fundo investe o dinheiro, e lá na frente você faz o <dfn>resgate</dfn> (saque) ou recebe uma renda mensal.</p>
+  <p>No balcão do banco ela vem em dois sabores com nomes quase iguais:</p>
+  <ul>
+    <li><span class="pg">PGBL</span> - <dfn>Plano Gerador de Benefício Livre</dfn>.</li>
+    <li><span class="vg">VGBL</span> - <dfn>Vida Gerador de Benefício Livre</dfn>.</li>
+  </ul>
+  <p>O fundo, a taxa e o rendimento podem ser idênticos. Escolher o errado faz você pagar imposto sobre dinheiro que nunca foi lucro, ou deixar de receber uma restituição a que tinha direito. A regra que decide:</p>
+  <pre><span class="pg">PGBL</span>: deduz o aporte no IR hoje  →  paga IR sobre <mark>TUDO</mark> no resgate
+<span class="vg">VGBL</span>: não deduz nada hoje       →  paga IR só sobre o <mark>RENDIMENTO</mark> no resgate</pre>
+  <p><dfn>IR</dfn> = imposto de renda. <dfn>Deduzir</dfn> = abater o valor da sua <dfn>base de cálculo</dfn> (a renda sobre a qual o IR é calculado), então você paga menos IR naquele ano.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: R$ 1.000 que viram R$ 1.500</h2>
+  <div class="split">
+    <div>
+      <p>Você aporta R$ 1.000. Anos depois (mais de 10) o saldo é R$ 1.500: R$ 1.000 de aporte + R$ 500 de rendimento. Imposto no resgate: 10% (seção 4 explica de onde vem esse 10%).</p>
+<pre><span class="pg">PGBL</span>  IR = 10% × 1.500 = <mark>150</mark>
+       recebe 1.500 − 150 = 1.350
+
+<span class="vg">VGBL</span>  IR = 10% × 500   = <mark>50</mark>
+       recebe 1.500 − 50  = 1.450</pre>
+      <p>Até aqui o VGBL ganha. Mas o PGBL tem uma vantagem no <b>começo</b>: quem está na faixa de 27,5% do IR e faz a <dfn>declaração completa</dfn> (a que lista despesas dedutíveis, em vez do desconto padrão de 20% da simplificada) deduz o aporte e paga menos IR naquele ano:</p>
+<pre><span class="pg">PGBL</span>  restituição = 27,5% × 1.000 = <mark>275</mark>
+       1.350 + 275 = 1.625  &gt;  1.450 do <span class="vg">VGBL</span></pre>
+      <p><dfn>Alíquota marginal</dfn>: a porcentagem de IR que incide sobre o último real que você ganha. Em 2026, quem ganha mais de cerca de R$ 4.700/mês tem 27,5%.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 430" role="img" aria-label="Barra de 1.500: no PGBL o imposto cai sobre a barra inteira, no VGBL só sobre o topo">
+        <defs>
+          <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="10" class="hatchline"/></pattern>
+        </defs>
+        <text x="130" y="30" font-size="22" font-weight="700" text-anchor="middle" class="pgf">PGBL</text>
+        <text x="450" y="30" font-size="22" font-weight="700" text-anchor="middle" class="vgf">VGBL</text>
+        <!-- PGBL bar -->
+        <rect class="gain" x="70" y="50" width="120" height="100"/>
+        <rect class="contrib" x="70" y="150" width="120" height="200"/>
+        <rect class="tax" x="70" y="50" width="120" height="300" opacity=".55"/>
+        <rect class="taxline" x="70" y="50" width="120" height="300"/>
+        <text x="130" y="106" font-size="17" text-anchor="middle">rendimento 500</text>
+        <text x="130" y="256" font-size="17" text-anchor="middle">aporte 1.000</text>
+        <text x="130" y="385" font-size="18" text-anchor="middle" class="red">IR sobre 1.500</text>
+        <text x="130" y="412" font-size="18" text-anchor="middle" class="red">= 150</text>
+        <!-- PGBL refund -->
+        <path class="edge" d="M200,250 L250,250" marker-end="url(#arr)"/>
+        <text x="225" y="226" font-size="16" text-anchor="middle" class="grn">+275</text>
+        <text x="225" y="280" font-size="14" text-anchor="middle" class="muted">no ano</text>
+        <text x="225" y="297" font-size="14" text-anchor="middle" class="muted">do aporte</text>
+        <!-- VGBL bar -->
+        <rect class="gain" x="390" y="50" width="120" height="100"/>
+        <rect class="contrib" x="390" y="150" width="120" height="200"/>
+        <rect class="tax" x="390" y="50" width="120" height="100" opacity=".55"/>
+        <rect class="taxline" x="390" y="50" width="120" height="100"/>
+        <text x="450" y="106" font-size="17" text-anchor="middle">rendimento 500</text>
+        <text x="450" y="256" font-size="17" text-anchor="middle">aporte 1.000</text>
+        <text x="450" y="385" font-size="18" text-anchor="middle" class="red">IR sobre 500</text>
+        <text x="450" y="412" font-size="18" text-anchor="middle" class="red">= 50</text>
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0L10,5L0,10z"/></marker></defs>
+      </svg>
+      <figcaption>A área riscada em vermelho é onde o IR do resgate incide. O PGBL paga na barra inteira, mas recebe 275 de volta lá no começo.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>O limite de 12% e o exemplo de verdade</h2>
+  <p>A dedução do PGBL tem teto: <mark>12% da sua renda bruta tributável do ano</mark> (salário bruto, aluguéis, etc.). E só vale se você também contribui para o <dfn>INSS</dfn> (Instituto Nacional do Seguro Social, a previdência pública) ou para um regime próprio de servidor.</p>
+  <div class="split">
+    <div>
+      <p>Pessoa com salário bruto de R$ 120.000/ano, declaração completa, faixa de 27,5%. Aporta o máximo dedutível e deixa render 12 anos a 8% ao ano.</p>
+<pre>teto     = 12% × 120.000      = <mark>14.400</mark>
+restit.  = 27,5% × 14.400     = <mark>3.960</mark>
+fator    = 1,08^12            = 2,5182
+saldo    = 14.400 × 2,5182    = 36.261,65
+
+<span class="pg">PGBL</span> IR = 10% × 36.261,65    = 3.626,16
+     líquido                 = 32.635,48
+     + os 3.960 da restituição,
+       reinvestidos num VGBL  =  9.370,76
+     total                   = <mark>42.006,24</mark>
+
+<span class="vg">VGBL</span> rendimento = 36.261,65 − 14.400 = 21.861,65
+     IR = 10% × 21.861,65    = 2.186,16
+     líquido                 = <mark>34.075,48</mark></pre>
+    </div>
+    <div>
+      <table>
+        <tr><th>Cenário (mesmos R$ 14.400 do bolso)</th><th class="n">Líquido após 12 anos</th></tr>
+        <tr class="best"><td><span class="pg">PGBL</span>, declaração completa, restituição reinvestida</td><td class="n">42.006,24</td></tr>
+        <tr><td><span class="vg">VGBL</span></td><td class="n">34.075,48</td></tr>
+        <tr><td><span class="pg">PGBL</span>, declaração simplificada (sem restituição)</td><td class="n">32.635,48</td></tr>
+      </table>
+      <figure>
+        <svg class="diagram" viewBox="0 0 600 220" role="img" aria-label="Linha do tempo: aporte no ano 0, restituição no ano 1, resgate no ano 12">
+          <path class="edge" d="M30,110 L570,110" marker-end="url(#arr2)"/>
+          <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0L10,5L0,10z"/></marker></defs>
+          <circle cx="50" cy="110" r="8" class="pgf"/>
+          <text x="50" y="80" font-size="16" text-anchor="middle">dez/ano 0</text>
+          <text x="50" y="145" font-size="16" text-anchor="middle">aporta</text>
+          <text x="50" y="167" font-size="16" text-anchor="middle">14.400</text>
+          <circle cx="160" cy="110" r="8" class="grn"/>
+          <text x="160" y="80" font-size="16" text-anchor="middle">ano 1</text>
+          <text x="160" y="145" font-size="16" text-anchor="middle" class="grn">restituição</text>
+          <text x="160" y="167" font-size="16" text-anchor="middle" class="grn">3.960</text>
+          <text x="160" y="189" font-size="14" text-anchor="middle" class="muted">reinvista!</text>
+          <circle cx="530" cy="110" r="8" class="red"/>
+          <text x="530" y="80" font-size="16" text-anchor="middle">ano 12</text>
+          <text x="530" y="145" font-size="16" text-anchor="middle">resgata</text>
+          <text x="530" y="167" font-size="16" text-anchor="middle" class="red">IR 10%</text>
+          <text x="345" y="80" font-size="15" text-anchor="middle" class="muted">rendendo 8% a.a., sem come-cotas</text>
+        </svg>
+        <figcaption>A restituição só vira vantagem se for investida. Gasta, o PGBL fica pior que o VGBL (última linha da tabela).</figcaption>
+      </figure>
+      <p>Simplifiquei: a restituição chega um ano depois do aporte, e eu a fiz render os mesmos 12 anos. A conta exata dá um pouco menos, mas a ordem dos cenários não muda.</p>
+      <p><dfn>Come-cotas</dfn>: cobrança semestral de IR antecipado que fundos comuns sofrem. Previdência não tem, então o imposto inteiro fica rendendo até o resgate.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>De onde veio o 10%: tabela regressiva e progressiva</h2>
+  <div class="split">
+    <div>
+      <p>Na contratação você escolhe como o IR do resgate será calculado. Vale para PGBL e VGBL igualmente.</p>
+      <p><dfn>Tabela regressiva</dfn>: alíquota cai com o tempo que <b>cada aporte</b> ficou no plano. Cada depósito tem o seu próprio relógio: um aporte feito ontem paga 35% mesmo num plano de 15 anos.</p>
+      <p><dfn>Tabela progressiva</dfn>: a mesma tabela do IR do salário (0% a 27,5%). No resgate a seguradora retém 15% na fonte e o acerto acontece na declaração anual. Faz sentido para quem vai resgatar cedo ou terá renda baixa na aposentadoria.</p>
+<pre>até 2 anos     35%
+2 a 4 anos     30%
+4 a 6 anos     25%
+6 a 8 anos     20%
+8 a 10 anos    15%
+mais de 10     <mark>10%</mark></pre>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 300" role="img" aria-label="Escada da tabela regressiva, de 35% a 10%">
+        <g font-size="16">
+          <rect x="60"  y="40"  width="80" height="210" class="red" opacity=".85"/>
+          <rect x="145" y="70"  width="80" height="180" class="red" opacity=".72"/>
+          <rect x="230" y="100" width="80" height="150" class="red" opacity=".6"/>
+          <rect x="315" y="130" width="80" height="120" class="red" opacity=".48"/>
+          <rect x="400" y="160" width="80" height="90"  class="red" opacity=".36"/>
+          <rect x="485" y="190" width="80" height="60"  class="grn" opacity=".8"/>
+          <text x="100" y="32" text-anchor="middle">35%</text>
+          <text x="185" y="62" text-anchor="middle">30%</text>
+          <text x="270" y="92" text-anchor="middle">25%</text>
+          <text x="355" y="122" text-anchor="middle">20%</text>
+          <text x="440" y="152" text-anchor="middle">15%</text>
+          <text x="525" y="182" text-anchor="middle" font-weight="700">10%</text>
+          <text x="100" y="275" text-anchor="middle" class="muted">0-2</text>
+          <text x="185" y="275" text-anchor="middle" class="muted">2-4</text>
+          <text x="270" y="275" text-anchor="middle" class="muted">4-6</text>
+          <text x="355" y="275" text-anchor="middle" class="muted">6-8</text>
+          <text x="440" y="275" text-anchor="middle" class="muted">8-10</text>
+          <text x="525" y="275" text-anchor="middle" class="muted">10+</text>
+          <text x="312" y="297" text-anchor="middle" class="muted">anos que o aporte ficou no plano</text>
+        </g>
+      </svg>
+      <figcaption>Regressiva: quanto mais tempo cada aporte fica, menor o IR. Sair antes de 2 anos custa 35%.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Qual escolher</h2>
+  <figure>
+    <svg class="diagram" viewBox="0 0 1000 250" role="img" aria-label="Fluxo de decisão entre PGBL e VGBL">
+      <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0L10,5L0,10z"/></marker></defs>
+      <rect class="box" x="10" y="80" width="300" height="90" rx="10"/>
+      <text x="160" y="118" font-size="18" text-anchor="middle">Faz declaração completa</text>
+      <text x="160" y="144" font-size="18" text-anchor="middle">e contribui pro INSS?</text>
+      <path class="edge" d="M310,105 L420,50" marker-end="url(#arr3)"/>
+      <text x="355" y="62" font-size="16" class="grn">sim</text>
+      <path class="edge" d="M310,145 L420,200" marker-end="url(#arr3)"/>
+      <text x="355" y="200" font-size="16" class="red">não</text>
+      <rect class="box" x="425" y="10" width="560" height="80" rx="10"/>
+      <text x="440" y="44" font-size="18"><tspan class="pgf" font-weight="700">PGBL</tspan> até 12% da renda bruta tributável</text>
+      <text x="440" y="72" font-size="18">o que passar disso: <tspan class="vgf" font-weight="700">VGBL</tspan></text>
+      <rect class="box" x="425" y="160" width="560" height="80" rx="10"/>
+      <text x="440" y="194" font-size="18"><tspan class="vgf" font-weight="700">VGBL</tspan></text>
+      <text x="440" y="222" font-size="18">(simplificada, autônomo sem INSS, isento)</text>
+    </svg>
+    <figcaption>A regra de bolso. Os dois planos podem coexistir: muita gente tem um PGBL até o teto e um VGBL para o resto.</figcaption>
+  </figure>
+  <p>O que é igual nos dois: os fundos disponíveis, taxa de administração, sem come-cotas, escolha de tabela, e <dfn>portabilidade</dfn> (mover o saldo para outra seguradora sem resgatar e sem pagar IR, desde que PGBL vá para PGBL e VGBL para VGBL).</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Erros comuns</h2>
+  <p class="mistake"><b>PGBL com declaração simplificada.</b> Você não deduz nada e mesmo assim paga IR sobre o valor inteiro no resgate: R$ 32.635 contra R$ 34.075 do VGBL no exemplo. Conserto: se você usa a simplificada, VGBL.</p>
+  <p class="mistake"><b>Aportar no PGBL acima de 12%.</b> O excedente não deduz, mas é tributado inteiro no resgate como qualquer PGBL. Conserto: até o teto no PGBL, o resto no VGBL.</p>
+  <p class="mistake"><b>Gastar a restituição.</b> O ganho do PGBL é a restituição rendendo por anos. Gasta, a vantagem vira um adiamento de imposto. Conserto: reinvista os R$ 3.960 assim que caírem.</p>
+  <p class="mistake"><b>Regressiva e resgate cedo.</b> Cada aporte tem seu relógio. Resgatar antes de 2 anos paga 35%. Conserto: regressiva só para dinheiro que fica 10+ anos; senão, progressiva.</p>
+  <p class="mistake"><b>Aporte grande no VGBL sem olhar o IOF.</b> Desde 1º/01/2026 há <dfn>IOF</dfn> (Imposto sobre Operações Financeiras) de 5% sobre o que passar de R$ 600 mil por ano em aportes de VGBL, somando todas as seguradoras do mesmo CPF. Aportar R$ 700 mil paga 5% × 100 mil = R$ 5 mil. Conserto: fatiar entre anos.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li><span class="pg">PGBL</span>: deduz até 12% da renda bruta no IR hoje, paga IR sobre o valor total no resgate.</li>
+    <li><span class="vg">VGBL</span>: não deduz, paga IR só sobre o rendimento.</li>
+    <li>PGBL só compensa com declaração completa, contribuição ao INSS e restituição reinvestida.</li>
+    <li>Regressiva: 35% caindo até 10% depois de 10 anos, contado por aporte.</li>
+    <li>Regra de bolso: PGBL até o teto de 12%, o resto em VGBL.</li>
+  </ol>
+  <p class="src">Fontes checadas em 2026-11-13: <a href="https://www.gov.br/susep/pt-br/central-de-conteudos/noticias/2025/junho/novo-decreto-atualiza-regra-de-iof-para-planos-vgbl">Susep - IOF no VGBL</a>, <a href="https://investalk.bb.com.br/noticias/mercado/pgbl-ou-vgbl-tabela-progressiva-ou-regressiva-como-declarar-previdencia-privada">BB Investalk - PGBL ou VGBL</a>. Não é recomendação de investimento.</p>
+</section>
+</main>
+</body>
+</html>
