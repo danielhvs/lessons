@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PGBL versus VGBL, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+  #links a { color: var(--b); }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+  @media (pointer: coarse) { #bar button::after { content: none } }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+
+let out = [];
+const add = s => out.push(s);
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// tokens laid out left to right from x; op per token; returns each token's center x
+function rowL(x, y, tokens, size, ops = []) {
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const w = width([t], size);
+    text(x, y, [t], size, { op: ops[i] ?? 1 });
+    centers.push(x + w / 2);
+    x += w;
+  });
+  return centers;
+}
+// a token travelling from one spot to another, size easing too
+function fly(s, c, from, to, p) {
+  if (p <= 0 || p >= 1) return;
+  text(L(from[0], to[0], p), L(from[1], to[1], p), [[s, c, 1]], L(from[2], to[2], p), { anchor: "middle" });
+}
+const f2 = v => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const f0 = v => Math.round(v).toLocaleString("pt-BR");
+const rect = (x, y, w, h, c, o = {}) => { if (w > .5 && h > .5) add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 8}" fill="${o.fill ?? COL[c]}" fill-opacity="${o.fo ?? .3}" stroke="${COL[c]}" stroke-width="${o.sw ?? 3}" opacity="${o.op ?? 1}"/>`); };
+const dot = (x, y, color, r = 12, op = 1) => add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const line = (x1, y1, x2, y2, c, o = {}) => add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[c]}" stroke-width="${o.sw ?? 3}" opacity="${o.op ?? 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ""}${o.arrow ? ' marker-end="url(#arr)"' : ""}/>`);
+
+// the R$ 1.000 → R$ 1.500 bars: PGBL on the left, VGBL on the right
+const BASE = 700, SC = .3, BW = 220, CX = [250, 1100], COLX = [400, 1250];
+const TOP = BASE - 1500 * SC, MID = BASE - 1000 * SC;
+function bars(kc = 1, kg = 1) {
+  CX.forEach((cx, i) => {
+    const hc = 1000 * SC * kc, hg = 500 * SC * kg;
+    text(cx, 140, [[i ? "VGBL" : "PGBL", i ? "a" : "d", 1]], 52, { anchor: "middle" });
+    rect(cx - BW / 2, BASE - hc, BW, hc, "b", { rx: 4 });
+    rect(cx - BW / 2, BASE - hc - hg, BW, hg, "c", { rx: 4 });
+    text(cx, BASE - 150 + 10, [["aporte"]], 28, { anchor: "middle", op: P(kc, .6, 1) });
+    text(cx, BASE - 150 + 50, [["1.000", "b", 1]], 36, { anchor: "middle", op: P(kc, .6, 1) });
+    text(cx, MID - 75 + 0, [["rendimento"]], 28, { anchor: "middle", op: P(kg, .6, 1) });
+    text(cx, MID - 75 + 40, [["500", "c", 1]], 36, { anchor: "middle", op: P(kg, .6, 1) });
+    text(cx, BASE - hc - hg - 20, [[f0(1000 * kc + 500 * kg), "f", 1]], 40, { anchor: "middle", op: kc > 0 ? 1 : 0 });
+  });
+}
+// red hatch over the part the IR hits
+const hatch = (x, y, w, h, op) => { if (op > 0) add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#hatch)" stroke="${COL.r}" stroke-width="5" opacity="${op}"/>`); };
+const hatchP = op => hatch(CX[0] - BW / 2, TOP, BW, 1500 * SC, op);
+const hatchV = op => hatch(CX[1] - BW / 2, TOP, BW, 500 * SC, op);
+
+const GLOSS = {
+  "previdência privada": "investimento de longo prazo vendido por seguradoras e bancos; você deposita, um fundo investe, e lá na frente você saca ou recebe renda",
+  "PGBL": "Plano Gerador de Benefício Livre: abate o aporte no IR do ano, paga IR sobre tudo no resgate",
+  "VGBL": "Vida Gerador de Benefício Livre: não abate nada, paga IR só sobre o rendimento",
+  "IR": "imposto de renda",
+  "aporte": "cada depósito que você faz no plano",
+  "resgate": "saque do dinheiro do plano",
+  "rendimento": "o que o dinheiro ganhou além do que você depositou",
+  "alíquota": "a porcentagem do imposto",
+  "restituição": "IR pago a mais no ano que a Receita devolve depois da declaração",
+  "declaração completa": "declaração de IR que lista as despesas dedutíveis uma a uma; a simplificada troca tudo por um desconto padrão de 20%",
+  "faixa de 27,5%": "a alíquota sobre o último real de quem ganha mais de cerca de R$ 4.700 por mês",
+  "renda bruta tributável": "salário bruto, aluguéis e outras rendas sobre as quais incide IR, antes de qualquer desconto",
+  "INSS": "Instituto Nacional do Seguro Social, a previdência pública; o PGBL só abate se você contribui para ele (ou para um regime próprio)",
+  "a.a.": "ao ano",
+  "come-cotas": "IR antecipado que fundos comuns pagam a cada seis meses; previdência não tem",
+  "tabela regressiva": "alíquota que cai de 35% para 10% conforme cada aporte fica mais tempo no plano",
+  "tabela progressiva": "a mesma tabela do IR do salário, de 0% a 27,5%; no resgate a seguradora retém 15% e o acerto sai na declaração",
+  "IOF": "Imposto sobre Operações Financeiras; no VGBL, 5% sobre o que passar de R$ 600 mil de aportes por ano, desde 2026",
+};
+const TERMS = [["previdência privada", "PGBL", "VGBL", "IR"], ["aporte", "resgate", "rendimento"], ["alíquota", "IR"],
+  ["restituição", "faixa de 27,5%", "declaração completa"], ["renda bruta tributável", "INSS"], ["a.a.", "come-cotas"],
+  ["IR", "restituição"], ["tabela regressiva", "tabela progressiva"], ["declaração completa", "INSS", "IOF"]];
+
+// 12 years at 8% a year
+const G = 1.08, N = 12, A = 14400, R = 3960;
+const CH = { x0: 150, y0: 690, w: 840, h: 580 }, VM = 40000, RX = 1070;
+const XC = x => CH.x0 + x / N * CH.w, YC = v => CH.y0 - v / VM * CH.h;
+
+const SCENES = [
+{ title: "Mesmo fundo, dois rótulos", dur: 9,
+  cap: [[0, "<b>PGBL</b> e <b>VGBL</b> são dois rótulos de previdência privada. Dentro, o mesmo fundo pode render exatamente a mesma coisa."],
+        [4, "A diferença é só o imposto de renda: <b>quando</b> você ganha um desconto e <b>sobre qual pedaço</b> ele cai no resgate."]],
+  draw(t) {
+    [[400, "PGBL", "d"], [1200, "VGBL", "a"]].forEach(([cx, n, c], i) => {
+      text(cx, 190, [[n, c, 1]], 60, { anchor: "middle" });
+      rect(cx - 170, 220, 340, 320, c, { rx: 30, fo: .12 });
+      const p = P(t, 1, 3);
+      fly("fundo: 8% a.a.", "f", [800, 90, 34], [cx, 395, 40], p);
+      text(cx, 395, [["fundo: 8% a.a.", "f", 1]], 40, { anchor: "middle", op: p >= 1 ? 1 : 0 });
+      text(cx, 620, [[i ? "não abate nada hoje" : "abate o aporte no IR hoje", i ? "m" : "c", 1]], 36, { anchor: "middle", op: P(t, 4, 4.8) });
+      text(cx, 690, [[i ? "no resgate: IR só no " : "no resgate: IR sobre ", "f"], [i ? "RENDIMENTO" : "TUDO", "r", 1]], 36, { anchor: "middle", op: P(t, 5.2, 6) });
+    });
+    text(800, 90, [["fundo: 8% a.a.", "f", 1]], 34, { anchor: "middle", op: 1 - P(t, .8, 1.2) });
+  } },
+
+{ title: "R$ 1.000 que viram R$ 1.500", dur: 9,
+  cap: [[0, "Você aporta R$ 1.000 em cada um."],
+        [3.5, "Mais de 10 anos depois, cada um rendeu R$ 500. Até aqui não há diferença: os dois valem R$ 1.500."]],
+  draw(t) {
+    bars(P(t, .5, 2.5), P(t, 4, 6));
+    COLX.forEach(x => {
+      text(x, 330, [["aporte: ", "m"], ["R$ 1.000", "b", 1]], 36, { op: P(t, 1, 2) });
+      text(x, 400, [["rendimento: ", "m"], ["R$ 500", "c", 1]], 36, { op: P(t, 5, 6) });
+      text(x, 470, [["saldo: ", "m"], ["R$ 1.500", "f", 1]], 36, { op: P(t, 6.5, 7.3) });
+    });
+  } },
+
+{ title: "Onde o IR cai no resgate", dur: 11,
+  cap: [[0, "No resgate, o IR do PGBL cai sobre a barra inteira, aporte e rendimento. Alíquota de 10%, porque o dinheiro ficou mais de 10 anos."],
+        [4, "No VGBL ele cai só sobre o rendimento: o aporte volta sem imposto, porque já foi tributado no seu salário."],
+        [8, "Olhando só o resgate, o VGBL ganha: R$ 1.450 contra R$ 1.350."]],
+  draw(t) {
+    bars();
+    hatchP(P(t, .5, 1.5)); hatchV(P(t, 3.8, 4.8));
+    const S = 36;
+    const pa = P(t, 1.5, 3), cP = rowL(COLX[0], 330, [["10% × "], ["1.500", "f", 1], [" = "], ["150", "r", 1]], S, [P(t, 1.5, 2), pa >= 1 ? 1 : 0, P(t, 3, 3.5), P(t, 3, 3.5)]);
+    fly("1.500", "f", [CX[0], TOP - 20, 40], [cP[1], 330, S], pa);
+    const pb = P(t, 5, 6.5), cV = rowL(COLX[1], 330, [["10% × "], ["500", "c", 1], [" = "], ["50", "r", 1]], S, [P(t, 5, 5.5), pb >= 1 ? 1 : 0, P(t, 6.5, 7), P(t, 6.5, 7)]);
+    fly("500", "c", [CX[1], MID - 35, 36], [cV[1], 330, S], pb);
+    text(COLX[0], 410, [["recebe ", "m"], ["1.350", "d", 1]], 44, { op: P(t, 7.5, 8.3) });
+    text(COLX[1], 410, [["recebe ", "m"], ["1.450", "a", 1]], 44, { op: P(t, 7.5, 8.3) });
+  } },
+
+{ title: "O desconto do PGBL vem antes", dur: 12,
+  cap: [[0, "No ano do aporte, o PGBL abate os R$ 1.000 da sua renda no IR. Na faixa de 27,5%, isso devolve <b>R$ 275</b> na restituição."],
+        [4, "Somando a restituição, o PGBL passa à frente: R$ 1.625 contra R$ 1.450."],
+        [8.5, "Só funciona na declaração completa. Na simplificada não há esse abatimento, e o PGBL fica só com o lado ruim: R$ 1.350."]],
+  draw(t) {
+    bars(); hatchP(1); hatchV(1);
+    const S = 36;
+    text(COLX[0], 330, [["recebe ", "m"], ["1.350", "d", 1]], S);
+    text(COLX[1], 330, [["recebe ", "m"], ["1.450", "a", 1]], S);
+    const p1 = P(t, 1, 2.5), c1 = rowL(COLX[0], 410, [["27,5% × "], ["1.000", "b", 1], [" = "], ["275", "c", 1]], S, [P(t, 1, 1.5), p1 >= 1 ? 1 : 0, P(t, 2.5, 3), P(t, 2.5, 3)]);
+    fly("1.000", "b", [CX[0], BASE - 100, 36], [c1[1], 410, S], p1);
+    const p2 = P(t, 4, 5.5), c2 = rowL(COLX[0], 490, [["1.350 + "], ["275", "c", 1], [" = "], ["1.625", "d", 1]], S, [P(t, 4, 4.5), p2 >= 1 ? 1 : 0, P(t, 5.5, 6), P(t, 5.5, 6)]);
+    fly("275", "c", [c1[3], 410, S], [c2[1], 490, S], p2);
+    text(800, 70, [["1.625", "d", 1], ["  >  ", "m"], ["1.450", "a", 1]], 52, { anchor: "middle", op: P(t, 6.5, 7.3) * (1 - P(t, 8.5, 9.2)) });
+    const k = P(t, 9, 10);
+    text(COLX[0], 570, [["simplificada: "], ["275", "r", 1], [" → "], ["0", "r", 1]], S, { op: k });
+    if (k > 0) line(c2[1] - 32, 478, c2[1] + 32, 478, "r", { sw: 5, op: k });
+    text(800, 70, [["simplificada: ", "m"], ["1.350", "d", 1], ["  <  ", "m"], ["1.450", "a", 1]], 52, { anchor: "middle", op: P(t, 10, 10.8) });
+  } },
+
+{ title: "O teto: 12% da renda bruta", dur: 11,
+  cap: [[0, "O abatimento tem teto: 12% da renda bruta tributável do ano. Com salário bruto de R$ 120.000, o máximo é <b>R$ 14.400</b>."],
+        [3.5, "Aportando esse teto na faixa de 27,5%, a restituição é de <b>R$ 3.960</b>."],
+        [7, "Acima de 12% o PGBL não abate nada, mas no resgate tributa tudo. Por isso o excedente vai para o VGBL."]],
+  draw(t) {
+    const x0 = 100, W = 1400, s = W / 120000, k = P(t, .8, 2.2);
+    text(x0, 170, [["salário bruto: ", "m"], ["R$ 120.000 por ano", "f", 1]], 36);
+    rect(x0, 200, W, 100, "m", { fo: .08, rx: 10 });
+    rect(x0, 200, 14400 * s * k, 100, "d", { fo: .5, rx: 10 });
+    const lo = P(t, 1.8, 2.4), lc = rowL(x0, 350, [["12% = ", "d"], ["14.400", "d", 1]], 36, [lo, lo]);
+    const p = P(t, 3.5, 5), c = rowL(500, 470, [["27,5% × "], ["14.400", "d", 1], [" = "], ["3.960", "c", 1]], 48, [P(t, 3.5, 4), p >= 1 ? 1 : 0, P(t, 5, 5.5), P(t, 5, 5.5)]);
+    fly("14.400", "d", [lc[1], 350, 36], [c[1], 470, 48], p);
+    text(c[3], 520, [["de restituição", "c"]], 28, { anchor: "middle", op: P(t, 5, 5.5) });
+    const e = P(t, 7, 8.5);
+    text(x0, 620, [["aportou R$ 20.000?", "m"]], 36, { op: P(t, 7, 7.5) });
+    rect(x0 + 360, 580, 14400 * s * 3 * e, 60, "d", { fo: .5, rx: 6 });
+    rect(x0 + 360 + 14400 * s * 3 * e, 580, 5600 * s * 3 * P(t, 8.5, 9.5), 60, "a", { fo: .5, rx: 6 });
+    text(x0 + 360, 690, [["R$ 14.400 no PGBL", "d", 1]], 30, { op: P(t, 8, 8.5) });
+    text(x0 + 360 + 14400 * s * 3, 690, [["  + R$ 5.600 no VGBL", "a", 1]], 30, { op: P(t, 9.3, 9.8) });
+  } },
+
+{ title: "12 anos a 8% ao ano", dur: 11,
+  cap: [[0, "Os R$ 14.400 rendem 8% a.a. por 12 anos, igual nos dois planos, e viram <b>R$ 36.261,65</b>. Sem come-cotas, nada sai no caminho."],
+        [5.5, "No PGBL, os R$ 3.960 da restituição vão para um VGBL e também rendem: viram <b>R$ 9.971,95</b>."]],
+  draw(t) {
+    for (const v of [10000, 20000, 30000, 40000]) {
+      line(CH.x0, YC(v), CH.x0 + CH.w, YC(v), "l", { sw: 2 });
+      text(CH.x0 - 14, YC(v) + 9, [[f0(v), "m"]], 26, { anchor: "end" });
+    }
+    line(CH.x0, CH.y0, CH.x0 + CH.w, CH.y0, "m");
+    for (const y of [0, 3, 6, 9, 12]) text(XC(y), CH.y0 + 38, [[y ? `ano ${y}` : "hoje", "m"]], 26, { anchor: "middle" });
+    const curve = (v0, e, c) => {
+      if (e <= 0) return;
+      const pts = []; for (let x = 0; x <= e + 1e-9; x += N / 120) pts.push(`${XC(x).toFixed(1)},${YC(v0 * G ** x).toFixed(1)}`);
+      pts.push(`${XC(e)},${YC(v0 * G ** e)}`);
+      add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL[c]}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`);
+      dot(XC(e), YC(v0 * G ** e), c, 13);
+    };
+    const e1 = N * P(t, .5, 5), e2 = N * P(t, 6, 9.5);
+    curve(A, e1, "b"); curve(R, e2, "c");
+    text(RX, 170, [["PGBL ou VGBL: R$ 14.400 viram", "m"]], 28);
+    text(RX, 235, [["R$ " + f2(A * G ** e1), "b", 1]], 52);
+    text(RX, 300, [["fator: 1,08¹² = 2,5182", "m"]], 28, { op: P(t, 5, 5.6) });
+    text(RX, 420, [["só no PGBL: restituição de 3.960", "m"]], 28, { op: P(t, 5.6, 6.2) });
+    text(RX, 485, [["R$ " + f2(R * G ** e2), "c", 1]], 52, { op: P(t, 5.6, 6.2) });
+  } },
+
+{ title: "O placar depois do IR", dur: 14,
+  cap: [[0, "PGBL com declaração completa: IR de 10% sobre os R$ 36.261,65, mais o IR do VGBL da restituição, só sobre o rendimento dela."],
+        [4, "VGBL: IR de 10% só sobre os R$ 21.861,65 de rendimento."],
+        [7.5, "PGBL na simplificada: IR sobre tudo e nenhuma restituição. É o pior dos três."],
+        [11, "Com declaração completa e restituição reinvestida, o PGBL fica <b>R$ 7.930,76</b> à frente do VGBL."]],
+  draw(t) {
+    const s = 1000 / 46233.6, x0 = 100;
+    [["PGBL, declaração completa, restituição reinvestida", "d", 46233.60, 4227.36, 42006.24, "IR: 3.626,16 + 601,20"],
+     ["VGBL", "a", 36261.65, 2186.16, 34075.48, "IR: 10% × 21.861,65 = 2.186,16"],
+     ["PGBL, declaração simplificada", "d", 36261.65, 3626.16, 32635.48, "IR: 10% × 36.261,65 = 3.626,16"]].forEach(([l, c, gross, ir, net, irl], i) => {
+      const y = 140 + i * 210, a = .5 + i * 3.6, g = P(t, a, a + 1.2), k = P(t, a + 1.6, a + 2.6);
+      text(x0, y, [[l, c, 1]], 32, { op: P(t, a - .3, a + .2) });
+      rect(x0, y + 20, gross * s * g - ir * s * k, 80, c, { fo: .5, rx: 6 });
+      rect(x0 + (gross - ir * k) * s, y + 20, ir * s * k, 80, "r", { fo: .25, rx: 0, op: 1 - P(t, a + 2.6, a + 3.2) });
+      text(x0, y + 140, [[irl, "r"]], 28, { op: P(t, a + 1.6, a + 2.2) });
+      const v = k >= 1 ? net : gross * g - ir * k;
+      text(x0 + v * s + 20, y + 76, [["R$ " + f2(v), c, 1]], 44, { op: g > 0 ? 1 : 0 });
+    });
+    text(1100, 790, [["+ R$ 7.930,76 para o PGBL", "c", 1]], 40, { anchor: "middle", op: P(t, 11.2, 12) });
+  } },
+
+{ title: "De onde veio o 10%", dur: 12,
+  cap: [[0, "Os 10% vieram da <b>tabela regressiva</b>: a alíquota cai de 35% para 10% conforme o dinheiro fica no plano. Vale igual para PGBL e VGBL."],
+        [4, "O relógio é de cada aporte, não do plano. Resgatando tudo no ano 11, o aporte do ano 0 ficou 11 anos e paga 10%..."],
+        [7.5, "...e o aporte feito no ano 10 ficou 1 ano e paga 35%. Quem vai resgatar cedo escolhe a <b>tabela progressiva</b>, a mesma do salário."]],
+  draw(t) {
+    const base = 680, rates = [35, 30, 25, 20, 15, 10], lab = ["0-2", "2-4", "4-6", "6-8", "8-10", "10+"], sw = 150, x0 = 100, h = r => r * 15;
+    rates.forEach((r, i) => {
+      const op = P(t, .3 + i * .4, .9 + i * .4), x = x0 + i * sw;
+      rect(x + 4, base - h(r), sw - 8, h(r), i === 5 ? "c" : "r", { fo: .35, rx: 4, op });
+      text(x + sw / 2, base - h(r) - 14, [[r + "%", i === 5 ? "c" : "r", 1]], 36, { anchor: "middle", op });
+      text(x + sw / 2, base + 40, [[lab[i], "m"]], 28, { anchor: "middle", op });
+    });
+    text(x0 + 3 * sw, base + 90, [["anos que o aporte ficou no plano", "m"]], 28, { anchor: "middle", op: P(t, 2.5, 3) });
+    const at = y => { const i = Math.min(5, Math.floor(y / 2)); return [x0 + Math.min(y * 75, 5 * sw + 75), base - h(rates[i]) - 70]; };
+    const ya = 11 * P(t, 4, 7), [ax, ay] = at(ya);
+    if (t > 4) { dot(ax, ay, "b", 16); text(ax, ay - 26, [["A", "b", 1]], 30, { anchor: "middle" }); }
+    const [bx, by] = at(1);
+    dot(bx, by, "a", 16, P(t, 7.5, 8)); text(bx, by - 26, [["B", "a", 1]], 30, { anchor: "middle", op: P(t, 7.5, 8) });
+    const RX2 = 1060;
+    text(RX2, 180, [["resgate de tudo no ano 11", "m"]], 30, { op: P(t, 4, 4.5) });
+    text(RX2, 260, [["A: aporte no ano 0", "b", 1]], 34, { op: P(t, 4, 4.5) });
+    text(RX2, 310, [["ficou " + Math.floor(ya) + " anos → ", "m"], [ya >= 10.001 ? "10%" : "...", "c", 1]], 34, { op: P(t, 4, 4.5) });
+    text(RX2, 410, [["B: aporte no ano 10", "a", 1]], 34, { op: P(t, 7.5, 8) });
+    text(RX2, 460, [["ficou 1 ano → ", "m"], ["35%", "r", 1]], 34, { op: P(t, 8, 8.6) });
+    text(RX2, 570, [["progressiva: 0% a 27,5%,", "m"]], 30, { op: P(t, 9.5, 10.2) });
+    text(RX2, 615, [["como o IR do salário", "m"]], 30, { op: P(t, 9.5, 10.2) });
+  } },
+
+{ title: "Qual escolher", dur: 10,
+  cap: [[0, "A regra de bolso: declaração completa e INSS em dia, PGBL até o teto de 12%, o resto em VGBL. Fora disso, só VGBL."],
+        [6, "Os dois podem coexistir. A vantagem do PGBL só existe se a restituição for reinvestida, e VGBL acima de R$ 600 mil por ano paga IOF de 5%."]],
+  draw(t) {
+    const q = P(t, .3, 1);
+    rect(80, 300, 460, 150, "f", { fo: .06, rx: 14, op: q });
+    text(310, 365, [["declaração completa"]], 36, { anchor: "middle", op: q });
+    text(310, 415, [["e contribui pro INSS?"]], 36, { anchor: "middle", op: q });
+    const y1 = P(t, 1.5, 2.5), n1 = P(t, 3.5, 4.5);
+    line(540, 340, L(540, 690, y1), L(340, 190, y1), "c", { sw: 5, op: y1 > 0 ? 1 : 0 });
+    text(600, 190, [["sim", "c", 1]], 34, { op: y1 });
+    line(540, 410, L(540, 690, n1), L(410, 560, n1), "r", { sw: 5, op: n1 > 0 ? 1 : 0 });
+    text(600, 590, [["não", "r", 1]], 34, { op: n1 });
+    const b1 = P(t, 2.5, 3.2), b2 = P(t, 4.5, 5.2);
+    rect(700, 110, 820, 160, "d", { fo: .12, rx: 14, op: b1 });
+    text(730, 175, [["PGBL", "d", 1], [" até 12% da renda bruta"]], 40, { op: b1 });
+    text(730, 235, [["o que passar disso: "], ["VGBL", "a", 1]], 40, { op: b1 });
+    rect(700, 480, 820, 160, "a", { fo: .12, rx: 14, op: b2 });
+    text(730, 545, [["VGBL", "a", 1]], 40, { op: b2 });
+    text(730, 605, [["simplificada, autônomo sem INSS, isento", "m"]], 32, { op: b2 });
+    text(800, 750, [["gastou a restituição? a vantagem do PGBL some", "r", 1]], 32, { anchor: "middle", op: P(t, 6.5, 7.2) });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = `<defs><pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="18" stroke="${COL.r}" stroke-width="5" opacity=".55"/></pattern><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${COL.m}"/></marker></defs>`;
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(+location.hash.slice(1) || 0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
