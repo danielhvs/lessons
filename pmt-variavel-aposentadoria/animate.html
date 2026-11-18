@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PMT variável, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--a); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--a); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  @media (pointer: coarse) { #bar button::after { content: none !important; } }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--a); color: var(--a); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--a); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 780" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const br = (v, d = 2) => {
+  const s = Math.abs(v).toFixed(d).split(".");
+  s[0] = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return (v < 0 ? "−" : "") + s.join(",");
+};
+const r$ = (v, d = 2) => "R$ " + br(v, d);
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function box(x, y, w, h, color, op = 1, fillOp = .25, rx = 6, dash = "") {
+  if (op <= 0 || h <= 0 || w <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const poly = (pts, color, w = 4, op = 1, dash = "") => op > 0 && pts.length > 1 && add(`<polyline points="${pts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linejoin="round" opacity="${op}"/>`);
+const area = (pts, base, color, op = 1, fo = .25) => op > 0 && pts.length > 1 && add(`<polygon points="${pts[0][0]},${base} ${pts.map(p => p.join(",")).join(" ")} ${pts[pts.length - 1][0]},${base}" fill="${COL[color]}" fill-opacity="${fo}" opacity="${op}"/>`);
+
+// ---------- the math, every number on the page comes from here
+const pmt = (fv, pv, i, m) => { const g = (1 + i) ** m; return (fv - pv * g) * i / (g - 1); };
+const fvOf = (pv, p, i, k) => pv * (1 + i) ** k + p * ((1 + i) ** k - 1) / i;
+const RET = [.01, -.10, .01, .05, .01, .01, .08, .01, -.04, .01, .03, .01];
+const P0 = pmt(12000, 0, .01, 12);                 // 946,19
+const VAR = [], FIX = [];
+{ let b = 0, f = 0;
+  RET.forEach((r, k) => { const p = pmt(12000, b, .01, 12 - k); VAR.push(p); b = b * (1 + r) + p; f = f * (1 + r) + P0; });
+  VAR.end = b; FIX.end = f; }
+const IR = 1.065 ** (1 / 12) - 1;                  // 0,5262% ao mês
+const FV = fvOf(0, 5000, IR, 288);                 // 3.357.332
+const B120 = fvOf(0, 5000, IR, 120);               // 833.512
+const SAQ = pv => pv * IR / (1 - (1 + IR) ** -360);
+
+// accumulation chart: 0..288 months, 0..3,4 mi
+const AX = m => 130 + m / 288 * 880, AY = v => 700 - v / 3.4e6 * 500;
+function axes(op, xmax = 288, X = AX) {
+  if (op <= 0) return;
+  line(130, 700, 1010, 700, "m", 3, op);
+  [1e6, 2e6, 3e6].forEach(v => {
+    line(130, AY(v), 1010, AY(v), "l", 2, op);
+    text(120, AY(v) + 8, [[br(v / 1e6, 0) + " mi", "m"]], 22, { anchor: "end", op });
+  });
+  for (let y = 0; y <= xmax / 12; y += 6) text(X(y * 12), 735, [["ano " + y, "m"]], 22, { anchor: "middle", op });
+}
+const path = (pv, p, k0, k1, upTo) => {
+  const pts = [];
+  for (let k = k0; k <= Math.min(k1, upTo); k += 3) pts.push([AX(k), AY(fvOf(pv, p, IR, k - k0))]);
+  return pts;
+};
+
+const GLOSS = {
+  "PMT": "payment, a parcela igual de cada mês (função PGTO na planilha em português)",
+  "FV": "future value, valor futuro: a meta no fim do prazo",
+  "PV": "present value, valor presente: o saldo que você já tem",
+  "i": "taxa de juros por mês, em decimal: 1% = 0,01",
+  "n": "número de meses do plano inteiro",
+  "m": "meses que ainda faltam até a meta",
+  "juros compostos": "juros que rendem sobre os juros dos meses anteriores",
+  "PMT fixo": "calculado uma vez no início e repetido até o fim",
+  "PMT variável": "recalculado todo mês com o saldo real e os meses que faltam",
+  "juro real": "rendimento acima da inflação; 6,5% real = 6,5% além do IPCA",
+  "IPCA": "índice oficial de inflação do Brasil, medido pelo IBGE",
+  "reais de hoje": "valor descontada a inflação: o poder de compra de hoje",
+  "saque": "o PMT com sinal trocado: sai da carteira todo mês em vez de entrar",
+  "regra dos 3,5%": "sacar por ano 3,5% do saldo; feita para quase não gastar o principal",
+};
+const TERMS = [["PMT", "FV", "i", "n"], ["juros compostos", "PMT"], ["PMT fixo", "PMT variável"], ["PV", "m", "FV", "i"],
+  ["PMT variável", "PV", "m"], ["PMT fixo", "PMT variável"], ["juro real", "IPCA", "reais de hoje"],
+  ["PMT variável", "PV", "m"], ["saque", "PV", "FV", "regra dos 3,5%"], ["PMT", "PV", "FV", "m"]];
+
+const SCENES = [
+{ title: "PMT: quanto depositar por mês", dur: 13,
+  cap: [[0, "Meta: <b>R$ 12.000</b> em <b>12 meses</b>, rendendo <b>1% ao mês</b>. Quanto depositar todo mês?"],
+        [2, "O <b>PMT</b> é a parcela igual que, com os juros, chega exatamente na meta."],
+        [5.5, "Cada barra é o saldo no fim do mês: laranja é o que você depositou, verde o que os juros puseram."],
+        [10, "12 × 946,19 = R$ 11.354,28 depositados; os juros completam os R$ 645,72."]],
+  draw(t) {
+    const o = P(t, 0, .8);
+    chip(220, 70, "FV = R$ 12.000", "b", 30, o);
+    chip(520, 70, "i = 1% ao mês", "d", 30, o);
+    chip(790, 70, "n = 12 meses", "d", 30, o);
+    row(1290, 180, [["PMT", "a", 1], [" = "], ["FV", "b", 1], [" · "], ["i", "d", 1], [" ÷ ((1 + "], ["i", "d", 1], [")"], ["ⁿ", "d", 1], [" − 1)"]], 38, { op: P(t, .5, 1.3) });
+    const c = row(1290, 270, [["12.000", "b", 1], [" · "], ["0,01", "d", 1], [" ÷ (1,01"], ["¹²", "d", 1], [" − 1)"]], 38, { op: t >= 2.6 ? 1 : 0 });
+    const fp = P(t, 1.6, 2.6);
+    fly(220, 70, c[0], 270, fp, "12.000", "b", 38);
+    fly(520, 70, c[2], 270, fp, "0,01", "d", 38);
+    fly(790, 70, c[4], 270, fp, "¹²", "d", 38);
+    row(1290, 355, [["= 120 ÷ 0,1268"]], 38, { op: P(t, 3, 3.6) });
+    row(1290, 460, [["= "], [r$(P0) + " por mês", "a", 1]], 50, { op: P(t, 4, 4.7) });
+    const k = 480 / 12000, base = 700;
+    line(100, base - 480, 1010, base - 480, "b", 3, P(t, 5, 5.6), "10 8");
+    text(1010, base - 492, [["meta R$ 12.000", "b", 1]], 26, { anchor: "end", op: P(t, 5, 5.6) });
+    for (let m = 1; m <= 12; m++) {
+      const g = P(t, 5.5 + (m - 1) * .3, 6 + (m - 1) * .3);
+      if (g <= 0) continue;
+      const bal = fvOf(0, P0, .01, m), dep = m * P0, x = 50 + m * 76;
+      box(x, base - dep * k * g, 58, dep * k * g, "a", 1, .35, 2);
+      box(x, base - bal * k * g, 58, (bal - dep) * k * g, "c", 1, .6, 2);
+      text(x + 29, base + 30, [["" + m, "m"]], 22, { anchor: "middle" });
+    }
+    text(560, base + 64, [["mês", "m"]], 22, { anchor: "middle", op: P(t, 5.5, 6) });
+    row(1290, 570, [["depositado: "], ["R$ 11.354,28", "a", 1]], 32, { op: P(t, 10, 10.7) });
+    row(1290, 625, [["juros: "], ["R$ 645,72", "c", 1]], 32, { op: P(t, 10.5, 11.2) });
+  } },
+
+{ title: "Sem juros seria só dividir", dur: 9,
+  cap: [[0, "Sem juros, a parcela é a meta dividida pelos meses: 12.000 ÷ 12 = <b>R$ 1.000</b>."],
+        [3, "Com 1% ao mês, o PMT é <b>R$ 946,19</b>: R$ 53,81 a menos todo mês."],
+        [6, "Os R$ 53,81 × 12 = <b>R$ 645,72</b> são exatamente os juros da cena anterior."]],
+  draw(t) {
+    const X = v => 200 + v * 1.15;
+    const g1 = P(t, .3, 1.8), g2 = P(t, 3, 4.5);
+    text(200, 210, [["sem juros: 12.000 ÷ 12", "m", 1]], 32, { op: P(t, 0, .6) });
+    box(200, 230, (X(1000) - 200) * g1, 90, "m", 1, .35);
+    text(X(1000 * g1) + 16, 290, [[r$(1000 * g1), "f", 1]], 34, { op: g1 });
+    text(200, 420, [["com 1% ao mês: PMT", "a", 1]], 32, { op: P(t, 3, 3.6) });
+    box(200, 440, (X(P0) - 200) * g2, 90, "a", 1, .35);
+    text(X(P0 * g2) + 16, 500, [[r$(P0 * g2), "a", 1]], 34, { op: g2, anchor: "start" });
+    const g3 = P(t, 4.6, 5.4);
+    box(X(P0), 440, (X(1000) - X(P0)) * g3, 90, "c", g3, .6, 2, "6 4");
+    line(X(1000), 220, X(1000), 545, "m", 2, g3, "8 6");
+    text(X(P0) - 10, 590, [["R$ 53,81 por mês", "c", 1]], 32, { anchor: "middle", op: P(t, 5, 5.6) });
+    row(800, 690, [["53,81 × 12 = "], ["R$ 645,72", "c", 1], [" de juros"]], 42, { op: P(t, 6, 6.8) });
+  } },
+
+{ title: "O mercado não rende 1% todo mês", dur: 12,
+  cap: [[0, "Mês 1: você depositou R$ 946,19. No mês 2 a carteira cai <b>10%</b> antes do novo depósito."],
+        [5, "O plano previa R$ 1.901,83; o saldo real é R$ 1.797,75. Faltam <b>R$ 104,08</b>."],
+        [8.5, "Com <b>PMT fixo</b>, esse buraco segue até o fim. O <b>PMT variável</b> o reparte pelos 10 meses que faltam."]],
+  draw(t) {
+    const k = 450 / 1901.83, base = 690;
+    const g = P(t, 0, 1);
+    box(150, base - P0 * k * g, 160, P0 * k * g, "a", 1, .35);
+    text(230, base + 34, [["mês 1", "m"]], 24, { anchor: "middle", op: g });
+    const s = P(t, 1.5, 2.8), drop = L(P0, P0 * .9, s);
+    const add2 = P(t, 3, 4.2);
+    if (t >= 1.5) {
+      box(400, base - drop * k, 160, drop * k, "b", 1, .35);
+      box(400, base - (drop + P0 * add2) * k, 160, P0 * add2 * k, "a", add2 > 0 ? 1 : 0, .35);
+      text(480, base + 34, [["mês 2 real", "m"]], 24, { anchor: "middle" });
+      box(400, base - P0 * k, 160, (P0 - drop) * k, "r", P(t, 1.5, 2) * (1 - P(t, 3, 3.5)), .5, 0, "6 4");
+    }
+    const pl = P(t, 5, 6);
+    box(620, base - 1901.83 * k, 160, 1901.83 * k, "b", pl, .08, 6, "10 8");
+    text(700, base + 34, [["mês 2 plano", "m"]], 24, { anchor: "middle", op: pl });
+    const gap = P(t, 5.8, 6.6);
+    line(560, base - 1901.83 * k, 620, base - 1901.83 * k, "r", 3, gap, "6 4");
+    box(400, base - 1901.83 * k, 160, 104.08 * k * gap, "r", gap, .55, 0);
+    row(1200, 160, [["946,19 × "], ["0,90", "r", 1], [" = 851,57"]], 38, { op: P(t, 1.5, 2.2) });
+    row(1200, 240, [["851,57 + "], ["946,19", "a", 1], [" = "], ["1.797,75", "b", 1]], 38, { op: P(t, 3, 3.7) });
+    row(1200, 350, [["plano: 946,19 × 1,01 + 946,19 = 1.901,83", "m"]], 30, { op: pl });
+    row(1200, 460, [["faltam "], ["R$ 104,08", "r", 1]], 52, { op: gap });
+  } },
+
+{ title: "Recalcular com o saldo de hoje", dur: 14,
+  cap: [[0, "Início do mês 3: refaça a conta com o que mudou, o <b>saldo de hoje</b> (PV) e os <b>meses que faltam</b> (m)."],
+        [4.5, "PV · (1+i)ᵐ é quanto o saldo de hoje vira sozinho até o fim: <b>R$ 1.985,83</b>."],
+        [8.5, "O resto da meta sai dos depósitos: <b>R$ 957,17</b> por mês, R$ 10,98 a mais. Com PV = 0 é a fórmula da cena 1."]],
+  draw(t) {
+    const o = P(t, 0, .8);
+    chip(250, 70, "FV = R$ 12.000", "b", 30, o);
+    chip(600, 70, "PV = R$ 1.797,75", "e", 30, o);
+    chip(920, 70, "i = 1%", "d", 30, o);
+    chip(1220, 70, "m = 10 meses", "d", 30, o);
+    row(800, 200, [["PMT", "a", 1], [" = ("], ["FV", "b", 1], [" − "], ["PV", "e", 1], [" · (1 + "], ["i", "d", 1], [")"], ["ᵐ", "d", 1],
+      [") · "], ["i", "d", 1], [" ÷ ((1 + "], ["i", "d", 1], [")"], ["ᵐ", "d", 1], [" − 1)"]], 42, { op: P(t, .5, 1.3) });
+    const on = t >= 3 ? 1 : 0, fp = P(t, 2, 3);
+    const c = row(800, 310, [["= ("], ["12.000", "b", 1], [" − "], ["1.797,75", "e", 1], [" · 1,01"], ["¹⁰", "d", 1], [") · 0,01 ÷ (1,01"], ["¹⁰", "d", 1], [" − 1)"]], 40,
+      { op: [on, on, on, on, on, on, on, on, on] });
+    fly(250, 70, c[1], 310, fp, "12.000", "b", 40);
+    fly(600, 70, c[3], 310, fp, "1.797,75", "e", 40);
+    fly(1220, 70, c[5], 310, fp, "¹⁰", "d", 40);
+    const q = P(t, 4.5, 5.3);
+    const c2 = row(800, 420, [["= (12.000 − "], ["1.985,83", "e", 1], [") · 0,01 ÷ 0,1046"]], 40, { op: q });
+    text(c2[1], 470, [["o saldo de hoje, sozinho, até o mês 12", "e"]], 26, { anchor: "middle", op: P(t, 5.3, 6) });
+    row(800, 600, [["= "], [r$(VAR[2]), "a", 1], ["  (+10,98)", "r", 1]], 60, { op: P(t, 8.5, 9.3) });
+  } },
+
+{ title: "Mês bom: o PMT cai", dur: 12,
+  cap: [[0, "A carteira caiu: o PMT subiu."],
+        [3.5, "No mês 7 a carteira sobe <b>8%</b>. Mês 8 começa com R$ 7.251,25 e faltam 5 meses."],
+        [8, "O PMT cai para <b>R$ 858,43</b>: parte da meta o mercado já cobriu."]],
+  draw(t) {
+    const o = P(t, 0, .8);
+    text(400, 140, [["mês 2: −10%", "r", 1]], 44, { anchor: "middle", op: o });
+    text(400, 230, [["saldo R$ 1.797,75, m = 10", "f"]], 30, { anchor: "middle", op: o });
+    row(400, 360, [["946,19", "m"], ["  →  "], ["957,17", "r", 1]], 46, { op: P(t, .8, 1.6) });
+    arrow(400, 520, 400, 430, "r", P(t, 1.4, 2.2), 8);
+    text(400, 580, [["PMT sobe", "r", 1]], 36, { anchor: "middle", op: P(t, 1.8, 2.4) });
+    line(800, 100, 800, 700, "l", 3, P(t, 3, 3.5));
+    const s = P(t, 3.5, 4.3);
+    text(1200, 140, [["mês 7: +8%", "c", 1]], 44, { anchor: "middle", op: s });
+    text(1200, 230, [["saldo R$ 7.251,25, m = 5", "f"]], 30, { anchor: "middle", op: s });
+    row(1200, 290, [["(12.000 − 7.251,25 · 1,01⁵) · 0,01 ÷ (1,01⁵ − 1)", "m"]], 26, { op: P(t, 4.5, 5.2) });
+    row(1200, 330, [["= 4.378,86 · 0,01 ÷ 0,0510", "m"]], 26, { op: P(t, 5.5, 6.2) });
+    row(1200, 420, [[br(VAR[6]), "m"], ["  →  "], [br(VAR[7]), "c", 1]], 46, { op: P(t, 8, 8.8) });
+    arrow(1200, 470, 1200, 560, "c", P(t, 8.6, 9.4), 8);
+    text(1200, 620, [["PMT cai", "c", 1]], 36, { anchor: "middle", op: P(t, 9, 9.6) });
+  } },
+
+{ title: "Os 12 meses lado a lado", dur: 14,
+  cap: [[0, "Cada barra é o PMT de um mês, recalculado com o saldo do fim do mês anterior."],
+        [7, "O <b>PMT fixo</b> termina onde o mercado deixar: R$ 12.208,04."],
+        [10, "O <b>PMT variável</b> cai exatamente nos R$ 12.000, depositando <b>R$ 207,96 a menos</b>."]],
+  draw(t) {
+    const Y = v => 500 - (v - 700) * 1.3, base = 500;
+    line(140, Y(P0), 1100, Y(P0), "a", 3, P(t, 0, .6), "10 8");
+    text(1100, Y(P0) - 12, [["fixo 946,19", "a"]], 22, { anchor: "end", op: P(t, 0, .6) });
+    text(125, 560, [["retorno", "m"]], 22, { anchor: "end", op: P(t, 0, .6) });
+    text(125, 600, [["mês", "m"]], 22, { anchor: "end", op: P(t, 0, .6) });
+    line(140, base, 1100, base, "m", 2, P(t, 0, .6));
+    VAR.forEach((v, k) => {
+      const g = P(t, .4 + k * .45, .9 + k * .45);
+      if (g <= 0) return;
+      const x = 150 + k * 80;
+      const up = k > 0 && v > VAR[k - 1] + .005, dn = k > 0 && v < VAR[k - 1] - .005;
+      const c = up ? "r" : dn ? "c" : "a";
+      box(x, Y(v) + (base - Y(v)) * (1 - g), 60, (base - Y(v)) * g, c, 1, .4, 2);
+      text(x + 30, Y(v) - 12, [[br(v, 0), c, 1]], 22, { anchor: "middle", op: g });
+      const r = RET[k];
+      text(x + 30, 560, [[(r > 0 ? "+" : "−") + Math.round(Math.abs(r) * 100) + "%", r < 0 ? "r" : "m", r < 0]], 22, { anchor: "middle", op: g });
+      text(x + 30, 600, [["" + (k + 1), "m"]], 22, { anchor: "middle", op: g });
+    });
+    text(625, 670, [["vermelho: subiu porque o mês anterior caiu · verde: caiu porque subiu", "m"]], 24, { anchor: "middle", op: P(t, 6, 6.6) });
+    const f = P(t, 7, 7.7), v = P(t, 10, 10.7);
+    text(1350, 150, [["PMT fixo", "a", 1]], 34, { anchor: "middle", op: f });
+    text(1350, 200, [["depositou 11.354,28", "f"]], 26, { anchor: "middle", op: f });
+    text(1350, 245, [["terminou " + br(FIX.end), "f", 1]], 28, { anchor: "middle", op: f });
+    text(1350, 360, [["PMT variável", "a", 1]], 34, { anchor: "middle", op: v });
+    text(1350, 410, [["depositou 11.146,32", "f"]], 26, { anchor: "middle", op: v });
+    text(1350, 455, [["terminou " + br(VAR.end), "c", 1]], 28, { anchor: "middle", op: v });
+  } },
+
+{ title: "Agora em 24 anos", dur: 13,
+  cap: [[0, "Plano de aposentadoria: <b>R$ 5.000 por mês</b> por 288 meses, rendendo <b>6,5% de juro real</b> ao ano."],
+        [4, "Juro real deixa tudo em <b>reais de hoje</b>: os R$ 5.000 sobem com o IPCA e a conta não precisa da inflação."],
+        [8.5, "Termina com <b>R$ 3.357.332</b>: R$ 1.440.000 depositados e R$ 1.917.332 de juros. Retorno constante e sem IR: é o plano, não a previsão."]],
+  draw(t) {
+    axes(P(t, 0, .6));
+    const up = L(0, 288, P(t, 4, 8.5));
+    const tot = path(0, 5000, 0, 288, up), dep = [];
+    for (let k = 0; k <= up; k += 3) dep.push([AX(k), AY(5000 * k)]);
+    area(tot, 700, "c", 1, .35);
+    area(dep, 700, "a", 1, .45);
+    poly(tot, "b", 4);
+    const o = P(t, .3, 1);
+    row(1300, 120, [["PMT = "], ["R$ 5.000", "a", 1]], 34, { op: o });
+    row(1300, 175, [["n = "], ["288 meses", "d", 1]], 34, { op: o });
+    row(1300, 250, [["i = 1,065"], ["¹ᐟ¹²", "d"], [" − 1"]], 34, { op: P(t, 1.5, 2.2) });
+    row(1300, 305, [["= "], ["0,5262% ao mês", "d", 1]], 34, { op: P(t, 2.2, 2.9) });
+    row(1300, 440, [["FV = "], [r$(FV, 0), "b", 1]], 40, { op: P(t, 8.5, 9.2) });
+    row(1300, 505, [["depositado "], ["1.440.000", "a", 1]], 30, { op: P(t, 9, 9.6) });
+    row(1300, 555, [["juros "], [br(FV - 1440000, 0), "c", 1]], 30, { op: P(t, 9.3, 9.9) });
+  } },
+
+{ title: "Uma queda de 24% no ano 10", dur: 16,
+  cap: [[0, "No ano 10 o plano tem <b>R$ 833.512</b>. Vem uma queda de <b>24%</b>: sobram R$ 633.469."],
+        [4.5, "Recalculando com os 168 meses que faltam, o PMT sobe para <b>R$ 6.796</b> e a curva volta para a meta."],
+        [9, "Se o ano fosse bom, <b>+20%</b>: R$ 1.000.215, e o PMT cai para <b>R$ 3.503</b>."],
+        [13, "Se R$ 6.796 não cabe no salário, ponha na fórmula o que cabe e veja a meta nova: o ajuste aparece no mês da queda, não no ano 24."]],
+  draw(t) {
+    axes(1);
+    poly(path(0, 5000, 0, 288, 288), "b", 3, .5, "10 8");
+    poly(path(0, 5000, 0, 120, 120), "b", 4);
+    line(AX(288) - 30, AY(FV), AX(288) + 30, AY(FV), "b", 4);
+    text(AX(288) - 10, AY(FV) - 18, [["meta " + r$(FV / 1e6, 2) + " mi", "b", 1]], 22, { anchor: "end" });
+    const crash = B120 * .76, boom = B120 * 1.2;
+    const d = P(t, 1.5, 2.8);
+    dot(AX(120), AY(B120), "b", 10);
+    if (d > 0) { line(AX(120), AY(B120), AX(120), AY(L(B120, crash, d)), "r", 5); dot(AX(120), AY(L(B120, crash, d)), "r", 10); }
+    const pc = pmt(FV, crash, IR, 168), pb = pmt(FV, boom, IR, 168);
+    poly(path(crash, pc, 120, 288, L(120, 288, P(t, 5, 8))), "r", 5);
+    const u = P(t, 9, 10);
+    if (u > 0) { line(AX(120), AY(B120), AX(120), AY(L(B120, boom, u)), "c", 5); dot(AX(120), AY(L(B120, boom, u)), "c", 10); }
+    poly(path(boom, pb, 120, 288, L(120, 288, P(t, 10.5, 12.5))), "c", 5);
+    row(1300, 110, [["ano 10: "], ["R$ 833.512", "b", 1]], 32, { op: 1 });
+    row(1300, 190, [["−24% → "], ["R$ 633.469", "r", 1]], 32, { op: P(t, 2, 2.6) });
+    row(1300, 245, [["PMT 5.000 → "], [br(pc, 0), "r", 1]], 36, { op: P(t, 4.5, 5.2) });
+    row(1300, 300, [["m = 168 meses que faltam", "m"]], 24, { op: P(t, 4.5, 5.2) });
+    row(1300, 400, [["+20% → "], ["R$ 1.000.215", "c", 1]], 32, { op: P(t, 9.5, 10.1) });
+    row(1300, 455, [["PMT 5.000 → "], [br(pb, 0), "c", 1]], 36, { op: P(t, 10.5, 11.2) });
+  } },
+
+{ title: "Depois de aposentar: o PMT vira saque", dur: 15,
+  cap: [[0, "Aposentado, a meta vira <b>FV = 0</b> em 30 anos e o PMT fica negativo: em vez de depositar, você saca."],
+        [5, "R$ 3.357.332 em 360 meses rendendo 0,5262%: <b>R$ 20.812</b> por mês, e o saldo chega a zero no ano 30."],
+        [8.5, "Caiu 24%? O saque do mês seguinte cai para <b>R$ 15.817</b> e o dinheiro ainda dura os 30 anos."],
+        [12, "A <b>regra dos 3,5%</b> saca bem menos, <b>R$ 9.792</b>, porque não planeja gastar o principal."]],
+  draw(t) {
+    const X = m => 130 + m / 360 * 880;
+    axes(1, 360, X);
+    const wd = (pv, upTo) => {
+      const s = SAQ(pv), pts = [];
+      for (let k = 0; k <= upTo; k += 3) pts.push([X(k), AY(Math.max(0, fvOf(pv, -s, IR, k)))]);
+      return pts;
+    };
+    const o = P(t, .3, 1);
+    row(1300, 110, [["saque = "], ["PV", "e", 1], [" · "], ["i", "d", 1], [" ÷ (1 − (1 + "], ["i", "d", 1], [")"], ["⁻ᵐ", "d", 1], [")"]], 30, { op: o });
+    row(1300, 160, [["(FV = 0 na fórmula de antes)", "m"]], 24, { op: o });
+    const up = L(0, 360, P(t, 2, 5));
+    area(wd(FV, up), 700, "b", 1, .25);
+    poly(wd(FV, up), "b", 4);
+    row(1300, 250, [["PV "], [r$(FV, 0), "e", 1], [", m = 360"]], 28, { op: P(t, 1, 1.6) });
+    row(1300, 310, [["saque "], [r$(SAQ(FV), 0), "e", 1], [" por mês"]], 34, { op: P(t, 5, 5.7) });
+    poly(wd(FV * .76, L(0, 360, P(t, 8.5, 11))), "r", 5);
+    row(1300, 410, [["−24% → saque "], [r$(SAQ(FV * .76), 0), "r", 1]], 30, { op: P(t, 8.5, 9.2) });
+    row(1300, 520, [["3,5% ao ano: "], [r$(FV * .035 / 12, 0), "c", 1]], 30, { op: P(t, 12, 12.7) });
+  } },
+
+{ title: "Resumo", dur: 9,
+  cap: [[0, "Uma fórmula, recalculada todo mês, vale para juntar e para gastar."]],
+  draw(t) {
+    const o = i => P(t, i * .7, i * .7 + .8);
+    [["PMT = (FV − PV · (1+i)ᵐ) · i ÷ ((1+i)ᵐ − 1)", "b"],
+     ["todo mês: PV = saldo de hoje, m = meses que faltam", "e"],
+     ["mês ruim → PMT sobe · mês bom → PMT cai", "a"],
+     ["com juro real, meta e PMT ficam em reais de hoje", "d"],
+     ["aposentado: FV = 0 e o PMT vira o saque do mês", "c"]].forEach(([s, c], k) => {
+      dot(200, 160 + k * 110, c, 13, o(k));
+      text(240, 172 + k * 110, [[s, c, 1]], 40, { op: o(k) });
+    });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
