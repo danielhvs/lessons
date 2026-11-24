@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flipagem em FII</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --old: #2f6fde; --new: #e07b1a; --dir: #9c36b5; --rec: #0c8599;
+  --code-bg: #f1efe8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --old: #6ea0ff; --new: #ffa94d; --dir: #da77f2; --rec: #3bc9db;
+    --code-bg: #24262d;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+nav a { color: var(--accent); font-size: .9rem; margin-right: 14px; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+a { color: var(--accent); }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+  background: var(--code-bg);
+}
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .muted { fill: var(--muted); }
+svg.diagram .old { fill: var(--old); } svg.diagram .new { fill: var(--new); }
+svg.diagram .dir { fill: var(--dir); } svg.diagram .rec { fill: var(--rec); }
+svg.diagram .neg { fill: var(--del); } svg.diagram .pos { fill: var(--add); }
+svg.diagram .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.diagram marker path { fill: var(--muted); }
+table { border-collapse: collapse; margin: 0 0 10px; width: 100%; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+td.neg { color: var(--del); font-weight: 600; } td.pos { color: var(--add); font-weight: 600; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<nav><a href="../">← todas as aulas</a><a href="animate.html">animação</a></nav>
+<h1>Flipagem em fundos imobiliários</h1>
+<p class="lead"><dfn>Flipagem</dfn> é subscrever cotas novas de um FII numa emissão e vender logo que elas começam a negociar na bolsa, para ganhar a diferença entre o preço pago e o preço de tela. Quem faz é o <dfn>flipper</dfn>. Esta aula usa o mesmo fundo fictício da aula <a href="../fii-emissao-diluicao/">emissão de FII e diluição</a>.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema: o desconto parece dinheiro grátis</h2>
+  <p>Um <dfn>FII</dfn> (fundo de investimento imobiliário) é dividido em <dfn>cotas</dfn> negociadas na bolsa. Para crescer, ele faz uma <dfn>emissão</dfn>: cria cotas novas e vende a um preço fixo. Comprar essas cotas se chama <dfn>subscrever</dfn>.</p>
+  <p>O XPTO11 (fictício) negocia a <b>R$ 110</b> na bolsa e anuncia cotas novas a <b>R$ 103</b>. Comprar a 103 e vender a 110 parece lucro garantido de R$ 7 por cota. Não é, por três motivos:</p>
+  <ol>
+    <li>Entre pagar e poder vender passam semanas. O preço anda nesse meio tempo.</li>
+    <li>A emissão joga muitas cotas novas no mercado de uma vez, e os outros flippers vendem no mesmo dia que você.</li>
+    <li>O ganho paga 20% de imposto de renda, sem isenção.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: 100 cotas</h2>
+  <div class="split">
+    <div>
+      <p>O <dfn>preço de emissão</dfn> é R$ 100. Quem subscreve paga também o <dfn>custo unitário de distribuição</dfn>, R$ 3 por cota, que vai para os bancos que organizam a oferta (não entra no fundo). Então o custo real é R$ 103.</p>
+      <p>Você subscreve 100 cotas. Quando elas viram cota normal, a tela mostra R$ 107,67 (o <dfn>preço teórico</dfn>, explicado na seção 4). Você vende tudo.</p>
+<pre>paga:   100 × (100 + 3)   = R$ 10.300,00
+vende:  100 × 107,67      = R$ 10.767,00
+ganho bruto               =    R$ 467,00
+IR 20% sobre o ganho      =     − R$ 93,40
+ganho líquido             =    <mark>R$ 373,60</mark>   (3,63% sobre 10.300)</pre>
+      <p>Os R$ 7 de desconto "na tela" viraram R$ 3,74 líquidos por cota: R$ 2,33 sumiram na queda do preço e R$ 0,93 no imposto.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 300" role="img" aria-label="Escada de preço: 100, 103, 107,67, 110">
+        <line x1="40" y1="250" x2="580" y2="250" class="edge"/>
+        <rect class="new" x="60" y="100" width="100" height="150" rx="4" opacity=".85"/>
+        <text x="110" y="90" font-size="18" text-anchor="middle" font-weight="700">R$ 100</text>
+        <text x="110" y="280" font-size="16" text-anchor="middle">emissão</text>
+        <rect class="new" x="190" y="85" width="100" height="165" rx="4"/>
+        <text x="240" y="75" font-size="18" text-anchor="middle" font-weight="700">R$ 103</text>
+        <text x="240" y="280" font-size="16" text-anchor="middle">+ custo</text>
+        <rect class="old" x="320" y="62" width="100" height="188" rx="4" opacity=".85"/>
+        <text x="370" y="52" font-size="18" text-anchor="middle" font-weight="700">107,67</text>
+        <text x="370" y="280" font-size="16" text-anchor="middle">você vende</text>
+        <rect class="old" x="450" y="50" width="100" height="200" rx="4" opacity=".85"/>
+        <text x="500" y="40" font-size="18" text-anchor="middle" font-weight="700">110</text>
+        <text x="500" y="280" font-size="16" text-anchor="middle">tela antes</text>
+        <text x="240" y="160" font-size="16" text-anchor="middle" style="fill:#fff">você paga</text>
+      </svg>
+      <figcaption>Barras com a base cortada (começam em R$ 70) para mostrar a diferença. O lucro é a distância entre a barra laranja de R$ 103 e a azul de R$ 107,67, não até a de R$ 110.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Onde o dinheiro fica preso</h2>
+  <p>Numa emissão com <dfn>direito de preferência</dfn> (prioridade de quem já é cotista para subscrever na proporção do que tem), o caminho na corretora é este:</p>
+  <figure>
+    <svg class="diagram" viewBox="0 0 1000 210" role="img" aria-label="Linha do tempo: XPTO12, XPTO13, XPTO11, venda">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+      <rect x="10" y="30" width="200" height="60" rx="10" fill="none" stroke="var(--dir)" stroke-width="3"/>
+      <text x="110" y="68" font-size="22" text-anchor="middle" font-weight="700" class="dir">XPTO12</text>
+      <text x="110" y="118" font-size="16" text-anchor="middle" class="muted">direito</text>
+      <path d="M215 60 L285 60" class="edge" marker-end="url(#ar)"/>
+      <text x="250" y="46" font-size="14" text-anchor="middle" class="muted">exerce</text>
+      <rect x="290" y="30" width="200" height="60" rx="10" fill="none" stroke="var(--rec)" stroke-width="3"/>
+      <text x="390" y="68" font-size="22" text-anchor="middle" font-weight="700" class="rec">XPTO13</text>
+      <text x="390" y="118" font-size="16" text-anchor="middle" class="muted">recibo</text>
+      <path d="M495 60 L565 60" class="edge" marker-end="url(#ar)"/>
+      <text x="530" y="46" font-size="14" text-anchor="middle" class="muted">fim oferta</text>
+      <rect x="570" y="30" width="200" height="60" rx="10" fill="none" stroke="var(--old)" stroke-width="3"/>
+      <text x="670" y="68" font-size="22" text-anchor="middle" font-weight="700" class="old">XPTO11</text>
+      <text x="670" y="118" font-size="16" text-anchor="middle" class="muted">cota liberada</text>
+      <path d="M775 60 L845 60" class="edge" marker-end="url(#ar)"/>
+      <rect x="850" y="30" width="140" height="60" rx="10" fill="none" stroke="var(--add)" stroke-width="3"/>
+      <text x="920" y="68" font-size="22" text-anchor="middle" font-weight="700" class="pos">vende</text>
+      <path d="M250 150 L250 165 L670 165 L670 150" class="edge"/>
+      <text x="460" y="195" font-size="18" text-anchor="middle" class="neg" font-weight="700">dinheiro pago e preso: semanas</text>
+    </svg>
+    <figcaption>O ticker muda de final em cada etapa. As datas exatas de cada emissão estão no fato relevante ou anúncio de início da oferta.</figcaption>
+  </figure>
+  <ol>
+    <li><b>XPTO12</b>, o direito: cada cota antiga recebe um. Ele negocia na bolsa durante o período de preferência e vence sem valor se não for exercido nem vendido.</li>
+    <li><b>XPTO13</b>, o <dfn>recibo de subscrição</dfn>: o que você tem depois de exercer e pagar. Em ofertas públicas ele costuma poder ser negociado; em ofertas restritas, não.</li>
+    <li><b>XPTO11</b>: depois do encerramento da oferta, o recibo se converte em cota normal. Esse dia, a <dfn>liberação</dfn>, é quando a maioria dos flippers vende.</li>
+  </ol>
+  <p>Quem não é cotista entra depois do período de preferência, nas <dfn>sobras</dfn> ou na oferta ao público, e pode sofrer <dfn>rateio</dfn> (seção 6).</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Por que o preço cai até perto do custo</h2>
+  <div class="split">
+    <div>
+      <p>O fundo tinha 1,0 milhão de cotas valendo R$ 110 e emite 0,5 milhão a R$ 103. Depois da oferta, o mercado tende a precificar a mistura:</p>
+<pre>preço teórico = (1,0 mi × 110 + 0,5 mi × 103) / 1,5 mi
+              = <mark>R$ 107,67</mark></pre>
+      <p>Somado a isso, no dia da liberação centenas de flippers vendem ao mesmo tempo. Essa <dfn>pressão vendedora</dfn> pode empurrar a cota abaixo do teórico por alguns dias. O desenho é ilustrativo, não um FII real: o preço pode subir, cair ou ficar.</p>
+      <p>O seu ponto de equilíbrio é <b>R$ 103</b>, o que você pagou com custo. Abaixo disso, a flipagem dá prejuízo.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 600 320" role="img" aria-label="Preço da cota do anúncio até depois da liberação">
+        <line x1="60" y1="80" x2="580" y2="80" stroke="var(--old)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="56" y="86" font-size="15" text-anchor="end" class="old">110</text>
+        <line x1="60" y1="127" x2="580" y2="127" stroke="var(--old)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="56" y="133" font-size="15" text-anchor="end" class="old">107,67</text>
+        <line x1="60" y1="220" x2="580" y2="220" stroke="var(--del)" stroke-width="2" stroke-dasharray="6 4"/>
+        <text x="56" y="226" font-size="15" text-anchor="end" class="neg">103</text>
+        <text x="575" y="242" font-size="15" text-anchor="end" class="neg">abaixo daqui: prejuízo</text>
+        <polyline points="60,80 160,84 240,100 320,118 400,126 440,150 470,180 510,165 580,140" fill="none" stroke="var(--ink)" stroke-width="3"/>
+        <line x1="440" y1="40" x2="440" y2="260" class="edge" stroke-dasharray="3 3"/>
+        <text x="440" y="32" font-size="15" text-anchor="middle" class="muted">liberação</text>
+        <circle cx="470" cy="180" r="6" class="neg"/>
+        <text x="476" y="200" font-size="15" class="neg">flippers vendem</text>
+        <text x="60" y="290" font-size="15" class="muted">anúncio</text>
+        <text x="250" y="290" font-size="15" class="muted">preferência + oferta</text>
+        <text x="580" y="290" font-size="15" text-anchor="end" class="muted">depois</text>
+      </svg>
+      <figcaption>Preço da cota ao longo da emissão, ilustrativo. Linhas tracejadas: preço antes (110), teórico (107,67) e seu custo (103).</figcaption>
+    </figure>
+  </div>
+  <p>As mesmas 100 cotas, vendidas em preços diferentes:</p>
+  <table>
+    <tr><th>Vende a</th><th>Ganho bruto</th><th>IR 20%</th><th>Ganho líquido</th><th>Retorno</th></tr>
+    <tr><td>R$ 110,00</td><td>700,00</td><td>140,00</td><td class="pos">560,00</td><td class="pos">5,44%</td></tr>
+    <tr><td>R$ 107,67</td><td>467,00</td><td>93,40</td><td class="pos">373,60</td><td class="pos">3,63%</td></tr>
+    <tr><td>R$ 105,00</td><td>200,00</td><td>40,00</td><td class="pos">160,00</td><td class="pos">1,55%</td></tr>
+    <tr><td>R$ 103,00</td><td>0,00</td><td>0,00</td><td>0,00</td><td>0,00%</td></tr>
+    <tr><td>R$ 101,00</td><td>−200,00</td><td>0,00</td><td class="neg">−200,00</td><td class="neg">−1,94%</td></tr>
+  </table>
+  <p>Prejuízo não paga imposto, e o prejuízo em FII só pode ser abatido de ganhos futuros também em FII. Corretagem e emolumentos da bolsa ficaram de fora das contas.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Flipar pelo direito (XPTO12)</h2>
+  <div class="split">
+    <div>
+      <p>Quem não tem cota pode comprar o direito na bolsa e exercer. O <dfn>fator de proporção</dfn> é 0,5 (0,5 mi novas ÷ 1,0 mi antigas): são <b>2 direitos para cada cota nova</b>.</p>
+<pre>valor teórico do direito = (107,67 − 103) × 0,5 = R$ 2,33
+
+compra 200 direitos a R$ 2,00     = R$    400,00
+exerce 100 cotas a R$ 103         = R$ 10.300,00
+custo por cota  = 103 + 2 × 2,00  = R$    107,00
+vende 100 a 107,67, ganho bruto   = <mark>R$     67,00</mark>
+ganho líquido (− 20%)             = R$     53,60</pre>
+    </div>
+    <div>
+      <p>O ganho encolheu de R$ 467 para R$ 67 porque o mercado já cobra pelo desconto no preço do direito. Se o direito estivesse a R$ 2,33, o ganho teórico seria zero.</p>
+      <p>Esse é o padrão geral: quanto mais gente vê o desconto, mais o direito sobe e o preço da cota cai, até o ganho fácil sumir. Sobra o risco do preço andar entre o pagamento e a liberação.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Rateio e custo de oportunidade</h2>
+  <div class="split">
+    <div>
+      <p>Quando a procura passa da oferta, há <dfn>rateio</dfn>: cada investidor recebe só parte do que pediu. Você pede 1.000 cotas e recebe 300 (30%).</p>
+<pre>pediu:   1.000 cotas, ganho líquido esperado R$ 3.736,00
+recebeu:   300 cotas × 103 = R$ 30.900,00
+ganho bruto  = 300 × 4,67 = R$  1.401,00
+ganho líquido (− 20%)     = <mark>R$  1.120,80</mark></pre>
+      <p>O retorno percentual é o mesmo 3,63%, mas sobre muito menos dinheiro. O que sobra da reserva é devolvido.</p>
+    </div>
+    <div>
+      <p>Compare com deixar os R$ 10.300 numa aplicação de renda fixa pelo mesmo período. Suponha 2 meses a 1% ao mês (taxa hipotética; use o CDI do momento):</p>
+<pre>renda fixa: 10.300 × (1,01² − 1)  = R$ 207,03 bruto
+IR 22,5% (prazo &lt; 180 dias)       = R$ 160,45 líquido  (1,56%)
+flipagem a 107,67                 = R$ 373,60 líquido  (3,63%)
+flipagem a 105,00                 = R$ 160,00 líquido  (1,55%)</pre>
+      <p>Vendendo a R$ 105, a flipagem rende o mesmo que a renda fixa, só que com risco de preço. O lucro real da flipagem é o que passa do que o dinheiro renderia parado.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Erros comuns</h2>
+  <p class="mistake">Comparar a tela com o preço de emissão (110 vs 100) e esquecer o custo de distribuição. A margem cai de R$ 10 para R$ 7 antes de qualquer movimento de preço. Correção: o seu custo é emissão + custo unitário de distribuição (R$ 103).</p>
+  <p class="mistake">Contar com o preço de antes da emissão. A cota tende a ir para o preço teórico (R$ 107,67) e pode cair mais na liberação. Correção: calcule o lucro com o preço teórico e veja quanto ele aguenta cair até R$ 103.</p>
+  <p class="mistake">Esquecer o imposto. Ganho na venda de cota de FII paga 20% via DARF até o último dia útil do mês seguinte, e a isenção de R$ 20 mil por mês das ações não vale para FII. Correção: desconte 20% do ganho (R$ 467 vira R$ 373,60).</p>
+  <p class="mistake">Comprar o direito (XPTO12) e não pedir o exercício na corretora dentro do prazo. O direito vence sem valor e você perde o que pagou nele. Correção: exerça no mesmo dia em que comprar.</p>
+  <p class="mistake">Achar que o lucro é o ganho em reais. Correção: compare com o que o mesmo dinheiro renderia no mesmo prazo em renda fixa (R$ 160,45 no exemplo).</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Flipagem = subscrever cotas novas de um FII e vender assim que elas são liberadas na bolsa.</li>
+    <li>Seu custo é preço de emissão + custo de distribuição (100 + 3 = R$ 103); esse é o ponto de equilíbrio.</li>
+    <li>O preço tende ao teórico, (antigas × tela + novas × custo) / total = R$ 107,67, e cai mais quando os flippers vendem juntos.</li>
+    <li>Ganho paga 20% de IR sem isenção; prejuízo só abate ganho futuro em FII.</li>
+    <li>Rateio e o preço do direito encolhem o ganho; compare sempre com a renda fixa no mesmo prazo.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>

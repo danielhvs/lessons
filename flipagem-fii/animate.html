@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flipagem em FII, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: inherit; }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  #bar a { color: var(--b); }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  #links a { color: var(--b); font-size: 16px; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a></nav>
+<div id="where"></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+const GLOSS = {
+  "FII": "fundo de investimento imobiliário: fundo negociado na bolsa que tem imóveis ou dívidas imobiliárias",
+  "cota": "a fração do fundo que você compra na bolsa",
+  "emissão": "o fundo cria cotas novas e vende a preço fixo para captar dinheiro",
+  "subscrever": "comprar as cotas novas de uma emissão",
+  "custo de distribuição": "taxa por cota que quem subscreve paga aos bancos da oferta; não entra no fundo",
+  "flipagem": "subscrever cotas novas e vender assim que elas negociam na bolsa",
+  "direito de preferência": "prioridade do cotista para subscrever na proporção do que tem; ticker final 12",
+  "recibo de subscrição": "o que você tem depois de exercer e pagar o direito; ticker final 13",
+  "liberação": "o dia em que o recibo vira cota normal (final 11) depois do fim da oferta",
+  "preço teórico": "média ponderada das cotas velhas (preço de bolsa) e novas (preço pago)",
+  "pressão vendedora": "muita gente vendendo ao mesmo tempo empurra o preço para baixo",
+  "IR": "imposto de renda; na venda de cota de FII, 20% do ganho, sem isenção mensal",
+  "DARF": "guia para pagar o imposto, até o último dia útil do mês seguinte à venda",
+  "ponto de equilíbrio": "o preço de venda em que o ganho é zero: o que você pagou",
+  "fator de proporção": "cotas novas ÷ cotas antigas; 0,5 = 2 direitos por cota nova",
+  "rateio": "a procura passou da oferta e cada investidor recebe só parte do que pediu",
+  "renda fixa": "aplicação com rendimento combinado, como CDB ou Tesouro",
+  "custo de oportunidade": "o que o mesmo dinheiro renderia em outro lugar no mesmo prazo",
+};
+const TERMS = [["FII", "cota", "emissão", "custo de distribuição", "flipagem"],
+  ["direito de preferência", "recibo de subscrição", "liberação"],
+  ["preço teórico", "liberação", "pressão vendedora"],
+  ["IR", "DARF"], ["ponto de equilíbrio", "IR"],
+  ["direito de preferência", "fator de proporção"], ["rateio", "subscrever"],
+  ["renda fixa", "custo de oportunidade", "IR"], ["flipagem", "preço teórico", "rateio"]];
+// pt-BR money: 10300 -> "10.300,00"
+const m2 = v => { let [i, d] = Math.abs(v).toFixed(2).split("."); i = i.replace(/\B(?=(\d{3})+$)/g, "."); return (v < -0.004 ? "−" : "") + i + "," + d; };
+const pat = (id, c, op = .55) => `<pattern id="${id}" width="20" height="20" patternUnits="userSpaceOnUse"><rect x="1" y="1" width="18" height="18" rx="2" fill="${COL[c]}" fill-opacity="${op}"/></pattern>`;
+
+const SCENES = [
+{ title: "O desconto na tela", dur: 11,
+  cap: [[0, "O XPTO11 (fictício) negocia a <b>R$ 110</b> na bolsa."],
+        [2, "Ele faz uma <b>emissão</b>: cotas novas a <b>R$ 100</b>..."],
+        [4, "... mais R$ 3 de <b>custo de distribuição</b>. Quem subscreve paga <b>R$ 103</b>."],
+        [7, "Pagar 103 e vender a 110 parece dar R$ 7 por cota. Essa é a ideia da <b>flipagem</b>."]],
+  draw(t) {
+    const y = 560, f = nline(150, 1450, y, 98, 112, 1, 1, v => v % 2 ? "" : "" + v);
+    pin(f(110), y, 250, "R$ 110", "bolsa", "b", P(t, 0, .7));
+    pin(f(100), y, 110, "R$ 100", "emissão", "a", P(t, 2, 2.7));
+    const g = P(t, 4, 5.2);
+    if (g > 0) arrow(f(100), y - 40, L(f(100), f(103), g), y - 40, "a", 1, 5);
+    pin(f(103), y, 250, "R$ 103", "você paga", "a", P(t, 5, 5.7));
+    const b = P(t, 7, 8.2);
+    if (b > 0) {
+      line(f(103), y + 80, L(f(103), f(110), b), y + 80, "c", 8);
+      text((f(103) + f(110)) / 2, y + 140, [["R$ 7 por cota?", "c", 1]], 44, { anchor: "middle", op: P(t, 8, 8.6) });
+    }
+  } },
+
+{ title: "Do direito à venda", dur: 12,
+  cap: [[0, "Cada cota antiga recebe um <b>direito</b> (final 12)."],
+        [2.5, "Exerceu e pagou R$ 103: o direito vira <b>recibo</b> (final 13)."],
+        [5, "Depois do fim da oferta, o recibo vira cota normal (final 11): a <b>liberação</b>."],
+        [8, "Entre pagar e vender passam semanas. Nesse tempo o preço anda."]],
+  draw(t) {
+    const o = s => P(t, s, s + .6), y = 300;
+    chip(220, y, "XPTO12", "d", 44, o(0));
+    text(220, y + 80, [["direito", "d"]], 30, { anchor: "middle", op: o(0) });
+    arrow(350, y, 480, y, "m", P(t, 2.5, 3.2));
+    text(415, y - 50, [["exerce", "m"]], 26, { anchor: "middle", op: o(2.5) });
+    chip(620, y, "XPTO13", "e", 44, o(3));
+    text(620, y + 80, [["recibo", "e"]], 30, { anchor: "middle", op: o(3) });
+    arrow(750, y, 880, y, "m", P(t, 5, 5.7));
+    text(815, y - 50, [["fim da oferta", "m"]], 26, { anchor: "middle", op: o(5) });
+    chip(1020, y, "XPTO11", "b", 44, o(5.5));
+    text(1020, y + 80, [["cota liberada", "b"]], 30, { anchor: "middle", op: o(5.5) });
+    arrow(1150, y, 1280, y, "m", P(t, 6.3, 7));
+    chip(1400, y, "vende", "c", 44, o(6.8));
+    // money token travels slowly from payment to liberação
+    const mp = P(t, 3, 7.5);
+    if (t >= 3) chip(L(415, 1020, mp), y + 190, "R$ 10.300", "a", 32);
+    const br_ = P(t, 8, 9);
+    if (br_ > 0) {
+      line(415, 620, 415, 650, "r", 4, br_); line(1020, 620, 1020, 650, "r", 4, br_);
+      line(415, 650, L(415, 1020, br_), 650, "r", 4);
+      text(717, 710, [["dinheiro pago, ainda sem vender: semanas", "r", 1]], 36, { anchor: "middle", op: P(t, 8.6, 9.2) });
+    }
+  } },
+
+{ title: "O preço anda", dur: 13,
+  cap: [[0, "Antes da emissão: <b>R$ 110</b>. Seu custo: <b>R$ 103</b>."],
+        [3, "1,0 mi cotas a 110 + 0,5 mi novas a 103: o <b>preço teórico</b> da mistura é <b>R$ 107,67</b>."],
+        [8, "Na <b>liberação</b>, os flippers vendem juntos e o preço cai mais. Desenho ilustrativo."]],
+  draw(t) {
+    const x0 = 250, x1 = 1480, Y = p => 160 + (111 - p) * 55, X = u => L(x0, x1, u);
+    const hl = (p, c, lab, op, dash) => {
+      line(x0, Y(p), x1, Y(p), c, 3, op, dash);
+      text(x0 - 14, Y(p) + 10, [[lab, c, 1]], 30, { anchor: "end", op });
+    };
+    hl(110, "b", "110", P(t, 0, .6), "10 8");
+    hl(103, "r", "103", P(t, .6, 1.2), "10 8");
+    hl(107.67, "b", "107,67", P(t, 4.5, 5.2), "4 6");
+    text(x1, Y(103) + 44, [["abaixo daqui: prejuízo", "r"]], 28, { anchor: "end", op: P(t, 1, 1.6) });
+    row(865, 80, [["(1,0 mi × "], ["110", "b", 1], [" + 0,5 mi × "], ["103", "a", 1], [") ÷ 1,5 mi = "], ["R$ 107,67", "b", 1]], 38, { op: P(t, 3, 3.7) });
+    const pts = [[0, 110], [.2, 109.8], [.35, 109], [.5, 108.2], [.65, 107.7], [.73, 106.6], [.78, 105], [.86, 105.8], [1, 106.3]];
+    const u = t < 8 ? L(0, .66, P(t, 1.5, 7.5)) : L(.66, 1, P(t, 8, 11));
+    const vis = [];
+    for (let k = 0; k < pts.length; k++) {
+      if (pts[k][0] <= u) vis.push(pts[k]);
+      else { const [a, pa] = pts[k - 1], [b, pb] = pts[k]; vis.push([u, L(pa, pb, (u - a) / (b - a))]); break; }
+    }
+    if (t >= 1.5) add(`<polyline points="${vis.map(([a, p]) => X(a) + "," + Y(p)).join(" ")}" fill="none" stroke="${COL.f}" stroke-width="5" stroke-linejoin="round"/>`);
+    const lo = P(t, 8, 8.6);
+    line(X(.73), 140, X(.73), 720, "m", 3, lo, "6 6");
+    text(X(.73), 130, [["liberação", "m", 1]], 28, { anchor: "middle", op: lo });
+    if (u >= .78) {
+      dot(X(.78), Y(105), "r", 13);
+      text(X(.78) + 24, Y(105) + 50, [["flippers vendem", "r", 1]], 30, { op: P(t, 9.5, 10.1) });
+    }
+    text(x0, 770, [["anúncio", "m"]], 28, { op: P(t, 0, .6) });
+    text(x1, 770, [["depois", "m"]], 28, { anchor: "end", op: P(t, 0, .6) });
+  } },
+
+{ title: "A conta das 100 cotas", dur: 14,
+  cap: [[0, "Você subscreve 100 cotas a R$ 103."],
+        [2, "Na liberação, vende a R$ 107,67, o preço teórico."],
+        [4, "Ganho bruto: <b>R$ 467</b>, não os R$ 700 da tela."],
+        [7, "Ganho em FII paga <b>20% de IR</b>, sem isenção: R$ 93,40 vão para o DARF."],
+        [10, "Sobram <b>R$ 373,60</b>: 3,63% sobre o que você pagou."]],
+  draw(t) {
+    const c1 = row(800, 120, [["paga:  100 × 103 = "], ["R$ 10.300,00", "a", 1]], 44, { op: P(t, 0, .6) });
+    const c2 = row(800, 205, [["vende:  100 × 107,67 = "], ["R$ 10.767,00", "b", 1]], 44, { op: P(t, 2, 2.6) });
+    const fp = P(t, 4, 5);
+    fly(c2[1], 205, 800, 300, fp, "10.767", "b", 44);
+    fly(c1[1], 120, 800, 300, fp, "10.300", "a", 44);
+    row(800, 300, [["ganho bruto = 10.767 − 10.300 = "], ["R$ 467,00", "c", 1]], 44, { op: t >= 5 ? P(t, 5, 5.4) : 0 });
+    const k = 2, x0 = 800 - 467 * k / 2, yb = 400, h = 90;
+    const g = P(t, 5.5, 6.5);
+    if (g > 0 && t < 7) box(x0, yb, 467 * k * g, h, "c", 1, .4, 6);
+    if (t >= 7) {
+      const s = P(t, 7, 8.5);
+      box(x0, yb, 373.6 * k, h, "c", 1, .4, 6);
+      box(x0 + 373.6 * k + 14 * s, yb + 40 * s, 93.4 * k, h, "r", 1, .45, 6);
+      text(x0 + 373.6 * k + 14 * s + 93.4 * k / 2, yb + 40 * s + h + 44, [["IR 20%: 93,40", "r", 1]], 34, { anchor: "middle", op: P(t, 8, 8.6) });
+      text(x0 + 373.6 * k / 2, yb + h + 44, [["líquido: 373,60", "c", 1]], 34, { anchor: "middle", op: P(t, 8.5, 9.1) });
+    } else if (g > 0) text(800, yb + h / 2 + 14, [["467,00", "c", 1]], 36, { anchor: "middle", op: g });
+    row(800, 720, [["373,60 ÷ 10.300 = "], ["3,63%", "c", 1]], 52, { op: P(t, 10, 10.7) });
+  } },
+
+{ title: "Onde você vende decide", dur: 12,
+  cap: [[0, "As mesmas 100 cotas. O preço de venda cai de R$ 110..."],
+        [5, "... até R$ 103: ganho zero. Esse é o seu <b>ponto de equilíbrio</b>."],
+        [7, "Abaixo de 103 é prejuízo. Prejuízo não paga IR e só abate ganho futuro em FII."]],
+  draw(t) {
+    const p = t < 5 ? L(110, 103, P(t, 1, 5)) : L(103, 101, P(t, 7, 9));
+    const y = 130, f = nline(250, 1350, y, 100, 111, 1, 1);
+    dot(f(103), y, "r", 10);
+    add(`<polygon points="${f(p)},${y - 16} ${f(p) - 16},${y - 46} ${f(p) + 16},${y - 46}" fill="${COL.b}"/>`);
+    const gross = (p - 103) * 100, ir = Math.max(gross, 0) * .2, net = gross - ir;
+    const base = 600, k = .6, c = net > 0.5 ? "c" : net < -0.5 ? "r" : "m";
+    line(300, base, 900, base, "m", 3);
+    if (Math.abs(net) > .5) box(450, net > 0 ? base - net * k : base, 300, Math.abs(net) * k, c, 1, .4, 4);
+    text(600, net >= 0 ? base - net * k - 20 : base - net * k + 46, [[m2(net), c, 1]], 40, { anchor: "middle" });
+    text(600, base + (net < 0 ? 200 : 50), [["ganho líquido", "m"]], 28, { anchor: "middle" });
+    const rx = 1000;
+    text(rx, 400, [["vende a "], ["R$ " + m2(p), "b", 1]], 40);
+    text(rx, 470, [["bruto: "], [m2(gross), gross >= 0 ? "f" : "r", 1]], 36);
+    text(rx, 530, [["IR 20%: "], [m2(-ir), "r", 1]], 36);
+    text(rx, 590, [["líquido: "], [m2(net), c, 1]], 36);
+    text(rx, 650, [["retorno: "], [(net / 10300 * 100).toFixed(2).replace(".", ",").replace("-", "−") + "%", c, 1]], 36);
+  } },
+
+{ title: "Flipar pelo direito", dur: 13,
+  cap: [[0, "Sem ter cota, dá para comprar o <b>direito</b> (XPTO12) na bolsa, a R$ 2,00."],
+        [2.5, "<b>Fator de proporção</b> 0,5: cada cota nova pede 2 direitos. 103 + 2 × 2,00 = <b>R$ 107</b>."],
+        [6, "Vendendo a 107,67 sobram <b>R$ 0,67</b> por cota: R$ 67 em 100 cotas, R$ 53,60 depois do IR."],
+        [9.5, "Se o direito sobe ao valor teórico, R$ 2,33, o ganho some: o mercado já cobrou o desconto."]],
+  draw(t) {
+    const d = L(2, 7 / 3, P(t, 9.5, 11.5)), cost = 103 + 2 * d;
+    const base = 720, Y = p => base - (p - 95) * 40, x = 480, w = 300;
+    const o1 = P(t, 0, .8);
+    box(x, Y(103), w, base - Y(103), "a", o1, .4, 4);
+    text(x + w / 2, Y(99), [["R$ 103", "a", 1]], 38, { anchor: "middle", op: o1 });
+    text(x + w / 2, Y(99) + 46, [["emissão + custo", "a"]], 28, { anchor: "middle", op: o1 });
+    text(x + w / 2, base + 44, [["eixo começa em R$ 95", "m"]], 26, { anchor: "middle", op: o1 });
+    chip(200, 300, "XPTO12", "d", 40, P(t, 0, .6));
+    chip(200, 400, "XPTO12", "d", 40, P(t, 0, .6));
+    text(200, 480, [["2 × R$ " + m2(d), "d", 1]], 32, { anchor: "middle", op: P(t, 0, .6) });
+    const g = P(t, 2.5, 4);
+    if (g > 0) {
+      const top = L(103, cost, g);
+      box(x, Y(top), w, Y(103) - Y(top), "d", 1, .45, 4);
+      arrow(310, 350, x - 10, (Y(103) + Y(top)) / 2, "d", P(t, 2.5, 3.3));
+      text(x + w + 20, Y(cost) + 50, [["custo R$ " + m2(cost), "d", 1]], 34, { op: P(t, 3.5, 4.2) });
+    }
+    const s = P(t, 6, 6.8);
+    line(x - 60, Y(107.67), x + w + 450, Y(107.67), "b", 4, s, "10 8");
+    text(x + w + 450, Y(107.67) - 16, [["vende a 107,67", "b", 1]], 32, { anchor: "end", op: s });
+    const gap = 107.67 - cost;
+    if (t >= 6 && gap > .02) {
+      box(x + w + 300, Y(107.67), 60, Y(cost) - Y(107.67), "c", s, .6, 2);
+    }
+    text(1180, 600, [["ganho: R$ " + m2(Math.max(gap, 0)) + " por cota", gap > .02 ? "c" : "r", 1]], 38, { anchor: "middle", op: P(t, 6.4, 7) });
+  } },
+
+{ title: "Rateio", dur: 11,
+  cap: [[0, "Você pede 1.000 cotas na oferta. Cada quadrado é 1 cota."],
+        [3, "A procura passou da oferta: <b>rateio</b> de 30%. Você recebe 300 e o resto da reserva volta."],
+        [6.5, "O retorno continua 3,63%, mas sobre R$ 30.900: R$ 1.120,80 líquidos, não R$ 3.736."]],
+  draw(t) {
+    add(pat("rq-a", "a") + pat("rq-c", "c", .8) + pat("rq-m", "m", .25));
+    const x0 = 300, y0 = 150, o = P(t, 0, .8), r = P(t, 3, 4.5);
+    if (o > 0) add(`<rect x="${x0}" y="${y0}" width="1000" height="400" fill="url(#rq-${r > 0 ? "m" : "a"})" opacity="${o}"/>`);
+    if (r > 0) {
+      add(`<rect x="${x0}" y="${y0}" width="1000" height="${120 * r}" fill="url(#rq-c)"/>`);
+      add(`<rect x="${x0}" y="${y0 + 120}" width="1000" height="${280 * (1 - r)}" fill="url(#rq-a)"/>`);
+    }
+    text(800, 110, [["pediu 1.000 cotas = R$ 103.000", "a", 1]], 38, { anchor: "middle", op: o * (1 - r) });
+    text(800, 110, [["recebeu 300 cotas = R$ 30.900", "c", 1]], 38, { anchor: "middle", op: r });
+    row(800, 650, [["1.000 × 3,736 = "], ["R$ 3.736", "a", 1], ["   →   300 × 3,736 = "], ["R$ 1.120,80", "c", 1]], 38, { op: P(t, 6.5, 7.3) });
+    text(800, 730, [["3,736 = ganho líquido por cota a 107,67", "m"]], 28, { anchor: "middle", op: P(t, 7, 7.6) });
+  } },
+
+{ title: "Contra a renda fixa", dur: 11,
+  cap: [[0, "Os mesmos R$ 10.300 numa aplicação a 1% ao mês (hipotético) por 2 meses, com IR de 22,5%: <b>R$ 160,45</b>."],
+        [4, "A flipagem vendendo a 107,67 dá <b>R$ 373,60</b>."],
+        [7, "Vendendo a 105, dá R$ 160: o mesmo que a renda fixa, só que com risco de preço."]],
+  draw(t) {
+    const base = 680, k = 1.2, w = 260;
+    line(150, base, 1450, base, "m", 3);
+    const bar = (cx, v, c, a, lab, sub) => {
+      const g = P(t, a, a + 1.2);
+      if (g <= 0) return;
+      box(cx - w / 2, base - v * k * g, w, v * k * g, c, 1, .4, 4);
+      text(cx, base - v * k * g - 20, [["R$ " + m2(v * g), c, 1]], 40, { anchor: "middle" });
+      text(cx, base + 44, [[lab, "f", 1]], 30, { anchor: "middle", op: g });
+      text(cx, base + 84, [[sub, "m"]], 26, { anchor: "middle", op: g });
+    };
+    bar(350, 160.45, "e", 0.5, "renda fixa", "1% a.m., 2 meses");
+    bar(800, 373.6, "c", 4, "flipagem a 107,67", "3,63%");
+    bar(1250, 160, "c", 7, "flipagem a 105", "1,55%");
+    line(150, base - 160.45 * k, 1450, base - 160.45 * k, "e", 3, P(t, 8.5, 9.2), "10 8");
+  } },
+
+{ title: "Resumo", dur: 9,
+  cap: [[0, "A flipagem só ganha o que sobra depois da queda do preço, do imposto e da renda fixa."]],
+  draw(t) {
+    const o = i => P(t, i * .7, i * .7 + .8);
+    [["seu custo = emissão + custo de distribuição = R$ 103", "a"],
+     ["o preço tende ao teórico (R$ 107,67) e cai mais na liberação", "b"],
+     ["ganho em FII paga 20% de IR, sem isenção", "r"],
+     ["o preço do direito e o rateio encolhem o ganho", "d"],
+     ["compare com a renda fixa no mesmo prazo", "e"]].forEach(([s, c], k) => {
+      dot(220, 180 + k * 100, c, 13, o(k));
+      text(260, 192 + k * 100, [[s, c, 1]], 38, { op: o(k) });
+    });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
