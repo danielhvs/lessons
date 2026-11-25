@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EBITDA, animado</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599; --g: #b08900;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db; --g: #fcc419;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #caption { font-size: 22px; line-height: 1.35; min-height: 2.7em; padding: 4px 10px;
+    border-left: 4px solid var(--d); background: var(--panel); border-radius: 4px; }
+  #caption b { color: var(--d); }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 200px; height: 22px; display: flex; gap: 3px;
+    cursor: pointer; position: relative; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 16px; }
+  #links a { color: var(--b); }
+  #where { text-align: center; font-size: 24px; font-weight: 700; padding: 2px 0; }
+  @media (pointer: coarse) { #bar button::after { content: none } }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="top"><div id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a></div><div id="where"></div><span></span></div>
+<svg id="stage" viewBox="0 0 1600 820" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="caption"></div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+const num = v => (v < -1e-9 ? "−" : "") + Math.abs(v).toFixed(1);
+
+let out = [];
+const add = s => out.push(s);
+
+// tokens: [text, colorKey?, bold?]; text may hold &lt; etc.
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}"${o.w ? ' font-weight="700"' : ""}>${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  add(`<line x1="${cx - w / 2}" x2="${cx + w / 2}" y1="${cy}" y2="${cy}" stroke="${COL.f}" stroke-width="3" opacity="${op}"/>`);
+  text(cx, cy + size * 1.0, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+// ---------- helpers, pt-BR numbers
+COL.e = "var(--e)";
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+const br = v => v.toFixed(2).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const pct = v => (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%";
+// horizontal number line from lo to hi; returns x for a value
+function nline(x0, x1, y, lo, hi, step, op = 1, fmt = v => "" + v) {
+  const f = v => L(x0, x1, (v - lo) / (hi - lo));
+  if (op <= 0) return f;
+  add(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL.m}" stroke-width="3" opacity="${op}"/>`);
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    add(`<line x1="${f(v)}" x2="${f(v)}" y1="${y - 10}" y2="${y + 10}" stroke="${COL.m}" stroke-width="2" opacity="${op}"/>`);
+    text(f(v), y + 42, [[fmt(v), "m"]], 24, { anchor: "middle", op });
+  }
+  return f;
+}
+function pin(x, y, h, label, sub, color, op = 1) {
+  if (op <= 0) return;
+  add(`<line x1="${x}" x2="${x}" y1="${y}" y2="${y - h}" stroke="${COL[color]}" stroke-width="4" opacity="${op}"/>`);
+  dot(x, y, color, 11, op);
+  text(x, y - h - 46, [[label, color, 1]], 36, { anchor: "middle", op });
+  text(x, y - h - 12, [[sub, "m"]], 26, { anchor: "middle", op });
+}
+function box(x, y, w, h, color, op = 1, fillOp = .18, rx = 14, dash = "") {
+  if (op <= 0) return;
+  add(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${COL[color]}" fill-opacity="${fillOp}" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="${dash}" opacity="${op}"/>`);
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+function arrow(x1, y1, x2, y2, color, p = 1, w = 4) {
+  if (p <= 0) return;
+  const x = L(x1, x2, p), y = L(y1, y2, p), a = Math.atan2(y - y1, x - x1), s = 16;
+  line(x1, y1, x, y, color, w);
+  add(`<polygon points="${x},${y} ${x - s * Math.cos(a - .45)},${y - s * Math.sin(a - .45)} ${x - s * Math.cos(a + .45)},${y - s * Math.sin(a + .45)}" fill="${COL[color]}"/>`);
+}
+COL.e = "var(--e)"; COL.g = "var(--g)";
+const br = (v, d = 3) => v.toFixed(d).replace(".", ",");
+const GLOSS = {
+  "EBITDA": "Earnings Before Interest, Taxes, Depreciation and Amortization: lucro antes de juros, impostos, depreciação e amortização",
+  "receita líquida": "o que a empresa faturou, já sem os impostos sobre a venda",
+  "margem EBITDA": "EBITDA ÷ receita: quanto de cada R$ 1 faturado vira EBITDA",
+  "3T26": "terceiro trimestre de 2026 (jul-set); 3T25 é o mesmo trimestre de 2025",
+  "D&A": "depreciação e amortização: o desgaste de canos, estações e do direito de concessão, lançado aos poucos; não sai do caixa no trimestre",
+  "EBIT": "lucro operacional: EBITDA menos D&A",
+  "LAIR": "lucro antes do imposto de renda: EBIT menos juros",
+  "IR": "imposto de renda + contribuição social sobre o lucro",
+  "(d)": "número derivado por conta a partir dos publicados",
+  "capex": "capital expenditure: dinheiro gasto em obras e equipamentos",
+  "9M26": "os nove primeiros meses de 2026",
+  "dívida líquida": "dívida total menos o caixa",
+  "LTM": "last twelve months: soma dos últimos 4 trimestres (4T25 a 3T26)",
+  "EV": "enterprise value, valor da firma: valor de mercado das ações + dívida líquida",
+  "P/L": "preço ÷ lucro: quantos anos de lucro o valor de mercado paga",
+  "valor de mercado": "preço da ação × número de ações",
+};
+const TERMS = [["EBITDA", "receita líquida", "margem EBITDA", "3T26"], ["EBITDA", "D&A"], ["D&A", "EBIT", "LAIR", "IR", "(d)"],
+  ["3T26", "D&A", "IR", "(d)"], ["capex", "9M26", "dívida líquida"], ["dívida líquida", "LTM"], ["EV", "valor de mercado", "P/L", "LTM"], ["EBITDA", "capex"]];
+
+// waterfall: items [name, value, total?, color]; returns nothing. Bars grow in order from t0, dt apart.
+function waterfall(items, t, o) {
+  const { x0, step, bw, base, sc, t0, dt, vs = 30, ns = 28 } = o;
+  let level = 0;
+  add(`<line x1="${x0 - 30}" x2="${x0 + step * items.length}" y1="${base}" y2="${base}" stroke="${COL.m}" stroke-width="3"/>`);
+  items.forEach(([name, v, total, c, sub], i) => {
+    const a = t0 + i * dt, p = P(t, a, a + dt * .8);
+    const from = total ? 0 : level, to = total ? v : level + v;
+    if (total) level = v; else level += v;
+    if (p <= 0) return;
+    const x = x0 + i * step, top = base - Math.max(from, to) * sc, h = Math.abs(to - from) * sc;
+    // a bar grows out of the previous level: totals up from 0, deltas from the old level
+    const hy = h * p;
+    add(`<rect x="${x}" y="${total ? base - hy : v > 0 ? base - from * sc - hy : base - from * sc}" width="${bw}" height="${hy}" rx="6" fill="${COL[c]}" fill-opacity="${total ? .75 : .45}" stroke="${COL[c]}" stroke-width="3"/>`);
+    if (i > 0) line(x - (step - bw), base - from * sc, x, base - from * sc, "m", 2, p, "6 6");
+    const lab = (total ? "" : v > 0 ? "+" : "−") + br(Math.abs(v));
+    text(x + bw / 2, top - 12, [[lab, total ? "f" : c, 1]], vs, { anchor: "middle", op: P(t, a + dt * .5, a + dt) });
+    text(x + bw / 2, base + 36, [[name, c, 1]], ns, { anchor: "middle", op: p });
+    if (sub) text(x + bw / 2, base + 68, [[sub, "m"]], 22, { anchor: "middle", op: p });
+  });
+}
+const CASCADE = [["receita", 5.958, 1, "a"], ["custos", -2.310, 0, "m"], ["EBITDA", 3.648, 1, "d"], ["D&A", -0.732, 0, "e"],
+  ["EBIT", 2.916, 1, "d"], ["juros", -1.310, 0, "r"], ["LAIR", 1.606, 1, "d"], ["IR", -0.499, 0, "g"], ["lucro", 1.107, 1, "c"]];
+
+const SCENES = [
+{ title: "Da receita ao EBITDA", dur: 13,
+  cap: [[0, "No 3T26 a Sabesp faturou <b>R$ 5,958 bi</b> com água e esgoto."],
+        [3, "Operar custou <b>R$ 2,310 bi</b>: pessoal, energia, químicos, manutenção."],
+        [6, "Sobra o <b>EBITDA: R$ 3,648 bi</b>, o que a operação gera antes de juros, impostos e depreciação."],
+        [9.5, "De cada R$ 1 faturado, R$ 0,61 vira EBITDA: <b>margem de 61%</b>."]],
+  draw(t) {
+    waterfall(CASCADE.slice(0, 3), t, { x0: 160, step: 260, bw: 180, base: 640, sc: 85, t0: 0, dt: 3, vs: 40, ns: 34 });
+    frac(1240, 330, [["EBITDA", "d", 1]], [["receita", "a", 1]], 50, P(t, 9.5, 10.2), "margem =");
+    fly(780, 300, 1240, 310, clamp((t - 10.2) / 1), "3,648", "d", 44);
+    fly(250, 100, 1240, 400, clamp((t - 10.5) / 1), "5,958", "a", 44);
+    text(1240, 560, [["= 61%", "d", 1]], 70, { anchor: "middle", op: P(t, 11.6, 12.3) });
+  } },
+
+{ title: "As letras de EBITDA", dur: 12,
+  cap: [[0, "<b>EBITDA</b> é uma sigla em inglês. As quatro últimas letras dizem o que ele ainda <b>não</b> descontou."],
+        [3, "<b>I</b>nterest = juros da dívida. <b>T</b>axes = imposto de renda."],
+        [6.5, "<b>D</b>epreciation e <b>A</b>mortization = o desgaste do que já foi construído, lançado aos poucos (D&A)."],
+        [9.5, "Lucro = EBITDA − D&A − juros − IR."]],
+  draw(t) {
+    const letters = [["E", "f", "Earnings", "lucro"], ["B", "f", "Before", "antes de"], ["I", "r", "Interest", "juros"],
+      ["T", "g", "Taxes", "impostos"], ["D", "e", "Depreciation", "depreciação"], ["A", "e", "Amortization", "amortização"]];
+    letters.forEach(([l, c, en, pt], k) => {
+      const x = 230 + k * 228, on = k < 2 ? P(t, .5, 1.5) : k < 4 ? P(t, 3 + (k - 2) * .8, 3.8 + (k - 2) * .8) : P(t, 6.5 + (k - 4) * .8, 7.3 + (k - 4) * .8);
+      text(x, 260, [[l, k < 2 ? "d" : c, 1]], 150, { anchor: "middle", op: P(t, 0, .8) });
+      text(x, 340, [[en, "m"]], 30, { anchor: "middle", op: on });
+      text(x, 390, [[pt, k < 2 ? "f" : c, 1]], 34, { anchor: "middle", op: on });
+    });
+    text(800, 560, [["lucro = "], ["EBITDA", "d", 1], [" − "], ["D&A", "e", 1], [" − "], ["juros", "r", 1], [" − "], ["IR", "g", 1]], 52, { anchor: "middle", op: P(t, 9.5, 10.5) });
+  } },
+
+{ title: "A cascata até o lucro", dur: 16,
+  cap: [[0, "Desça do EBITDA. Tire a <b>D&A</b>, R$ 0,732 bi: sobra o lucro operacional, o <b>EBIT</b>."],
+        [5, "Tire os <b>juros</b> da dívida, R$ 1,310 bi: sobra o lucro antes do imposto, o <b>LAIR</b>."],
+        [9, "Tire o <b>IR</b>, R$ 0,499 bi (d): sobra o <b>lucro de R$ 1,107 bi</b>."],
+        [12.5, "De R$ 5,96 faturados, R$ 1,11 chega ao acionista. Os juros levam mais que o imposto."]],
+  draw(t) {
+    waterfall(CASCADE, t, { x0: 70, step: 168, bw: 124, base: 640, sc: 80, t0: -6, dt: 2, vs: 28, ns: 28 });
+    // first 3 bars were already built in scene 1; the rest grow every 2s from t=0
+    if (t > 12.5) box(70 + 8 * 168 - 14, 640 - 1.107 * 80 - 56, 152, 1.107 * 80 + 120, "c", P(t, 12.5, 13.3), 0, 12, "8 6");
+  } },
+
+{ title: "EBITDA subiu, lucro caiu", dur: 16,
+  cap: [[0, "Do 3T25 para o 3T26 o lucro ajustado foi de <b>R$ 1,284 bi</b> para <b>R$ 1,107 bi</b>: −13,8%."],
+        [3, "A operação deu <b>+0,442</b>: o EBITDA subiu 13,8%."],
+        [6, "Mas a D&A tirou <b>0,197</b> e os juros tiraram <b>0,557</b>, mais do que a operação ganhou."],
+        [10, "Imposto menor devolveu 0,135. Saldo: <b>−0,177</b>. Juros e D&A crescem com a mesma causa: as obras."]],
+  draw(t) {
+    waterfall([["lucro 3T25", 1.284, 1, "c"], ["EBITDA", 0.442, 0, "d"], ["D&A", -0.197, 0, "e"], ["juros", -0.557, 0, "r"],
+      ["IR", 0.135, 0, "g"], ["lucro 3T26", 1.107, 1, "c"]], t,
+      { x0: 140, step: 240, bw: 170, base: 660, sc: 290, t0: 0, dt: 2.5, vs: 34, ns: 30 });
+    text(800, 90, [["EBITDA +13,8%  ·  lucro −13,8%", "f", 1]], 40, { anchor: "middle", op: P(t, 12, 13) });
+  } },
+
+{ title: "O EBITDA não vê o capex", dur: 15,
+  cap: [[0, "Nos 9M26 a Sabesp gerou <b>R$ 10,94 bi</b> de EBITDA."],
+        [3, "E gastou <b>R$ 11,96 bi</b> em obras (capex): mais que o EBITDA inteiro, antes de juros, IR e JCP."],
+        [7, "O que falta vira dívida. A dívida líquida foi de <b>R$ 32,5 bi</b> no 1T26 para <b>R$ 38,6 bi</b> no 3T26."],
+        [11, "Dívida maior traz mais juros; obra pronta traz mais D&A. Os dois descontos que derrubaram o lucro."]],
+  draw(t) {
+    const base = 660, sc = 36;
+    const e = P(t, 0, 1.5), c = P(t, 3, 4.5);
+    box(180, base - 10.94 * sc * e, 220, 10.94 * sc * e + .01, "d", e > 0 ? 1 : 0, .4, 8);
+    text(290, base - 10.94 * sc - 18, [["10,94", "d", 1]], 40, { anchor: "middle", op: P(t, 1, 1.6) });
+    text(290, base + 40, [["EBITDA 9M26", "d", 1]], 30, { anchor: "middle", op: e });
+    box(480, base - 11.96 * sc * c, 220, 11.96 * sc * c + .01, "r", c > 0 ? 1 : 0, .25, 8);
+    text(590, base - 11.96 * sc - 18, [["11,96", "r", 1]], 40, { anchor: "middle", op: P(t, 4, 4.6) });
+    text(590, base + 40, [["capex 9M26", "r", 1]], 30, { anchor: "middle", op: c });
+    line(160, base - 10.94 * sc, 720, base - 10.94 * sc, "m", 2, P(t, 4.6, 5.2), "8 6");
+    text(760, base - 11.45 * sc + 10, [["falta 1,02", "r", 1]], 30, { op: P(t, 5, 5.6) });
+    const d = P(t, 7, 9.5), dv = L(32.5, 38.6, d), dsc = 11;
+    const dop = P(t, 6.6, 7.2);
+    box(1150, base - dv * dsc, 240, dv * dsc, "r", dop, .35, 8);
+    if (d > 0) box(1150, base - dv * dsc, 240, (dv - 32.5) * dsc + .01, "r", dop, .7, 8);
+    text(1270, base - dv * dsc - 18, [["dívida " + br(dv, 1), "r", 1]], 40, { anchor: "middle", op: dop });
+    text(1270, base + 40, [[t < 9.5 ? "1T26 → 3T26" : "3T26", "m"]], 28, { anchor: "middle", op: dop });
+    arrow(860, base - 11.4 * sc, 1140, base - 36 * dsc, "r", P(t, 7, 8));
+  } },
+
+{ title: "Quantos anos de EBITDA paga a dívida", dur: 13,
+  cap: [[0, "A dívida líquida do 3T26: <b>R$ 38,6 bi</b>."],
+        [2.5, "O EBITDA dos últimos 12 meses: 3,370 + 3,790 + 3,503 + 3,648 = <b>R$ 14,31 bi</b>."],
+        [5, "Encha a dívida com anos de EBITDA: dois anos inteiros e mais 0,7."],
+        [9, "Dívida líquida ÷ EBITDA = <b>2,7x</b>. Era 1,9x no 2T25: subiu 0,8x em cinco trimestres."]],
+  draw(t) {
+    const x0 = 100, sc = 36, y = 220;
+    const a = P(t, 0, 1.5);
+    box(x0, y, 38.6 * sc * a, 100, "r", a > 0 ? 1 : 0, .3, 8);
+    text(x0 + 38.6 * sc / 2, y + 64, [["dívida líquida 38,6", "r", 1]], 40, { anchor: "middle", op: P(t, 1, 1.6) });
+    const qs = [3.370, 3.790, 3.503, 3.648];
+    let qx = 400;
+    qs.forEach((q, k) => {
+      const op = P(t, 2.5 + k * .4, 3 + k * .4);
+      box(qx, 400, q * sc, 70, "d", op, .3, 6);
+      text(qx + q * sc / 2, 446, [[br(q), "d", 1]], 28, { anchor: "middle", op });
+      qx += q * sc + 6;
+    });
+    text(400 + 14.31 * sc / 2 + 12, 520, [["= 14,31 em 12 meses", "d", 1]], 32, { anchor: "middle", op: P(t, 4, 4.6) });
+    [[0, 1], [1, 1], [2, .7]].forEach(([k, f], i) => {
+      const p = P(t, 5 + i * 1.1, 6 + i * 1.1), w = 14.31 * sc * f;
+      if (p <= 0) return;
+      box(x0 + k * 14.31 * sc, y + 130, w * p, 80, "d", 1, f < 1 ? .15 : .4, 6);
+      text(x0 + k * 14.31 * sc + w / 2, y + 182, [[f < 1 ? "0,7 ano" : "ano " + (k + 1), "d", 1]], 30, { anchor: "middle", op: p });
+    });
+    frac(800, 660, [["38,6", "r", 1]], [["14,31", "d", 1]], 44, P(t, 9, 9.6), "dívida ÷ EBITDA =");
+    text(960, 680, [["= 2,7x", "f", 1]], 60, { op: P(t, 9.8, 10.5) });
+  } },
+
+{ title: "EV/EBITDA contra P/L", dur: 16,
+  cap: [[0, "Comprar a Sabesp inteira custa as ações, <b>R$ 98,5 bi</b> na bolsa em 24/11, mais a dívida que vem junto, <b>R$ 38,6 bi</b>."],
+        [4, "Essa soma é o <b>EV</b>: R$ 137,1 bi. Dividido pelo EBITDA de 12 meses, <b>9,6x</b>."],
+        [8, "O <b>P/L</b> divide só as ações pelo lucro, que já pagou os juros: 98,5 ÷ 5,707 = <b>17,3x</b>."],
+        [12, "EV/EBITDA não muda com a forma de financiar: serve para comparar empresas com dívidas diferentes. Sites que usam o EBITDA reportado mostram 6,38."]],
+  draw(t) {
+    const base = 700, sc = 4;
+    const m = P(t, 0, 1.5), d = P(t, 2, 3.2);
+    box(200, base - 98.5 * sc * m, 220, 98.5 * sc * m + .01, "b", m > 0 ? 1 : 0, .35, 6);
+    text(310, base - 98.5 * sc / 2 + 10, [["ações 98,5", "b", 1]], 34, { anchor: "middle", op: P(t, 1, 1.6) });
+    box(200, base - 98.5 * sc - 38.6 * sc * d, 220, 38.6 * sc * d + .01, "r", d > 0 ? 1 : 0, .35, 6);
+    text(310, base - 98.5 * sc - 38.6 * sc / 2 + 10, [["dívida 38,6", "r", 1]], 34, { anchor: "middle", op: P(t, 2.8, 3.4) });
+    text(310, base - 137.1 * sc - 20, [["EV 137,1", "f", 1]], 40, { anchor: "middle", op: P(t, 4, 4.6) });
+    frac(900, 230, [["EV 137,1", "f", 1]], [["EBITDA 14,31", "d", 1]], 42, P(t, 4.5, 5.2), "");
+    fly(310, 140, 900, 210, clamp((t - 5.2) / 1), "137,1", "f", 40);
+    text(1150, 248, [["= 9,6x", "d", 1]], 56, { op: P(t, 6.3, 7) });
+    frac(900, 500, [["ações 98,5", "b", 1]], [["lucro 5,707", "c", 1]], 42, P(t, 8, 8.7), "");
+    fly(310, 330, 900, 480, clamp((t - 8.7) / 1), "98,5", "b", 40);
+    text(1150, 518, [["= 17,3x", "c", 1]], 56, { op: P(t, 9.8, 10.5) });
+  } },
+
+{ title: "Resumo", dur: 10,
+  cap: [[0, "EBITDA mostra a operação. O dividendo sai do lucro, e o lucro paga D&A, juros e IR antes."]],
+  draw(t) {
+    const o = i => P(t, i * .6, i * .6 + .8);
+    [["EBITDA = receita − custos operacionais", "d"], ["lucro = EBITDA − D&A − juros − IR", "c"],
+     ["dívida líquida ÷ EBITDA = anos para pagar (Sabesp 2,7x)", "r"], ["EV/EBITDA compara empresas com dívidas diferentes", "b"]].forEach(([s, c], k) =>
+      text(800, 120 + k * 75, [[s, c, 1]], 36, { anchor: "middle", op: o(k) }));
+    [["EBITDA sobe e lucro cai → dívida ou D&A crescendo", "r"], ["capex maior que EBITDA → a dívida sobe", "a"],
+     ["compare múltiplos na mesma base, ajustada ou reportada", "e"], ["acompanhe a série da alavancagem, não um ponto", "d"]].forEach(([s, c], k) => {
+      dot(300, 435 + k * 62, c, 11, o(4 + k * .5));
+      text(330, 446 + k * 62, [[s]], 32, { op: o(4 + k * .5) });
+    });
+  } },
+];
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const terms = document.getElementById("terms");
+const svg = document.getElementById("stage"), cap = document.getElementById("caption");
+const DEFS = "";
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "";
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+
+const tl = document.getElementById("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur);
+  const key = i + ":" + t.toFixed(3);
+  if (key === lastKey) return;
+  lastKey = key; out = [];
+  s.draw(t);
+  svg.innerHTML = DEFS + out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = TERMS[i].map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  document.getElementById("where").textContent = s.title;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === SCENES.length - 1;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const end = sceneEnd(sceneAt(T));
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= end) { T = end; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; document.getElementById("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check) jumps to each scene's final frame so the page settles
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  T = HEADLESS ? sceneEnd(i) : starts[i];
+  if (!HEADLESS) setPlaying(true);
+  render();
+}
+// a scene stops on its last frame; play there starts the next one
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+document.getElementById("play").onclick = () => {
+  const i = sceneAt(T);
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+document.getElementById("replay").onclick = () => go(sceneAt(T));
+document.getElementById("restart").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(sceneAt(T) - 1);
+document.getElementById("next").onclick = () => go(sceneAt(T) + 1);
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
