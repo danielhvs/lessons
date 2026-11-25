@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluxo de caixa descontado</title>
+<style>
+:root {
+  --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65;
+  --line: #e2e0d8; --accent: #2f6fde; --accent-soft: #2f6fde22;
+  --add: #1f8a4c; --add-bg: #1f8a4c1f; --del: #c2382f; --del-bg: #c2382f1a;
+  --code-bg: #f1efe8; --term-bg: #1d1f24; --term-ink: #e6e6e6;
+  --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1d1f24; --ink: #ecebe6; --muted: #9a998f;
+    --line: #2e3038; --accent: #6ea0ff; --accent-soft: #6ea0ff26;
+    --add: #4cc483; --add-bg: #4cc48322; --del: #ff7a70; --del-bg: #ff7a7020;
+    --code-bg: #24262d; --term-bg: #0e0f12; --term-ink: #e6e6e6;
+    --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2;
+  }
+}
+* { box-sizing: border-box; }
+html { font: clamp(16.5px, .55vw + 9px, 20px)/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+main { width: 100%; padding: 6px; }
+nav { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+nav a { color: var(--accent); font-size: .9rem; }
+h1 { font-size: 1.6rem; margin: 6px 0 2px; }
+.lead { margin: 0 0 14px; color: var(--muted); max-width: 75ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; margin: 0 0 12px; }
+section h2 { margin: 0 0 6px; font-size: 1.3rem; }
+section h2 .num { color: var(--accent); margin-right: .4em; }
+p, li { max-width: 75ch; }
+p code, li code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+dfn { font-style: normal; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 20px; align-items: start; }
+pre, .term {
+  margin: 0 0 10px; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; overflow-wrap: break-word;
+  font: clamp(14px, .45vw + 8px, 17px)/1.55 ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+pre { background: var(--code-bg); }
+.term { background: var(--term-bg); color: var(--term-ink); }
+.term .cmd::before { content: "$ "; color: #7fd18b; }
+.term .out { color: #b9b9b9; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+figure { margin: 0 0 10px; }
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 4px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg.diagram text { fill: var(--ink); font-family: system-ui, sans-serif; }
+svg.diagram .ax { stroke: var(--muted); stroke-width: 2; }
+svg.diagram .m { fill: var(--muted); }
+svg.diagram .fa { fill: var(--a); } svg.diagram .fb { fill: var(--b); }
+svg.diagram .fc { fill: var(--c); } svg.diagram .fd { fill: var(--d); }
+svg.diagram .ta { fill: var(--a); font-weight: 700; } svg.diagram .tb { fill: var(--b); font-weight: 700; }
+svg.diagram .tc { fill: var(--c); font-weight: 700; } svg.diagram .td { fill: var(--d); font-weight: 700; }
+svg.diagram .arr { stroke: var(--muted); stroke-width: 2; fill: none; stroke-dasharray: 6 5; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; margin: 0 0 8px; }
+td, th { border: 1px solid var(--line); padding: 3px 10px; text-align: right; }
+th { background: var(--code-bg); }
+td:first-child, th:first-child { text-align: left; }
+tr.tot td { font-weight: 700; }
+.formula { font-size: 1.25rem; background: var(--code-bg); border-radius: 10px; padding: 8px 14px; display: inline-block; margin: 0 0 10px; }
+.mistake { border-left: 4px solid var(--del); background: var(--del-bg); padding: 6px 10px; border-radius: 6px; margin: 0 0 8px; }
+.summary { border-color: var(--accent); }
+.summary ol { margin: 0; padding-left: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+<nav><a href="../">← todas as aulas</a><a href="animate.html">animação</a><a href="practice.html">interação</a></nav>
+<h1>Fluxo de caixa descontado</h1>
+<p class="lead">Como comparar dinheiro que chega em datas diferentes, e descobrir quanto vale hoje um FII, uma ação ou um título.</p>
+
+<section>
+  <h2><span class="num">1</span>O problema</h2>
+  <p>Um vídeo avaliou o BTLG11 (um FII de galpões logísticos) assim: somou 6 anos de proventos (6 × R$ 9,72 = R$ 58,32) com o valor da cota no ano 6 (R$ 139,25), chegou a R$ 197,57, dividiu pelo preço de R$ 95,08 e anualizou: <b>12,96% ao ano</b>.</p>
+  <p>A conta trata os R$ 9,72 do ano 1 como se valessem o mesmo que os R$ 9,72 do ano 6. Não valem: o provento do ano 1 pode ser reinvestido por mais 5 anos. Somar reais de datas diferentes é como somar metros com pés.</p>
+  <p>O <dfn>fluxo de caixa descontado</dfn> (FCD, em inglês DCF, <i>discounted cash flow</i>) resolve isso: leva cada valor para a mesma data, hoje, e só então soma. Feita assim, a conta do BTLG11 dá <b>14,52% ao ano</b>.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>O menor exemplo: um valor, um ano</h2>
+  <div class="split">
+    <div>
+      <p>Com juros de 10% ao ano, R$ 100 hoje viram R$ 110 em 1 ano e R$ 121 em 2 anos. Isso é <dfn>capitalizar</dfn>: andar para frente no tempo, multiplicando por (1 + taxa) a cada ano.</p>
+      <p><dfn>Descontar</dfn> é o caminho de volta: dividir por (1 + taxa) a cada ano. R$ 110 daqui a 1 ano valem 110 ÷ 1,10 = R$ 100 hoje. R$ 121 daqui a 2 anos valem 121 ÷ 1,10² = R$ 100 hoje.</p>
+      <p>O resultado se chama <dfn>valor presente</dfn> (VP): quanto um valor futuro vale hoje, a uma certa taxa.</p>
+      <div class="formula">VP = F ÷ (1 + i)<sup>n</sup></div>
+      <p>F é o valor futuro, i a taxa por ano, n o número de anos até ele chegar.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 560 230" role="img" aria-label="R$ 100 hoje, 110 em 1 ano, 121 em 2 anos">
+        <line class="ax" x1="40" y1="150" x2="530" y2="150"/>
+        <circle class="fb" cx="80" cy="150" r="8"/><circle class="fb" cx="280" cy="150" r="8"/><circle class="fb" cx="480" cy="150" r="8"/>
+        <text class="m" x="80" y="185" font-size="18" text-anchor="middle">hoje</text>
+        <text class="m" x="280" y="185" font-size="18" text-anchor="middle">ano 1</text>
+        <text class="m" x="480" y="185" font-size="18" text-anchor="middle">ano 2</text>
+        <text class="tb" x="80" y="125" font-size="22" text-anchor="middle">R$ 100</text>
+        <text class="tb" x="280" y="125" font-size="22" text-anchor="middle">R$ 110</text>
+        <text class="tb" x="480" y="125" font-size="22" text-anchor="middle">R$ 121</text>
+        <path class="arr" d="M110,70 Q180,30 250,70"/><text class="ta" x="180" y="40" font-size="18" text-anchor="middle">× 1,10</text>
+        <path class="arr" d="M310,70 Q380,30 450,70"/><text class="ta" x="380" y="40" font-size="18" text-anchor="middle">× 1,10</text>
+        <path class="arr" d="M450,210 Q280,240 110,210"/><text class="tc" x="280" y="222" font-size="18" text-anchor="middle">÷ 1,10²  (descontar)</text>
+      </svg>
+      <figcaption>Para frente multiplica, para trás divide. A taxa é a mesma nos dois sentidos.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Vários fluxos: desconte cada um, depois some</h2>
+  <div class="split">
+    <div>
+      <p>Um título que custa R$ 100 paga R$ 10 no ano 1 e R$ 110 no ano 2 (R$ 10 de juros + R$ 100 de volta). Cada entrada ou saída de dinheiro numa data é um <dfn>fluxo de caixa</dfn>.</p>
+      <p>A 10% ao ano:</p>
+      <table>
+        <tr><th>ano</th><th>fluxo</th><th>÷ (1,10)<sup>n</sup></th><th>VP</th></tr>
+        <tr><td>1</td><td>10,00</td><td>1,10</td><td>9,09</td></tr>
+        <tr><td>2</td><td>110,00</td><td>1,21</td><td>90,91</td></tr>
+        <tr class="tot"><td>soma</td><td></td><td></td><td>100,00</td></tr>
+      </table>
+      <p>A soma dos VPs é o <dfn>preço justo</dfn> a essa taxa: R$ 100. Tirando o que se paga hoje, sobra o <dfn>VPL</dfn> (valor presente líquido): 100 − 100 = 0.</p>
+      <p>A taxa que deixa o VPL exatamente em zero se chama <dfn>TIR</dfn> (taxa interna de retorno). Aqui a TIR é 10%: é quanto o título rende por ano.</p>
+    </div>
+    <figure>
+      <svg class="diagram" viewBox="0 0 560 260" role="img" aria-label="barras dos fluxos e dos valores presentes">
+        <line class="ax" x1="30" y1="220" x2="540" y2="220"/>
+        <rect class="fb" x="150" y="200" width="60" height="20" opacity=".35"/>
+        <rect class="fc" x="215" y="202" width="60" height="18"/>
+        <rect class="fb" x="350" y="0" width="60" height="220" opacity=".35"/>
+        <rect class="fc" x="415" y="38" width="60" height="182"/>
+        <text x="180" y="190" font-size="17" text-anchor="middle" class="tb">10</text>
+        <text x="245" y="192" font-size="17" text-anchor="middle" class="tc">9,09</text>
+        <text x="380" y="25" font-size="17" text-anchor="middle" class="tb">110</text>
+        <text x="445" y="30" font-size="17" text-anchor="middle" class="tc">90,91</text>
+        <text class="m" x="212" y="245" font-size="18" text-anchor="middle">ano 1</text>
+        <text class="m" x="412" y="245" font-size="18" text-anchor="middle">ano 2</text>
+        <rect class="fb" x="40" y="40" width="18" height="18" opacity=".35"/><text x="66" y="55" font-size="17">fluxo</text>
+        <rect class="fc" x="40" y="70" width="18" height="18"/><text x="66" y="85" font-size="17">valor presente</text>
+      </svg>
+      <figcaption>Quanto mais longe o fluxo, mais ele encolhe ao ser trazido para hoje.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>O BTLG11 inteiro</h2>
+  <div class="split">
+    <div>
+      <p>Os fluxos de quem compra uma cota hoje e vende no ano 6:</p>
+      <ol>
+        <li>Ano 0: paga o preço, <b>−95,08</b>.</li>
+        <li>Anos 1 a 6: recebe <b>9,72</b> de proventos por ano. Proventos de FII são isentos de IR para pessoa física.</li>
+        <li>Ano 6: vende pelo <dfn>VPC</dfn> (valor patrimonial por cota), que cresce com o IPCA de 4,63% ao ano: 106,14 × 1,0463⁶ = 139,25. O ganho na venda paga 20% de IR: 0,20 × (139,25 − 95,08) = 8,83. Entram 139,25 − 8,83 + 9,72 = <b>140,14</b>.</li>
+      </ol>
+      <p>A taxa de desconto é a <dfn>taxa exigida</dfn>: o mínimo que o FII tem que render para valer a pena. Aqui, 12,28% (seção 5).</p>
+      <table>
+        <tr><th>ano</th><th>fluxo</th><th>(1,1228)<sup>n</sup></th><th>VP</th></tr>
+        <tr><td>1</td><td>9,72</td><td>1,1228</td><td>8,66</td></tr>
+        <tr><td>2</td><td>9,72</td><td>1,2607</td><td>7,71</td></tr>
+        <tr><td>3</td><td>9,72</td><td>1,4155</td><td>6,87</td></tr>
+        <tr><td>4</td><td>9,72</td><td>1,5893</td><td>6,12</td></tr>
+        <tr><td>5</td><td>9,72</td><td>1,7845</td><td>5,45</td></tr>
+        <tr><td>6</td><td>140,14</td><td>2,0036</td><td>69,94</td></tr>
+        <tr class="tot"><td>preço justo</td><td></td><td></td><td>104,74</td></tr>
+        <tr class="tot"><td>VPL</td><td></td><td></td><td>104,74 − 95,08 = 9,66</td></tr>
+      </table>
+      <p style="color:var(--muted);font-size:.9rem">A soma da coluna arredondada dá 104,75; com todas as casas, 104,74.</p>
+    </div>
+    <div>
+      <p>A mesma conta em Python, com a TIR achada por bisseção (testa a taxa do meio, fica com a metade onde o VPL troca de sinal):</p>
+      <pre>fluxos = [-95.08, 9.72, 9.72, 9.72, 9.72, 9.72, 140.14]
+taxa = 0.1228
+
+vpl = sum(f / (1 + taxa) ** t for t, f in enumerate(fluxos))
+print(f"VPL a 12,28%: {vpl:.2f}")
+
+lo, hi = 0.0, 1.0
+for _ in range(100):
+    meio = (lo + hi) / 2
+    v = sum(f / (1 + meio) ** t for t, f in enumerate(fluxos))
+    lo, hi = (meio, hi) if v > 0 else (lo, meio)
+print(f"TIR: {meio:.2%}")</pre>
+      <div class="term"><span class="cmd">python3 dcf.py</span>
+<span class="out">VPL a 12,28%: 9.66</span>
+<span class="out"><mark>TIR: 14.52%</mark></span></div>
+      <p>Duas formas de dizer a mesma coisa:</p>
+      <ol>
+        <li>VPL de +9,66 a 12,28%: o FII vale R$ 9,66 a mais do que custa.</li>
+        <li>TIR de 14,52% &gt; 12,28% exigido: rende mais do que o mínimo.</li>
+      </ol>
+      <figure>
+        <svg class="diagram" viewBox="0 0 560 250" role="img" aria-label="VPL em função da taxa">
+          <line class="ax" x1="60" y1="20" x2="60" y2="220"/>
+          <line class="ax" x1="60" y1="140" x2="540" y2="140"/>
+          <polyline fill="none" stroke="var(--a)" stroke-width="3" points="60.0,23.9 94.3,40.8 128.6,56.7 162.9,71.7 197.1,85.7 231.4,99.0 265.7,111.5 300.0,123.3 334.3,134.4 368.6,145.0 402.9,154.9 437.1,164.3 471.4,173.2 505.7,181.6 540.0,189.6"/>
+          <circle class="fd" cx="275.3" cy="114.9" r="7"/><circle class="fc" cx="352.1" cy="140" r="7"/>
+          <text class="td" x="250" y="100" font-size="17" text-anchor="middle">12,28% → +9,66</text>
+          <text class="tc" x="380" y="122" font-size="17" text-anchor="middle">14,52% → 0 (TIR)</text>
+          <text class="m" x="60" y="242" font-size="16" text-anchor="middle">6%</text>
+          <text class="m" x="540" y="242" font-size="16" text-anchor="middle">20%</text>
+          <text class="m" x="300" y="242" font-size="16" text-anchor="middle">taxa de desconto</text>
+          <text class="m" x="68" y="38" font-size="16">VPL</text>
+        </svg>
+        <figcaption>Quanto maior a taxa, menor o VPL. A TIR é onde a curva cruza o zero.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>De onde vem a taxa exigida</h2>
+  <p>A taxa exigida é o <dfn>custo de oportunidade</dfn> (o que você ganharia na alternativa segura) mais um <dfn>prêmio de risco</dfn> (o extra que você pede por correr mais risco).</p>
+  <ol>
+    <li>Alternativa: Tesouro IPCA+ 2032 a IPCA + 7,79%. Pela <dfn>equação de Fisher</dfn>, (1 + nominal) = (1 + real) × (1 + inflação): 1,0779 × 1,0463 = 1,1278, ou seja, <b>12,78%</b> nominal.</li>
+    <li>IR de 15% no vencimento, sobre o ganho de 6 anos: 1,1278⁶ = 2,0577; ganho 1,0577 × 0,85 = 0,8990; (1,8990)<sup>1/6</sup> − 1 = <b>11,28%</b> líquido ao ano. Isso supõe o título sem juros semestrais.</li>
+    <li>Prêmio de risco de 1%: <b>12,28%</b>.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Erros comuns</h2>
+  <p class="mistake"><b>Somar fluxos de datas diferentes.</b> Com os fluxos do vídeo (sem IR na venda), a soma anualizada dá 12,96%; a TIR dos mesmos fluxos dá 15,47%. A soma ignora que o provento do ano 1 chegou cedo. Correção: descontar cada fluxo ou calcular a TIR.</p>
+  <p class="mistake"><b>Tirar imposto de um lado só.</b> O vídeo tirou IR do Tesouro e esqueceu os 20% sobre o ganho na venda da cota. Correção: compare os dois líquidos. Com o IR na venda, a TIR cai de 15,47% para 14,52%.</p>
+  <p class="mistake"><b>Cobrar IR todo ano de um título que paga no fim.</b> 12,78% × 0,85 = 10,86% supõe IR anual. No IPCA+ sem cupom o IR vem uma vez, no vencimento, e o líquido é 11,28%. Correção: aplique o IR sobre o ganho total e anualize depois.</p>
+  <p class="mistake"><b>Misturar nominal e real.</b> O VPC cresce com o IPCA, mas o provento fica parado em 9,72. Correção: decida se os fluxos são nominais (com inflação) ou reais (sem) e use a taxa do mesmo tipo. Com o provento crescendo pelo IPCA, a TIR vai para 15,93%.</p>
+  <p class="mistake"><b>Confiar cegamente no valor de venda.</b> O fluxo do ano 6 é metade do preço justo (69,94 de 104,74). Se o P/VP (preço ÷ VPC) continuar em 0,90 em vez de voltar a 1,00, a TIR cai para 13,21%. Correção: teste mais de um valor de venda.</p>
+</section>
+
+<section class="summary">
+  <h2>Resumo</h2>
+  <ol>
+    <li>Real de hoje vale mais que real de amanhã: só some valores na mesma data.</li>
+    <li>VP = F ÷ (1 + i)<sup>n</sup>. Desconte cada fluxo e some: esse é o preço justo.</li>
+    <li>VPL = preço justo − preço. Positivo: compra.</li>
+    <li>TIR = a taxa que zera o VPL. Maior que a taxa exigida: compra.</li>
+    <li>BTLG11: preço justo R$ 104,74 contra R$ 95,08; TIR 14,52% contra 12,28% exigido.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>

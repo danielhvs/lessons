@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluxo de caixa descontado, animação</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --line: #d8d6d0; --panel: #f0eee8;
+    --a: #e8590c; --b: #1c7ed6; --c: #2b8a3e; --d: #9c36b5; --r: #d6336c; --e: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --fg: #ececf0; --muted: #9a9aa3; --line: #34343b; --panel: #1f1f24;
+      --a: #ff922b; --b: #4dabf7; --c: #51cf66; --d: #da77f2; --r: #f06595; --e: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+  #top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  #links { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-self: start; }
+  #top a { color: var(--b); font-size: 16px; }
+  #where { text-align: center; font-size: 22px; font-weight: 700; }
+  @media (max-width: 700px) { #top { grid-template-columns: 1fr; } }
+  #stage { flex: 1; min-height: 0; width: 100%; display: block; touch-action: manipulation; }
+  #stage text { white-space: pre; fill: var(--fg); }
+  #talk { min-height: 104px; }
+  #caption, #ask { font-size: 20px; line-height: 1.35; padding: 6px 10px; border-radius: 4px;
+    background: var(--panel); min-height: 104px; }
+  #caption { border-left: 4px solid var(--d); }
+  #caption b { color: var(--d); }
+  #ask { border-left: 4px solid var(--a); display: none; }
+  #ask .q b { color: var(--a); }
+  #ask .ctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+  #ask button, #ask input { font: inherit; font-size: 20px; padding: 4px 12px; border-radius: 6px;
+    border: 2px solid var(--line); background: var(--bg); color: var(--fg); }
+  #ask button { cursor: pointer; }
+  #ask input { width: 110px; text-align: center; }
+  #ask .ok { border-color: var(--c); color: var(--c); }
+  #ask .bad { border-color: var(--r); color: var(--r); }
+  #ask .show { color: var(--muted); }
+  #hint { color: var(--r); font-size: 18px; margin-top: 4px; }
+  #terms { font-size: 16px; line-height: 1.4; min-height: 4.2em; padding: 2px 10px; color: var(--muted); }
+  #terms b { color: var(--fg); }
+  #bar { display: flex; align-items: center; gap: 6px; font-size: 16px; flex-wrap: wrap; }
+  #bar button { font: inherit; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #bar button:not(.spd) { width: 60px; padding: 4px 0; text-align: center; letter-spacing: -3px; }
+  #bar button[data-k]::after { content: attr(data-k); margin-left: 6px; font-size: 13px; letter-spacing: 0; opacity: .7; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #bar button.on { border-color: var(--d); color: var(--d); }
+  #timeline { flex: 1; min-width: 160px; height: 22px; display: flex; gap: 3px; cursor: pointer; }
+  #timeline .seg { position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; overflow: hidden; }
+  #timeline .fill { position: absolute; inset: 0; width: 0; background: var(--d); opacity: .55; }
+  #m { position: absolute; width: 0; height: 0; visibility: hidden; }
+  #m text { white-space: pre; }
+</style>
+</head>
+<body>
+<div id="top"><nav id="links"><a href="../">← todas as aulas</a><a href="index.html">lição</a><a href="practice.html">interação</a></nav><div id="where"></div><span></span></div>
+<svg id="stage" viewBox="0 0 1000 800" preserveAspectRatio="xMidYMid meet"></svg>
+<div id="talk">
+  <div id="caption"></div>
+  <div id="ask"><div class="q"></div><div class="ctl"></div><div id="hint"></div></div>
+</div>
+<div id="terms"></div>
+<div id="bar">
+  <button id="restart" data-k="H" title="recomeçar (H)">⏮</button>
+  <button id="prev" data-k="h" title="cena anterior (h, ←)">◀◀</button>
+  <button id="play" data-k="SPC" title="tocar / pausar (espaço)">▶</button>
+  <button id="next" data-k="l" title="próxima cena (l, →)">▶▶</button>
+  <button id="replay" data-k="r" title="repetir esta cena (r)">↻</button>
+  <button class="spd" data-s="0.5" data-k="1" title="0.5x (1)">0.5x</button>
+  <button class="spd on" data-s="1" data-k="2" title="1x (2)">1x</button>
+  <button class="spd" data-s="2" data-k="3" title="2x (3)">2x</button>
+  <div id="timeline"></div>
+</div>
+<svg id="m"><text id="mt"></text></svg>
+<script>
+const COL = { a: "var(--a)", b: "var(--b)", c: "var(--c)", d: "var(--d)", r: "var(--r)", e: "var(--e)",
+  m: "var(--muted)", l: "var(--line)", f: "var(--fg)", p: "var(--panel)" };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const P = (t, a, b) => ease((t - a) / (b - a));
+const L = (a, b, p) => a + (b - a) * p;
+
+let out = [];
+const add = s => out.push(s);
+const span = ([s, c, w]) => `<tspan${c ? ` fill="${COL[c]}"` : ""}${w ? ' font-weight="700"' : ""}>${s}</tspan>`;
+const mt = document.getElementById("mt"), wcache = {};
+function width(tokens, size) {
+  const k = size + "|" + JSON.stringify(tokens);
+  if (!(k in wcache)) {
+    mt.setAttribute("font-size", size);
+    mt.innerHTML = tokens.map(span).join("");
+    wcache[k] = mt.getComputedTextLength();
+  }
+  return wcache[k];
+}
+function text(x, y, tokens, size, o = {}) {
+  if (typeof tokens === "string") tokens = [[tokens, o.c]];
+  const op = o.op ?? 1;
+  if (op <= 0.001) return;
+  add(`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${o.anchor || "start"}" opacity="${op}">${tokens.map(span).join("")}</text>`);
+}
+// lays tokens out left to right centered on cx, returns each token's center x
+function row(cx, y, tokens, size, o = {}) {
+  const ws = tokens.map(t => width([t], size));
+  let x = cx - ws.reduce((a, b) => a + b, 0) / 2;
+  const centers = [];
+  tokens.forEach((t, i) => {
+    const op = Array.isArray(o.op) ? o.op[i] : o.op ?? 1;
+    text(x, y, [t], size, { op });
+    centers.push(x + ws[i] / 2);
+    x += ws[i];
+  });
+  return centers;
+}
+const line = (x1, y1, x2, y2, color, w = 3, op = 1, dash = "") => op > 0 && add(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COL[color]}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="${op}"/>`);
+const dot = (x, y, color, r = 11, op = 1) => op > 0 && add(`<circle cx="${x}" cy="${y}" r="${r}" fill="${COL[color]}" opacity="${op}"/>`);
+function frac(cx, cy, numT, denT, size, op = 1, lead = "") {
+  const w = Math.max(width(numT, size), width(denT, size)) + 20;
+  if (op <= 0.001) return;
+  if (lead) text(cx - w / 2 - 12, cy + size * 0.35, [[lead]], size, { anchor: "end", op });
+  text(cx, cy - size * 0.3, numT, size, { anchor: "middle", op });
+  line(cx - w / 2, cy, cx + w / 2, cy, "f", 3, op);
+  text(cx, cy + size, denT, size, { anchor: "middle", op });
+}
+function chip(x, y, label, color, size, op = 1) {
+  if (op <= 0.001) return;
+  const w = width([[label]], size) + 34, h = size * 1.6;
+  add(`<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="12" fill="${COL.p}" stroke="${COL[color]}" stroke-width="3" opacity="${op}"/>`);
+  text(x, y + size * 0.35, [[label, color, 1]], size, { anchor: "middle", op });
+}
+const fly = (x0, y0, x1, y1, p, label, color, size) => {
+  if (p <= 0 || p >= 1) return;
+  text(L(x0, x1, p), L(y0, y1, p) - Math.sin(p * Math.PI) * 60, [[label, color, 1]], size, { anchor: "middle" });
+};
+
+const PRACTICE = false;
+
+// ---------- pt-BR numbers and the example
+const br = (v, d = 2) => v.toFixed(d).replace(".", ",");
+const brl = v => "R$ " + br(v);
+const PRECO = 95.08, DPC = 9.72, VPC6 = 139.25, IRV = 8.83, F6 = 140.14, EXIG = 0.1228, TIR = 0.1452;
+const FL = [-PRECO, DPC, DPC, DPC, DPC, DPC, F6];
+const npv = r => FL.reduce((s, c, t) => s + c / Math.pow(1 + r, t), 0);
+const PV = FL.map((c, t) => c / Math.pow(1 + EXIG, t));
+const JUSTO = PV.slice(1).reduce((a, b) => a + b, 0);
+
+// timeline of years: returns x for year k
+function years(y, n, x0, dx, op = 1, up0 = false) {
+  const X = k => x0 + k * dx;
+  if (op <= 0) return X;
+  line(X(0) - 50, y, X(n) + 60, y, "m", 3, op);
+  for (let k = 0; k <= n; k++) {
+    dot(X(k), y, "m", 7, op);
+    text(X(k), k || !up0 ? y + 44 : y - 18, [[k ? "ano " + k : "hoje", "m"]], 30, { anchor: "middle", op });
+  }
+  return X;
+}
+// bar standing on `base`, up for positive v, down for negative
+function bar(cx, base, v, sc, color, op = 1, w = 70, fo = .75) {
+  if (op <= 0.001 || Math.abs(v) < 1e-6) return;
+  const h = Math.abs(v) * sc, y = v >= 0 ? base - h : base;
+  add(`<rect x="${cx - w / 2}" y="${y}" width="${w}" height="${h}" rx="5" fill="${COL[color]}" fill-opacity="${fo}" opacity="${op}"/>`);
+}
+function arc(x0, x1, y, up, label, color, op) {
+  if (op <= 0) return;
+  const my = up ? y - 80 : y + 80;
+  add(`<path d="M${x0},${y} Q${(x0 + x1) / 2},${my} ${x1},${y}" fill="none" stroke="${COL[color]}" stroke-width="3" stroke-dasharray="10 7" opacity="${op}"/>`);
+  dot(L(x0, x1, .97), y, color, 7, op);
+  text((x0 + x1) / 2, up ? y - 52 : y + 76, [[label, color, 1]], 36, { anchor: "middle", op });
+}
+
+// ---------- checkpoint answers drawn in the stage
+let cur = 0;
+const ans = [];
+const parseBR = s => Number(String(s).replace(/R\$|%|\s/g, "").replace(",", "."));
+const shown = (ck, v) => ck.kind === "num" ? (ck.pre || "") + parseBR(v).toFixed(ck.dec ?? 2).replace(".", ",") + (ck.post || "") : "" + v;
+function answerAt(x, y, size, t, c = "c") {
+  const ck = SCENES[cur].ck, a = PRACTICE ? ans[cur] : { val: null, ok: true }, show = ck.show ?? ck.at;
+  if (!a || t < show) return text(x, y, [["?", "m", 1]], size, { anchor: "middle" });
+  const right = shown(ck, ck.answer), mine = a.val == null ? null : shown(ck, a.val), p = P(t, show, show + .9);
+  if (mine !== null && p < 1) {
+    return text(L(500, x, p), L(790, y, p) - Math.sin(p * Math.PI) * 80, [[mine, a.ok ? c : "r", 1]], size, { anchor: "middle" });
+  }
+  text(x, y, [[right, c, 1]], size, { anchor: "middle", op: mine === null ? P(t, show, show + .6) : 1 });
+  if (!a.ok && mine !== null) wrongNote(x, y - size * 1.05, Math.max(30, size * .6), mine);
+}
+function wrongNote(x, y, s, mine) {
+  const w = width([["você: " + mine]], s);
+  text(x, y, [["você: " + mine, "r"]], s, { anchor: "middle" });
+  line(x - w / 2, y - s * .32, x + w / 2, y - s * .32, "r", 3);
+}
+
+const GLOSS = {
+  "capitalizar": "andar para frente no tempo: multiplicar por (1 + taxa) a cada ano",
+  "descontar": "andar para trás no tempo: dividir por (1 + taxa) a cada ano",
+  "valor presente": "VP: quanto um valor futuro vale hoje, a uma certa taxa. VP = F ÷ (1 + i)ⁿ",
+  "fluxo de caixa": "cada entrada ou saída de dinheiro, com a data em que acontece",
+  "preço justo": "a soma dos valores presentes de todos os fluxos que o ativo vai pagar",
+  "VPL": "valor presente líquido: preço justo − preço pago. Positivo: o ativo vale mais do que custa",
+  "TIR": "taxa interna de retorno: a taxa que deixa o VPL em zero. É quanto o investimento rende por ano",
+  "BTLG11": "fundo imobiliário (FII) de galpões logísticos, negociado na bolsa",
+  "FII": "fundo imobiliário: compra imóveis e reparte o aluguel entre os cotistas",
+  "proventos": "o que o FII paga ao cotista todo mês; para pessoa física, isentos de imposto de renda",
+  "VPC": "valor patrimonial por cota: o valor dos imóveis do FII dividido pelo número de cotas",
+  "IPCA": "índice oficial de inflação do Brasil. Aqui, 4,63% ao ano",
+  "IR": "imposto de renda. Na venda de cota de FII: 20% sobre o ganho",
+  "taxa exigida": "o mínimo que o investimento tem que render para valer a pena: alternativa segura + prêmio de risco",
+  "Fisher": "equação de Fisher: (1 + nominal) = (1 + real) × (1 + inflação)",
+  "nominal": "taxa com a inflação incluída, a que aparece no extrato",
+  "prêmio de risco": "o extra que você pede por correr mais risco que no Tesouro",
+  "soma simples": "somar valores de datas diferentes como se fossem da mesma data",
+  "FII Z": "fundo inventado para o exemplo; os números não são de um FII real",
+};
+
+// ---------- scenes: draw(t) renders the frame at local time t, so scrubbing is exact
+const SCENES = [
+{ title: "Dinheiro tem data", dur: 9, terms: ["capitalizar"],
+  cap: [[0, "Com juros de <b>10% ao ano</b>, R$ 100 hoje viram R$ 110 em 1 ano."],
+        [4.5, "E R$ 121 em 2 anos. Andar para frente no tempo é <b>capitalizar</b>: multiplicar por 1,10 a cada ano."],
+        [7.2, "R$ 100 hoje e R$ 121 daqui a 2 anos são o mesmo dinheiro, em datas diferentes."]],
+  draw(t) {
+    const y = 460, X = years(y, 2, 170, 330);
+    text(X(0), y - 40, [["R$ 100", "b", 1]], 52, { anchor: "middle", op: P(t, 0, .8) });
+    arc(X(0) + 20, X(1) - 20, y - 110, true, "× 1,10", "a", P(t, 1.2, 2));
+    text(X(1), y - 40, [["R$ 110", "b", 1]], 52, { anchor: "middle", op: P(t, 2.4, 3) });
+    arc(X(1) + 20, X(2) - 20, y - 110, true, "× 1,10", "a", P(t, 4.5, 5.3));
+    text(X(2), y - 40, [["R$ 121", "b", 1]], 52, { anchor: "middle", op: P(t, 5.7, 6.3) });
+    text(500, 700, [["mesmo dinheiro, datas diferentes", "m"]], 36, { anchor: "middle", op: P(t, 7.2, 8) });
+  } },
+
+{ title: "Descontar: o caminho de volta", dur: 13, terms: ["descontar", "valor presente"],
+  cap: [[0, "<b>Descontar</b> é o caminho de volta: dividir por 1,10 a cada ano. R$ 110 no ano 1 valem R$ 100 hoje."],
+        [3.5, "Dois anos para trás: divida duas vezes, ou de uma vez por 1,10² = 1,21."],
+        [6.2, "R$ 121 no ano 2 valem <b>R$ 100 hoje</b>. Esse é o <b>valor presente</b>."]],
+  ck: { at: 6, show: 6.2, kind: "num", answer: 100, tol: .01, pre: "R$ ",
+        q: "R$ 121 chegam no ano 2. A 10% ao ano, quanto valem hoje, em R$?",
+        hint: "121 ÷ 1,21." },
+  draw(t) {
+    const y = 460, X = years(y, 2, 170, 330), a = 1 - P(t, 3.3, 3.7);
+    text(X(1), y - 40, [["R$ 110", "b", 1]], 52, { anchor: "middle", op: a });
+    arc(X(1) - 20, X(0) + 20, y + 80, false, "÷ 1,10", "c", Math.min(a, P(t, .8, 1.6)));
+    text(X(0), y - 40, [["R$ 100", "c", 1]], 52, { anchor: "middle", op: Math.min(a, P(t, 2, 2.6)) });
+    if (t < 3.5) return;
+    text(X(2), y - 40, [["R$ 121", "b", 1]], 52, { anchor: "middle", op: P(t, 3.5, 4) });
+    row(500, 140, [["121 ÷ 1,10² = 121 ÷ 1,21"]], 40, { op: P(t, 4.3, 5) });
+    arc(X(2) - 20, X(0) + 20, y + 80, false, "÷ 1,21", "c", P(t, 4.6, 5.4));
+    if (t >= this.ck.at) answerAt(X(0), y - 40, 52, t, "c");
+    else text(X(0), y - 40, [["?", "m", 1]], 52, { anchor: "middle", op: P(t, 5, 5.5) });
+    row(500, 720, [["VP = F ÷ (1 + i)ⁿ", "c", 1]], 44, { op: P(t, 7.5, 8.2) });
+  } },
+
+{ title: "Vários fluxos", dur: 15, terms: ["fluxo de caixa", "preço justo", "VPL", "TIR"],
+  cap: [[0, "Um título custa R$ 100 e paga R$ 10 no ano 1 e R$ 110 no ano 2. Cada pagamento é um <b>fluxo de caixa</b>."],
+        [3, "Desconte cada fluxo para hoje, a 10% ao ano."],
+        [5.7, "R$ 10 no ano 1 → <b>R$ 9,09</b> hoje. R$ 110 no ano 2 → 110 ÷ 1,21 = <b>R$ 90,91</b>."],
+        [10.3, "Some os valores presentes: <b>R$ 100,00</b>, o preço justo a 10%. Menos o preço pago, o <b>VPL</b> dá zero."],
+        [12.5, "A taxa que zera o VPL é a <b>TIR</b>. Aqui, 10%: é quanto o título rende por ano."]],
+  ck: { at: 5.5, show: 5.7, kind: "num", answer: 9.09, tol: .011, pre: "R$ ",
+        q: "R$ 10 chegam no ano 1. A 10% ao ano, quanto valem hoje, em R$?",
+        hint: "10 ÷ 1,10." },
+  draw(t) {
+    const y = 640, X = years(y, 2, 170, 330), sc = 3.4, at = this.ck.at;
+    chip(X(0), y - 60, "preço R$ 100", "r", 32);
+    [[1, 10, 10 / 1.1], [2, 110, 110 / 1.21]].forEach(([k, f, v], i) => {
+      const g = P(t, .5 + i * .5, 1.5 + i * .5);
+      bar(X(k) - 42, y, f * g, sc, "b", 1, 76, .35);
+      text(X(k) - 42, y - f * sc * g - 14, [[br(f, 0), "b", 1]], 32, { anchor: "middle", op: g });
+      const s = i === 0 ? (this.ck.show) : 8, gp = P(t, s, s + 1);
+      bar(X(k) + 42, y, v * gp, sc, "c", 1, 76, .8);
+      if (i === 0) { if (t >= at) answerAt(X(k) + 42, y - v * sc - 14, 32, t, "c"); }
+      else text(X(k) + 42, y - v * sc - 14, [[br(v), "c", 1]], 32, { anchor: "middle", op: gp });
+    });
+    row(500, 90, [["9,09 + 90,91 = "], ["100,00", "c", 1]], 40, { op: P(t, 10.3, 11) });
+    row(500, 160, [["VPL = 100,00 − 100 = "], ["0", "c", 1]], 40, { op: P(t, 11.2, 11.9) });
+    row(500, 230, [["TIR = "], ["10%", "d", 1]], 40, { op: P(t, 12.5, 13.2) });
+  } },
+
+{ title: "Os fluxos do BTLG11", dur: 16, terms: ["BTLG11", "proventos", "VPC", "IPCA", "IR"],
+  cap: [[0, "Quem compra uma cota de BTLG11 hoje <b>paga R$ 95,08</b>."],
+        [2, "Recebe <b>R$ 9,72</b> de proventos por ano, isentos de IR."],
+        [4.5, "No ano 6 vende pelo <b>VPC</b>, que cresce com o IPCA: 106,14 × 1,0463⁶ = <b>R$ 139,25</b>."],
+        [7.2, "O ganho na venda paga 20% de IR: <b>R$ 8,83</b>."],
+        [10, "No ano 6 entram 9,72 + 139,25 − 8,83 = <b>R$ 140,14</b>. Esses 7 números são o fluxo de caixa inteiro."]],
+  ck: { at: 7, show: 7.2, kind: "num", answer: 8.83, tol: .011, pre: "R$ ",
+        q: "Na venda, o ganho paga 20% de IR. Quanto é 0,20 × (139,25 − 95,08), em R$?",
+        hint: "139,25 − 95,08 = 44,17. Agora multiplique por 0,20." },
+  draw(t) {
+    const y = 450, sc = 2.2, X = years(y, 6, 110, 128, P(t, 0, .6), true), at = this.ck.at, sh = this.ck.show;
+    bar(X(0), y, -PRECO * P(t, .5, 1.5), sc, "r", 1, 64);
+    text(X(0) + 44, y + PRECO * sc - 12, [["−95,08", "r", 1]], 32, { op: P(t, 1.2, 1.8) });
+    for (let k = 1; k <= 6; k++) {
+      const g = P(t, 2 + k * .25, 2.6 + k * .25);
+      bar(X(k), y, DPC * g, sc, "a", 1, 64);
+      if (k < 6) text(X(k), y - DPC * sc - 12, [["9,72", "a", 1]], 30, { anchor: "middle", op: g });
+    }
+    const v = P(t, 4.5, 5.8), base6 = y - DPC * sc;
+    bar(X(6), base6, VPC6 * v, sc, "b", 1, 64, .5);
+    text(X(6) - 44, base6 - VPC6 * sc * v / 2, [["venda 139,25", "b", 1]], 30, { anchor: "end", op: P(t, 5.5, 6) });
+    row(420, 70, [["IR = 0,20 × (139,25 − 95,08) = "]], 34, { op: P(t, at - .6, at) });
+    if (t >= at) answerAt(800, 70, 38, t, "r");
+    const ir = P(t, sh + 1, sh + 2);
+    if (ir > 0) add(`<rect x="${X(6) - 32}" y="${base6 - VPC6 * sc}" width="64" height="${IRV * sc}" fill="${COL.r}" opacity="${.9 * ir * (1 - P(t, 9, 10) * .6)}"/>`);
+    row(420, 135, [["ano 6: 9,72 + 139,25 − 8,83 = "], ["140,14", "c", 1]], 34, { op: P(t, 10, 10.7) });
+  } },
+
+{ title: "A taxa exigida", dur: 13, terms: ["taxa exigida", "Fisher", "nominal", "prêmio de risco"],
+  cap: [[0, "A taxa de desconto é a <b>taxa exigida</b>: quanto você ganharia na alternativa segura, mais um extra pelo risco."],
+        [1.5, "A alternativa: Tesouro IPCA+ 2032, a IPCA + 7,79%. Passe para <b>nominal</b> pela <b>equação de Fisher</b>."],
+        [3.4, "1,0779 × 1,0463 = 1,1278: <b>12,78%</b>. Somar 7,79 + 4,63 erra: os juros também rendem sobre a inflação."],
+        [6.5, "Tire o IR de 15%, cobrado uma vez no vencimento: <b>11,28%</b> líquido ao ano."],
+        [9, "Some 1% de prêmio pelo risco do FII: <b>12,28%</b>."]],
+  ck: { at: 3.2, show: 3.4, kind: "opt", answer: "12,78%", opts: ["12,42%", "12,78%", "3,16%"],
+        q: "Tesouro a IPCA + 7,79%, IPCA de 4,63%. Pela equação de Fisher, 1,0779 × 1,0463 − 1 dá quanto?",
+        hint: "Multiplique, não some: 1,0779 × 1,0463 = 1,1278..." },
+  draw(t) {
+    chip(500, 90, "Tesouro IPCA+ 2032: IPCA + 7,79%", "b", 36, P(t, 1.5, 2.2));
+    const r = row(440, 230, [["nominal: 1,0779 × 1,0463 − 1 = "], ["12,78%", "f", 1]], 38, { op: [P(t, 2.2, 2.9), 0] });
+    if (t >= this.ck.at) answerAt(r[1], 230, 38, t, "b");
+    row(500, 360, [["líquido (IR 15% no vencimento): "], ["11,28%", "b", 1]], 38, { op: P(t, 6.5, 7.2) });
+    row(500, 470, [["+ prêmio de risco: "], ["1%", "a", 1]], 38, { op: P(t, 9, 9.6) });
+    line(250, 520, 750, 520, "m", 3, P(t, 9.6, 10));
+    row(500, 620, [["taxa exigida = "], ["12,28%", "d", 1]], 56, { op: P(t, 10, 10.8) });
+  } },
+
+{ title: "Trazendo para hoje", dur: 17, terms: ["valor presente", "preço justo", "VPL"],
+  cap: [[0, "Agora desconte cada fluxo do BTLG11 a <b>12,28%</b> ao ano."],
+        [1, "Quanto mais longe, mais encolhe: os R$ 9,72 do ano 1 viram 8,66; os do ano 5, só 5,45."],
+        [7, "O ano 6 encolhe pela metade: 140,14 ÷ 1,1228⁶ = 140,14 ÷ 2,0036 = <b>69,94</b>."],
+        [8.6, "Some tudo: <b>R$ 104,74</b>. É o <b>preço justo</b>: quanto o FII vale hoje para quem exige 12,28%."],
+        [13.2, "VPL = <b>+R$ 9,66</b>. Positivo: o FII vale mais do que custa."]],
+  ck: { at: 13, show: 13.2, kind: "num", answer: 9.66, tol: .011, pre: "R$ ",
+        q: "Preço justo R$ 104,74, preço na bolsa R$ 95,08. Qual o VPL, em R$?",
+        hint: "VPL = preço justo − preço." },
+  draw(t) {
+    const y = 470, sc = 2.2, X = years(y, 6, 110, 128, 1, true);
+    bar(X(0), y, -PRECO, sc, "r", 1, 64);
+    text(X(0) + 44, y + PRECO * sc - 12, [["−95,08", "r", 1]], 32);
+    let sum = 0;
+    for (let k = 1; k <= 6; k++) {
+      const s = 1 + (k - 1) * 1.2, g = P(t, s, s + .9), v = L(FL[k], PV[k], g);
+      bar(X(k), y, FL[k], sc, "b", 1, 64, .18);
+      bar(X(k), y, v, sc, g > 0 ? "c" : "b", 1, 64, .8);
+      const lx = X(k), ly = y - v * sc - 12;
+      const f = clamp((t - 8.6 - k * .25) / .9);
+      if (f <= 0) text(lx, ly, [[br(g >= 1 ? PV[k] : v), g > 0 ? "c" : "b", 1]], 30, { anchor: "middle" });
+      fly(lx, ly, 640, 80, ease(f), br(PV[k]), "c", 30);
+      if (f >= 1) sum += PV[k];
+    }
+    const so = P(t, 8.4, 8.8);
+    text(320, 80, [["preço justo = "]], 38, { op: so });
+    text(560, 80, [[brl(t > 10.4 ? JUSTO : sum), "c", 1]], 44, { op: so });
+    row(400, 160, [["VPL = 104,74 − 95,08 = "]], 36, { op: P(t, 11, 11.7) });
+    if (t >= this.ck.at) answerAt(740, 160, 40, t, "c");
+  } },
+
+{ title: "TIR: a taxa que zera", dur: 14, terms: ["TIR", "VPL", "taxa exigida"],
+  cap: [[0, "O VPL depende da taxa. A curva mostra o VPL do BTLG11 para cada taxa, de 6% a 20%."],
+        [2.5, "A 12,28% o VPL é <b>+9,66</b>."],
+        [4.7, "Taxa maior encolhe mais os fluxos, e o VPL cai. Em <b>14,52%</b> ele chega a zero."],
+        [8.5, "Essa taxa é a <b>TIR</b>: o quanto o FII rende por ano, se tudo sair como previsto. 14,52% > 12,28% exigido: <b>compra</b>."]],
+  ck: { at: 4.5, show: 4.7, kind: "opt", answer: "subir", opts: ["subir", "descer"],
+        q: "A 12,28% o VPL é +9,66. Para o VPL chegar a zero, a taxa precisa:",
+        hint: "Taxa maior divide cada fluxo por um número maior." },
+  draw(t) {
+    const gx = r => L(150, 900, (r - .06) / .14), gy = v => L(640, 140, (v + 25) / 75);
+    const op = P(t, 0, 1);
+    line(gx(.06), gy(-25), gx(.06), gy(50), "m", 2.5, op);
+    line(gx(.06), gy(0), gx(.2), gy(0), "m", 2.5, op);
+    [.06, .1, .14, .18].forEach(r => text(gx(r), gy(-25) + 40, [[br(r * 100, 0) + "%", "m"]], 30, { anchor: "middle", op }));
+    [-20, 0, 20, 40].forEach(v => text(gx(.06) - 12, gy(v) + 10, [["" + v, "m"]], 30, { anchor: "end", op }));
+    text(gx(.13), gy(-25) + 84, [["taxa de desconto", "m"]], 30, { anchor: "middle", op });
+    text(gx(.06) + 14, gy(50) + 10, [["VPL", "m"]], 30, { op });
+    const pts = [];
+    const n = Math.round(120 * P(t, .3, 2));
+    for (let i = 0; i <= n; i++) { const r = .06 + .14 * i / 120; pts.push(`${gx(r).toFixed(1)},${gy(npv(r)).toFixed(1)}`); }
+    if (pts.length > 1) add(`<polyline points="${pts.join(" ")}" fill="none" stroke="${COL.a}" stroke-width="4"/>`);
+    line(gx(EXIG), gy(-25), gx(EXIG), gy(50), "d", 2.5, P(t, 2.5, 3), "8 6");
+    text(gx(EXIG) - 10, gy(50) + 10, [["exigido 12,28%", "d", 1]], 30, { anchor: "end", op: P(t, 2.5, 3) });
+    const sh = this.ck.show, r = L(EXIG, TIR, P(t, sh + .8, sh + 3.5)), v = npv(r), dop = P(t, 2.5, 3);
+    dot(gx(r), gy(v), r > TIR - 1e-4 ? "c" : "b", 13, dop);
+    text(gx(r) + 20, gy(v) - 20, [[br(r * 100) + "% → VPL " + (v >= 0.005 ? "+" : "") + br(Math.abs(v) < .005 ? 0 : v), "b", 1]], 32, { op: dop });
+    if (t >= this.ck.at) answerAt(780, 220, 40, t, "a");
+    row(300, 590, [["TIR = "], ["14,52%", "c", 1]], 50, { op: P(t, sh + 3.6, sh + 4.2) });
+  } },
+
+{ title: "O erro da soma simples", dur: 16, terms: ["soma simples", "TIR"],
+  cap: [[0, "O vídeo somou tudo: 6 × 9,72 + 139,25 = R$ 197,57, e anualizou contra o preço de R$ 95,08."],
+        [3.5, "Deu <b>12,96%</b> ao ano. Qual o problema?"],
+        [6.2, "Somar é o mesmo que mover cada provento para o ano 6, sem render nada no caminho."],
+        [9.5, "Com cada fluxo na sua data, a TIR dos mesmos números é <b>15,47%</b>. A soma simples tirou 2,5 pontos do FII."],
+        [12, "Com o IR da venda, que o vídeo esqueceu, a TIR certa é <b>14,52%</b>."]],
+  ck: { at: 6, show: 6.2, kind: "opt", answer: "ano 6", opts: ["hoje", "ano 1", "ano 6"],
+        q: "A soma simples junta todos os proventos num total só. Ela trata o provento do ano 1 como se chegasse quando?",
+        hint: "O total 197,57 é comparado com o preço como um valor que chega no fim." },
+  draw(t) {
+    const y = 470, sc = 1.25, X = years(y, 6, 110, 128), sh = this.ck.show;
+    row(500, 60, [["6 × 9,72 + 139,25 = 197,57"]], 34, { op: P(t, .5, 1.2) });
+    row(500, 115, [["(197,57 ÷ 95,08)^(1/6) − 1 = "], ["12,96%", "r", 1]], 34, { op: P(t, 2, 2.8) });
+    bar(X(6), y, VPC6, sc, "b", 1, 64, .5);
+    bar(X(6), y - VPC6 * sc, DPC, sc, "a", 1, 64);
+    for (let k = 1; k <= 5; k++) {
+      const p = P(t, sh + .3 + (k - 1) * .3, sh + 1.3 + (k - 1) * .3);
+      const off = VPC6 + DPC * (1 + (5 - k));
+      const cx = L(X(k), X(6), p), base = L(y, y - off * sc, p);
+      bar(cx, base, DPC, sc, "a", 1, 64);
+      if (p === 0) text(X(k), y - DPC * sc - 10, [["9,72", "a", 1]], 30, { anchor: "middle" });
+    }
+    if (t >= this.ck.at) answerAt(500, 210, 40, t, "r");
+    row(500, 600, [["cada fluxo na sua data: TIR = "], ["15,47%", "c", 1]], 38, { op: P(t, 9.5, 10.2) });
+    row(500, 680, [["com IR de 8,83 na venda: TIR = "], ["14,52%", "c", 1]], 38, { op: P(t, 12, 12.7) });
+  } },
+
+{ title: "Resumo", dur: 10, terms: ["valor presente", "preço justo", "VPL", "TIR"],
+  cap: [[0, "Fluxo de caixa descontado: liste os fluxos, escolha a taxa exigida, desconte cada um, some."]],
+  draw(t) {
+    const o = i => P(t, i * .7, i * .7 + .8);
+    row(500, 100, [["VP = F ÷ (1 + i)ⁿ", "c", 1]], 52, { op: o(0) });
+    [["só some valores na mesma data", "b"],
+     ["preço justo = soma dos valores presentes", "c"],
+     ["VPL = preço justo − preço; positivo: compra", "c"],
+     ["TIR = taxa que zera o VPL; acima da exigida: compra", "d"],
+     ["BTLG11: justo R$ 104,74 · TIR 14,52% · exigido 12,28%", "a"]].forEach(([s, c], i) => {
+      dot(50, 228 + i * 100, c, 12, o(1 + i * .6));
+      text(80, 240 + i * 100, [[s]], 34, { op: o(1 + i * .6) });
+    });
+  } },
+
+{ title: "Sua vez: o FII Z", dur: 13, terms: ["FII Z", "preço justo", "VPL"],
+  cap: [[0, "O FII Z custa <b>R$ 100</b>. Paga R$ 10 no ano 1. No ano 2 paga R$ 10 e você vende por R$ 110, com R$ 2 de IR: entram <b>R$ 118</b>. Você exige <b>12%</b>."],
+        [3.2, "10 ÷ 1,12 = 8,93 e 118 ÷ 1,2544 = 94,07. Preço justo: <b>R$ 103,00</b>."],
+        [8, "VPL = 103,00 − 100 = <b>+R$ 3,00</b>: compra. A TIR do Z é 13,74%, acima dos 12% exigidos."]],
+  ck: { at: 3, show: 3.2, kind: "num", answer: 103, tol: .02, pre: "R$ ",
+        q: "FII Z: R$ 10 no ano 1 e R$ 118 no ano 2, taxa exigida 12%. Qual o preço justo, em R$?",
+        hint: "10 ÷ 1,12 + 118 ÷ 1,12². E 1,12² = 1,2544." },
+  draw(t) {
+    const y = 640, X = years(y, 2, 170, 330), sc = 2.8, sh = this.ck.show;
+    chip(X(0), y - 60, "preço R$ 100", "r", 32, P(t, 0, .6));
+    [[1, 10, 10 / 1.12], [2, 118, 118 / 1.2544]].forEach(([k, f, v], i) => {
+      const g = P(t, .5 + i * .5, 1.5 + i * .5);
+      bar(X(k) - 42, y, f * g, sc, "b", 1, 76, .35);
+      text(X(k) - 42, y - f * sc * g - 14, [[br(f, 0), "b", 1]], 32, { anchor: "middle", op: g });
+      const gp = P(t, sh + 1 + i * .5, sh + 2 + i * .5);
+      bar(X(k) + 42, y, v * gp, sc, "c", 1, 76, .8);
+      text(X(k) + 42, y - v * sc - 14, [[br(v), "c", 1]], 32, { anchor: "middle", op: gp });
+    });
+    row(420, 80, [["preço justo = 10 ÷ 1,12 + 118 ÷ 1,2544 = "]], 32, { op: P(t, 1.8, 2.6) });
+    if (t >= this.ck.at) answerAt(860, 80, 38, t, "c");
+    row(500, 160, [["VPL = 103,00 − 100 = "], ["+3,00 → compra", "c", 1]], 36, { op: P(t, 8, 8.7) });
+  } },
+];
+
+// ---------- player
+const HEADLESS = /HeadlessChrome/.test(navigator.userAgent);
+const $ = id => document.getElementById(id);
+const starts = []; let total = 0;
+SCENES.forEach(s => { starts.push(total); total += s.dur; });
+const svg = $("stage"), cap = $("caption"), ask = $("ask"), terms = $("terms");
+let T = 0, playing = false, speed = 1, lastTs = null, lastKey = "", tries = 0, tapWrong = null, lastWrong = null;
+const sceneAt = T => { let i = 0; while (i + 1 < SCENES.length && T >= starts[i + 1]) i++; return i; };
+const sceneEnd = i => starts[i] + SCENES[i].dur - 1e-3;
+const ckTime = i => starts[i] + SCENES[i].ck.at;
+const ckOpen = () => { const i = sceneAt(T), ck = SCENES[i].ck; return PRACTICE && !!ck && !ans[i] && T >= ckTime(i) - 1e-6; };
+
+const tl = $("timeline");
+SCENES.forEach((s, i) => {
+  const seg = document.createElement("div");
+  seg.className = "seg"; seg.style.flex = s.dur; seg.title = `${i + 1}. ${s.title}`;
+  seg.innerHTML = '<div class="fill"></div>';
+  tl.appendChild(seg);
+});
+const fills = [...tl.querySelectorAll(".fill")];
+
+function buildAsk(i) {
+  const ck = SCENES[i].ck;
+  tries = 0; tapWrong = null; lastWrong = null;
+  ask.querySelector(".q").innerHTML = `<b>Sua vez:</b> ${ck.q}`;
+  $("hint").textContent = "";
+  const ctl = ask.querySelector(".ctl");
+  ctl.innerHTML = "";
+  if (ck.kind === "num") {
+    ctl.innerHTML = '<input id="in" type="text" inputmode="decimal" autocomplete="off"><button id="check">Conferir</button>';
+    const inp = $("in");
+    inp.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") submit(inp.value.trim(), inp); });
+    $("check").onclick = () => submit(inp.value.trim(), inp);
+  } else if (ck.kind === "opt") {
+    ck.opts.forEach(o => {
+      const b = document.createElement("button");
+      b.textContent = o; b.onclick = () => submit(o, b);
+      ctl.appendChild(b);
+    });
+  } else {
+    ctl.insertAdjacentHTML("beforeend", '<span>Toque no desenho.</span>');
+  }
+  const show = document.createElement("button");
+  show.className = "show"; show.textContent = "Mostrar resposta";
+  show.onclick = () => resolve(lastWrong, false);
+  ctl.appendChild(show);
+}
+function submit(val, el) {
+  if (val === "") return;
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (ck.kind === "num" && isNaN(parseBR(val))) return;
+  const right = ck.kind === "num" ? Math.abs(parseBR(val) - ck.answer) <= ck.tol : String(val) === String(ck.answer);
+  if (right) {
+    if (el) el.classList.add("ok");
+    return setTimeout(() => resolve(val, true), 450);
+  }
+  tries++; lastWrong = val;
+  if (el) el.classList.add("bad");
+  if (ck.kind === "tap") { tapWrong = val; lastKey = ""; }
+  if (tries >= 2) return setTimeout(() => resolve(val, false), 450);
+  $("hint").textContent = "Quase. Dica: " + ck.hint;
+}
+function resolve(val, ok) {
+  const i = sceneAt(T);
+  if (ans[i]) return;
+  ans[i] = { val, ok };
+  lastKey = "";
+  setPlaying(true);
+}
+
+let askFor = -1;
+function render() {
+  const i = sceneAt(T), s = SCENES[i], t = Math.min(T - starts[i], s.dur), open = ckOpen();
+  if (open && askFor !== i) { buildAsk(i); askFor = i; }
+  if (!open) askFor = -1;
+  ask.style.display = open ? "block" : "none";
+  cap.style.display = open ? "none" : "block";
+  const key = i + ":" + t.toFixed(3) + ":" + open + ":" + tapWrong;
+  if (key === lastKey) return;
+  lastKey = key; out = []; cur = i;
+  s.draw(t);
+  if (s.ck && s.ck.kind === "tap" && t >= s.ck.at - 1e-6) {
+    const z = s.ck.zones, a = ans[i];
+    const ring = (k, c, dash = "") => add(`<rect x="${z[k][0] + 4}" y="${z[k][1] + 4}" width="${z[k][2] - 8}" height="${z[k][3] - 8}" rx="8" fill="none" stroke="${COL[c]}" stroke-width="5" stroke-dasharray="${dash}"/>`);
+    if (open) { z.forEach((_, k) => ring(k, "m", "8 8")); if (tapWrong !== null) ring(tapWrong, "r"); }
+    else if (a) { ring(s.ck.answer, "c"); if (!a.ok && a.val !== null && a.val !== s.ck.answer) ring(a.val, "r"); }
+  }
+  svg.innerHTML = out.join("");
+  const c = s.cap.filter(([a]) => a <= t + 1e-6).pop();
+  if (cap.innerHTML !== c[1]) cap.innerHTML = c[1];
+  const tm = s.terms.map(k => `<b>${k}</b>: ${GLOSS[k]}`).join(" · ");
+  if (terms.innerHTML !== tm) terms.innerHTML = tm;
+  fills.forEach((f, k) => f.style.width = (k < i ? 100 : k > i ? 0 : 100 * (T - starts[i]) / s.dur) + "%");
+  $("where").textContent = s.title;
+  $("prev").disabled = i === 0;
+  const last = i === SCENES.length - 1;
+  $("next").disabled = last ? !(HEADLESS && open) : (!HEADLESS && open);
+  $("play").disabled = open;
+}
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    const i = sceneAt(T), s = SCENES[i];
+    const stop = PRACTICE && s.ck && !ans[i] && T < ckTime(i) ? ckTime(i) : sceneEnd(i);
+    T += (ts - lastTs) / 1000 * speed;
+    if (T >= stop) { T = stop; setPlaying(false); }
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+function setPlaying(v) { playing = v; $("play").textContent = v ? "⏸" : "▶"; }
+// headless (fit-check): stop on each checkpoint with the box open, then on the revealed last frame
+function go(i) {
+  i = clamp(i, 0, SCENES.length - 1);
+  ans[i] = undefined; askFor = -1;
+  if (HEADLESS) T = PRACTICE && SCENES[i].ck ? ckTime(i) : sceneEnd(i);
+  else { T = starts[i]; setPlaying(true); }
+  render();
+}
+$("play").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) return;
+  if (playing) return setPlaying(false);
+  if (T >= sceneEnd(i)) return go(i === SCENES.length - 1 ? 0 : i + 1);
+  setPlaying(true);
+};
+$("replay").onclick = () => go(sceneAt(T));
+$("restart").onclick = () => go(0);
+$("prev").onclick = () => go(sceneAt(T) - 1);
+$("next").onclick = () => {
+  const i = sceneAt(T);
+  if (ckOpen()) {
+    if (!HEADLESS) return;
+    ans[i] = { val: SCENES[i].ck.answer, ok: true };
+    T = sceneEnd(i);
+    return render();
+  }
+  go(i + 1);
+};
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+function scrub(e) {
+  const r = tl.getBoundingClientRect();
+  T = clamp((e.clientX - r.left) / r.width) * total * 0.9999;
+  const i = sceneAt(T);
+  if (PRACTICE && SCENES[i].ck && !ans[i] && T > ckTime(i)) T = ckTime(i);
+  setPlaying(false);
+  render();
+}
+tl.addEventListener("pointerdown", e => { scrub(e); tl.setPointerCapture(e.pointerId); tl.onpointermove = scrub; });
+tl.addEventListener("pointerup", () => tl.onpointermove = null);
+svg.addEventListener("pointerdown", e => {
+  const i = sceneAt(T), ck = SCENES[i].ck;
+  if (!ckOpen() || ck.kind !== "tap") return;
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const k = ck.zones.findIndex(([x, y, w, h]) => p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h);
+  if (k >= 0) submit(k, null);
+});
+const KEYS = { " ": "#play", l: "#next", ArrowRight: "#next", h: "#prev", ArrowLeft: "#prev", H: "#restart", r: "#replay",
+  1: ".spd[data-s='0.5']", 2: ".spd[data-s='1']", 3: ".spd[data-s='2']" };
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.ctrlKey || e.altKey || e.metaKey || !KEYS[e.key]) return;
+  e.preventDefault();
+  document.querySelector(KEYS[e.key]).click();
+});
+if (HEADLESS) go(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
